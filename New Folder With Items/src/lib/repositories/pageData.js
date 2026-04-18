@@ -220,7 +220,10 @@ export function buildDispatchPageData(readModels) {
 }
 
 export function buildCommunicationsPageData(readModels) {
-  return { communicationRecords: readModels.communicationRecords };
+  return {
+    communicationRecords: readModels.communicationRecords,
+    unmatchedInboundRecords: readModels.unmatchedInboundRecords || [],
+  };
 }
 
 export function buildInvoicesPageData(readModels) {

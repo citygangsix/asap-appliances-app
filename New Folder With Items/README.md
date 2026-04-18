@@ -63,6 +63,12 @@ Preview the production build locally:
 npm run preview
 ```
 
+Run the local Twilio webhook intake server:
+
+```bash
+npm run twilio:webhooks
+```
+
 ## Notes
 
 - `node_modules/` is intentionally ignored and should not be committed.
@@ -70,7 +76,13 @@ npm run preview
 - If Supabase credentials are missing or live reads fail, the app falls back to mock data instead of crashing.
 - Mock mode remains the default local runtime.
 - The Jobs page is the first live Supabase-backed workflow; if live reads fail, the repository falls back to mock data.
-- Jobs mutations now have a real Supabase adapter path, while the rest of the app still uses scaffolded write placeholders.
+- Jobs and Dispatch technician assignment now use the real Supabase-backed repository path from the UI.
+- Customers now support real customer creation and basic profile updates through the Supabase-backed repository path.
+- Invoices now support real invoice creation and payment-status updates through the Supabase-backed repository path.
+- Communications review, approve/reject, and attach-to-job actions now use the real Supabase-backed repository path from the UI.
+- Twilio webhook intake now runs through a small server-side adapter in `server/twilioWebhookServer.js`.
+- Unmatched Twilio inbound calls and texts now persist into a safe triage queue until office staff link them to a real existing customer.
+- Some non-invoice, non-assignment write flows elsewhere in the app still use scaffolded placeholders.
 
 ## Recommended Next Steps
 

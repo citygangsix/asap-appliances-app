@@ -280,6 +280,41 @@ Key columns:
 - `created_at timestamptz not null`
 - `updated_at timestamptz not null`
 
+### `unmatched_inbound_communications`
+
+Primary key:
+
+- `unmatched_communication_id uuid`
+
+Foreign keys:
+
+- `linked_customer_id -> customers.customer_id` nullable
+- `linked_job_id -> jobs.job_id` nullable
+- `linked_communication_id -> communications.communication_id` nullable
+
+Key columns:
+
+- `communication_channel communication_channel not null`
+- `direction communication_direction not null`
+- `communication_status communication_status not null`
+- `match_status text not null`
+- `resolution_status text not null`
+- `from_number text null`
+- `to_number text null`
+- `preview_text text not null`
+- `transcript_text text null`
+- `provider_name text not null`
+- `provider_message_sid text null`
+- `provider_call_sid text null`
+- `raw_payload jsonb not null`
+- `occurred_at timestamptz not null`
+- `started_at timestamptz null`
+- `ended_at timestamptz null`
+- `resolution_notes text null`
+- `resolved_at timestamptz null`
+- `created_at timestamptz not null`
+- `updated_at timestamptz not null`
+
 ### `technician_payouts`
 
 Primary key:

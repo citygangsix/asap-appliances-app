@@ -10,6 +10,8 @@
 /** @typedef {"clear"|"awaiting_callback"|"unread_message"|"unresolved"} DbCommunicationStatus */
 /** @typedef {"text"|"call"} DbCommunicationChannel */
 /** @typedef {"inbound"|"outbound"} DbCommunicationDirection */
+/** @typedef {"missing_phone"|"not_found"|"ambiguous"} DbUnmatchedInboundMatchStatus */
+/** @typedef {"pending"|"linked"|"ignored"} DbUnmatchedInboundResolutionStatus */
 /** @typedef {"parts_deposit"|"labor"|"parts_and_labor"|"parts_payment"} DbInvoiceType */
 /** @typedef {"draft"|"open"|"partial"|"paid"|"failed"|"void"} DbInvoicePaymentStatus */
 /** @typedef {"normal"|"high"|"escalated"} DbJobPriority */
@@ -109,6 +111,34 @@
  */
 
 /**
+ * @typedef {Object} UnmatchedInboundCommunicationRow
+ * @property {string} unmatched_communication_id
+ * @property {DbCommunicationChannel} communication_channel
+ * @property {DbCommunicationDirection} direction
+ * @property {DbCommunicationStatus} communication_status
+ * @property {DbUnmatchedInboundMatchStatus} match_status
+ * @property {DbUnmatchedInboundResolutionStatus} resolution_status
+ * @property {string|null} from_number
+ * @property {string|null} to_number
+ * @property {string} preview_text
+ * @property {string|null} transcript_text
+ * @property {string} provider_name
+ * @property {string|null} provider_message_sid
+ * @property {string|null} provider_call_sid
+ * @property {Record<string, any>} raw_payload
+ * @property {string} occurred_at
+ * @property {string|null} started_at
+ * @property {string|null} ended_at
+ * @property {string|null} linked_customer_id
+ * @property {string|null} linked_job_id
+ * @property {string|null} linked_communication_id
+ * @property {string|null} resolution_notes
+ * @property {string|null} resolved_at
+ * @property {string} created_at
+ * @property {string} updated_at
+ */
+
+/**
  * @typedef {Object} CommunicationRow
  * @property {string} communication_id
  * @property {string} customer_id
@@ -190,6 +220,8 @@
 /** @typedef {Omit<InvoiceRow, "invoice_id"|"created_at"|"updated_at">} InvoiceInsertPayload */
 /** @typedef {Partial<Pick<InvoiceRow, "payment_status"|"collected_amount"|"outstanding_balance"|"paid_at"|"payment_failed_at">>} InvoicePaymentUpdatePayload */
 /** @typedef {Omit<CommunicationRow, "communication_id"|"created_at"|"updated_at">} CommunicationInsertPayload */
+/** @typedef {Omit<UnmatchedInboundCommunicationRow, "unmatched_communication_id"|"created_at"|"updated_at">} UnmatchedInboundCommunicationInsertPayload */
+/** @typedef {Partial<UnmatchedInboundCommunicationInsertPayload>} UnmatchedInboundCommunicationUpdatePayload */
 /** @typedef {Omit<JobTimelineEventRow, "event_id"|"created_at">} JobTimelineEventInsertPayload */
 /** @typedef {Omit<TechnicianPayoutRow, "payout_id"|"net_amount"|"created_at"|"updated_at">} TechnicianPayoutInsertPayload */
 /** @typedef {Omit<TechnicianPayoutInvoiceLinkRow, "created_at">} TechnicianPayoutInvoiceLinkInsertPayload */

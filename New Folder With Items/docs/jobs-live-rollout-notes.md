@@ -24,6 +24,7 @@ This document records the current state after the first eight production-grade l
   - `jobTimeline.append(draft)`
 - `src/integrations/supabase/mutations/jobs.js` executes real inserts and updates against `jobs`.
 - `src/integrations/supabase/mutations/jobTimelineEvents.js` executes real inserts against `job_timeline_events`.
+- `src/pages/JobsPage.jsx` now exposes a technician picker in the Job details panel and routes the existing `Assign tech` quick action into that live assignment flow.
 - Missing Supabase credentials still return typed placeholder responses instead of breaking local development.
 - Successful live Jobs writes clear the shared read-model cache and the focused Jobs caches so the next repository read rehydrates fresh data.
 
@@ -56,6 +57,10 @@ This document records the current state after the first eight production-grade l
   - `dispatch.updateEta(jobId, patch)`
   - `dispatch.escalateJob(jobId, draft)`
 - Dispatch writes reuse the real `jobs` and `job_timeline_events` Supabase mutation modules rather than introducing a second write stack.
+- `src/pages/DispatchPage.jsx` now exposes:
+  - a technician assignment panel that writes through `dispatch.assignTechnician(...)`
+  - an escalation panel that writes through `dispatch.escalateJob(...)`
+  - both panels refresh the live board after successful writes
 - `dispatch.escalateJob(...)` performs a real live job update and appends a real timeline event through the repository path.
 - Missing Supabase credentials still return typed placeholder mutation responses instead of breaking mock-mode development.
 - Successful live Dispatch writes also clear the shared read-model cache and the focused Jobs caches.
@@ -88,9 +93,16 @@ This document records the current state after the first eight production-grade l
   - `communications.updateStatus(communicationId, patch)`
   - `communications.attachToJob(communicationId, draft)`
 - `src/integrations/supabase/mutations/communications.js` now executes real inserts and updates against `communications`.
+- `src/pages/CommunicationsPage.jsx` now wires the existing page actions into the live repository path:
+  - `Review unresolved`
+  - `Approve`
+  - `Reject`
+  - `Attach to job`
 - Communications follow-up timeline writes reuse the real `job_timeline_events` mutation module instead of introducing a parallel write stack.
 - Missing Supabase credentials still return typed placeholder mutation responses instead of breaking mock-mode development.
 - Successful live Communications writes also clear the shared read-model cache and the focused Jobs caches.
+- `server/twilioWebhookServer.js` now provides the first production-safe Twilio intake boundary for inbound SMS and call-status callbacks without moving page-level data access out of the repository path.
+- Unmatched inbound Twilio calls and texts now persist into `unmatched_inbound_communications` and can be resolved from the Communications page into a real `communications` row plus optional job attachment without inventing fake customers.
 
 ## Live Customers Read Path
 
@@ -109,6 +121,17 @@ This document records the current state after the first eight production-grade l
   - derived invoice balance context through `jobs -> invoices`
 - Active customer job selection is still derived from open jobs because `customers.active_job_id` does not exist in the schema.
 - Missing credentials and live read failures still fall back to mock Customers data through the repository boundary.
+
+## Live Customer UI Write Path
+
+- `src/pages/CustomersPage.jsx` now exposes:
+  - a real add-customer form that calls `repository.customers.create(...)`
+  - a real basic profile form that calls `repository.customers.update(...)`
+- `src/lib/repositories/supabaseOperationsRepository.js` now routes customer create and update through real Supabase mutations instead of fallback-only placeholders.
+- `src/integrations/supabase/mutations/customers.js` now executes:
+  - real inserts into `customers`
+  - real updates to mutable customer profile fields
+- After a successful customer write, the repository clears focused runtime caches so refreshed directory and profile views rehydrate from live Supabase data.
 
 ## Live Invoices Read Path
 
@@ -170,6 +193,17 @@ This document records the current state after the first eight production-grade l
 
 - Revenue now reuses the focused invoice list cache introduced by the Invoices rollout and adds a focused payout list cache for live payout hydration.
 - Successful live mutations continue clearing the shared read-model cache and the focused Jobs/Invoices caches, and now also clear the focused payout cache so Revenue will not keep stale payout readiness data after a real write succeeds elsewhere.
+
+## Live Invoice UI Write Path
+
+- `src/pages/InvoicesPage.jsx` now exposes:
+  - a real create-invoice form that calls `repository.invoices.createForJob(...)`
+  - a real selected-invoice payment update form that calls `repository.invoices.updatePaymentStatus(...)`
+- `src/lib/repositories/supabaseOperationsRepository.js` now routes both invoice writes through real Supabase mutations instead of typed fallback placeholders.
+- `src/integrations/supabase/mutations/invoices.js` now executes:
+  - real inserts into `invoices`
+  - real updates to invoice payment state
+- After a successful invoice write, the repository clears focused runtime caches so refreshed collections views rehydrate from live Supabase data.
 
 ## Live Home Read Path
 
@@ -275,7 +309,7 @@ This document records the current state after the first eight production-grade l
 - The frontend `Communication` shape is still label-first for `occurredAtLabel` instead of exposing canonical timestamps directly to the page.
 - The Communications page still renders one shared feed across logs, transcript preview, and extracted events rather than separate backend queues. That current UI contract was preserved intentionally.
 - The Communications logs column still renders `linkedJobId` directly, so live Supabase mode will show raw UUIDs for attached jobs until the UI gets a human-friendly job reference.
-- The schema correctly allows `communications.job_id` to be nullable, but `communications.customer_id` is still required. That means truly unknown inbound contacts still need a customer row before they can exist in the live feed.
+- `communications.customer_id` is still required, so unknown inbound contacts still cannot enter the main communications feed until office staff explicitly link them to an existing customer through the triage queue.
 - `communications.markReviewed(...)` and `communications.attachToJob(...)` can append timeline context as a second live write, so those paths are structured and real but not transactional.
 
 ## Remaining Customers Mismatches And Risks

@@ -43,6 +43,11 @@ import {
   runListCommunicationsFeedQuery,
 } from "../../integrations/supabase/queries/communications";
 import {
+  getUnmatchedInboundQueueQueryPlan,
+  runGetUnmatchedInboundQuery,
+  runListPendingUnmatchedInboundQuery,
+} from "../../integrations/supabase/queries/unmatchedInbound";
+import {
   getCustomerByIdQuery,
   getCustomerDirectoryQueryPlan,
   getCustomerProfileHydrationQueryPlan,
@@ -91,8 +96,18 @@ import {
   runUpdateCommunicationMutation,
   updateCommunicationStatusMutation,
 } from "../../integrations/supabase/mutations/communications";
-import { createCustomerMutation, updateCustomerMutation } from "../../integrations/supabase/mutations/customers";
-import { createInvoiceMutation, updateInvoicePaymentMutation } from "../../integrations/supabase/mutations/invoices";
+import {
+  createCustomerMutation,
+  runCreateCustomerMutation,
+  runUpdateCustomerMutation,
+  updateCustomerMutation,
+} from "../../integrations/supabase/mutations/customers";
+import {
+  createInvoiceMutation,
+  runCreateInvoiceMutation,
+  runUpdateInvoicePaymentMutation,
+  updateInvoicePaymentMutation,
+} from "../../integrations/supabase/mutations/invoices";
 import {
   createJobTimelineEventMutation,
   runCreateJobTimelineEventMutation,
@@ -108,11 +123,17 @@ import {
 import { createTechnicianPayoutMutation, linkPayoutInvoicesMutation } from "../../integrations/supabase/mutations/technicianPayouts";
 import { updateTechnicianMutation } from "../../integrations/supabase/mutations/technicians";
 import {
+  createUnmatchedInboundMutation,
+  resolveUnmatchedInboundMutation,
+  runUpdateUnmatchedInboundMutation,
+} from "../../integrations/supabase/mutations/unmatchedInbound";
+import {
   mapCommunicationAttachmentToUpdate,
   mapCommunicationDraftToInsert,
   mapCommunicationRowToDomain,
   mapCommunicationStatusPatchToUpdate,
   mapCustomerDraftToInsert,
+  mapCustomerPatchToUpdate,
   mapInvoiceDraftToInsert,
   mapInvoicePaymentPatchToUpdate,
   mapJobAssignmentToUpdate,
@@ -124,6 +145,8 @@ import {
   mapPayoutInvoiceLinksToInsert,
   mapTechnicianRowToDomain,
   mapTechnicianPayoutDraftToInsert,
+  mapUnmatchedInboundCommunicationRowToDomain,
+  mapUnmatchedInboundCommunicationPatchToUpdate,
 } from "../../integrations/supabase/mappers";
 import { mockOperationsRepository } from "./mockOperationsRepository";
 import { buildDispatchTechnicianAvailabilitySummary } from "../domain/jobs";
@@ -151,6 +174,7 @@ const readPlans = {
   dispatchTechnicians: getDispatchTechnicianAvailabilityQueryPlan(),
   communicationsFeed: getCommunicationsFeedQueryPlan(),
   communicationDetail: getCommunicationDetailQueryPlan("<communication_id>"),
+  unmatchedInboundQueue: getUnmatchedInboundQueueQueryPlan(),
   invoicesList: getInvoicesCollectionsQueryPlan(),
   invoiceDetail: getInvoiceDetailQueryPlan("<invoice_id>"),
   revenuePage: getRevenuePageQueryPlan(),
@@ -179,6 +203,8 @@ const mutationPlans = {
   updateCommunication: updateCommunicationStatusMutation(),
   markCommunicationReviewed: markCommunicationReviewedMutation(),
   attachCommunicationToJob: attachCommunicationToJobMutation(),
+  createUnmatchedInbound: createUnmatchedInboundMutation(),
+  resolveUnmatchedInbound: resolveUnmatchedInboundMutation(),
   createInvoice: createInvoiceMutation(),
   updateInvoicePayment: updateInvoicePaymentMutation(),
   appendTimelineEvent: createJobTimelineEventMutation(),
@@ -298,6 +324,12 @@ async function loadLiveCommunicationDetail(client, communicationId) {
   return row ? mapHydratedCommunicationRowToRecord(row) : null;
 }
 
+async function loadLiveUnmatchedInboundQueue(client) {
+  return (await runListPendingUnmatchedInboundQuery(client)).map(
+    mapUnmatchedInboundCommunicationRowToDomain,
+  );
+}
+
 async function loadLiveInvoiceList(client) {
   return mapHydratedInvoiceRowsToRecords(await runListInvoicesCollectionsQuery(client));
 }
@@ -399,10 +431,35 @@ const customers = {
     );
   },
   create(draft) {
-    return createSupabaseFallbackMutation(
+    const payload = mapCustomerDraftToInsert(draft);
+
+    return runSupabaseMutation(
       "customers.create",
       mutationPlans.createCustomer,
-      mapCustomerDraftToInsert(draft),
+      payload,
+      async (client) => {
+        const customer = await runCreateCustomerMutation(client, payload);
+        const hydratedRecord = await runCustomerProfileQuery(client, customer.customer_id);
+        return hydratedRecord || customer;
+      },
+      (record) => (record?.customer_id ? mapHydratedCustomerRowToRecord(record) : record),
+    );
+  },
+  update(customerId, patch) {
+    const payload = mapCustomerPatchToUpdate(patch);
+
+    return runSupabaseMutation(
+      "customers.update",
+      mutationPlans.updateCustomer,
+      {
+        customerId,
+        ...payload,
+      },
+      async (client) => {
+        await runUpdateCustomerMutation(client, customerId, payload);
+        return runCustomerProfileQuery(client, customerId);
+      },
+      (record) => (record ? mapHydratedCustomerRowToRecord(record) : null),
     );
   },
 };
@@ -608,6 +665,12 @@ const communications = {
       () => mockOperationsRepository.communications.getDetail(communicationId),
     );
   },
+  async listUnmatchedInbound() {
+    return readWithFallback(
+      async () => loadLiveUnmatchedInboundQueue(getSupabaseClient()),
+      () => mockOperationsRepository.communications.listUnmatchedInbound(),
+    );
+  },
   createLog(draft) {
     const payload = mapCommunicationDraftToInsert(draft);
 
@@ -729,6 +792,146 @@ const communications = {
       }),
     );
   },
+  resolveUnmatchedInbound(unmatchedCommunicationId, draft) {
+    const payload = {
+      unmatchedCommunicationId,
+      customerId: draft.customerId,
+      jobId: draft.jobId ?? null,
+      notes: draft.notes ?? null,
+    };
+
+    return runSupabaseMutation(
+      "communications.resolveUnmatchedInbound",
+      {
+        unmatchedInboundQueue: readPlans.unmatchedInboundQueue,
+        createCommunication: mutationPlans.createCommunication,
+        resolveUnmatchedInbound: mutationPlans.resolveUnmatchedInbound,
+      },
+      payload,
+      async (client) => {
+        const unmatchedInbound = await runGetUnmatchedInboundQuery(client, unmatchedCommunicationId);
+
+        if (!unmatchedInbound) {
+          throw new Error("Selected unmatched inbound event was not found.");
+        }
+
+        if (unmatchedInbound.resolution_status !== "pending") {
+          throw new Error("This inbound event has already been resolved.");
+        }
+
+        if (draft.jobId) {
+          const jobLookup = await client
+            .from("jobs")
+            .select("job_id,customer_id")
+            .eq("job_id", draft.jobId)
+            .maybeSingle();
+
+          if (jobLookup.error) {
+            throw new Error(`jobs.getForUnmatchedInbound: ${jobLookup.error.message}`);
+          }
+
+          if (!jobLookup.data) {
+            throw new Error("Selected job was not found.");
+          }
+
+          if (jobLookup.data.customer_id !== draft.customerId) {
+            throw new Error("Selected job does not belong to the selected customer.");
+          }
+        }
+
+        let existingCommunication = null;
+
+        if (unmatchedInbound.provider_message_sid) {
+          const communicationLookup = await client
+            .from("communications")
+            .select("*")
+            .eq("provider_message_sid", unmatchedInbound.provider_message_sid)
+            .maybeSingle();
+
+          if (communicationLookup.error) {
+            throw new Error(
+              `communications.lookupByProviderMessageSid: ${communicationLookup.error.message}`,
+            );
+          }
+
+          existingCommunication = communicationLookup.data || null;
+        } else if (unmatchedInbound.provider_call_sid) {
+          const communicationLookup = await client
+            .from("communications")
+            .select("*")
+            .eq("provider_call_sid", unmatchedInbound.provider_call_sid)
+            .maybeSingle();
+
+          if (communicationLookup.error) {
+            throw new Error(
+              `communications.lookupByProviderCallSid: ${communicationLookup.error.message}`,
+            );
+          }
+
+          existingCommunication = communicationLookup.data || null;
+        }
+
+        if (existingCommunication && existingCommunication.customer_id !== draft.customerId) {
+          throw new Error("A communication already exists for this provider event under a different customer.");
+        }
+
+        let communication = existingCommunication;
+
+        if (communication && draft.jobId && !communication.job_id) {
+          communication = await runUpdateCommunicationMutation(client, communication.communication_id, {
+            job_id: draft.jobId,
+          });
+        }
+
+        if (!communication) {
+          communication = await runCreateCommunicationMutation(
+            client,
+            mapCommunicationDraftToInsert({
+              customerId: draft.customerId,
+              communicationChannel: unmatchedInbound.communication_channel,
+              communicationStatus: unmatchedInbound.communication_status,
+              previewText: unmatchedInbound.preview_text,
+              direction: unmatchedInbound.direction,
+              linkedJobId: draft.jobId ?? null,
+              invoiceId: null,
+              transcriptText: unmatchedInbound.transcript_text,
+              extractedEventLabel: null,
+              occurredAt: unmatchedInbound.occurred_at,
+              startedAt: unmatchedInbound.started_at,
+              endedAt: unmatchedInbound.ended_at,
+              fromNumber: unmatchedInbound.from_number,
+              toNumber: unmatchedInbound.to_number,
+              providerName: unmatchedInbound.provider_name,
+              providerMessageSid: unmatchedInbound.provider_message_sid,
+              providerCallSid: unmatchedInbound.provider_call_sid,
+            }),
+          );
+        }
+
+        const resolvedUnmatchedInbound = await runUpdateUnmatchedInboundMutation(
+          client,
+          unmatchedCommunicationId,
+          mapUnmatchedInboundCommunicationPatchToUpdate({
+            resolutionStatus: "linked",
+            linkedCustomerId: draft.customerId,
+            linkedJobId: draft.jobId ?? communication.job_id ?? null,
+            linkedCommunicationId: communication.communication_id,
+            resolutionNotes: draft.notes ?? null,
+            resolvedAt: new Date().toISOString(),
+          }),
+        );
+
+        return {
+          unmatchedInbound: resolvedUnmatchedInbound,
+          communication,
+        };
+      },
+      (record) => ({
+        unmatchedInbound: mapUnmatchedInboundCommunicationRowToDomain(record.unmatchedInbound),
+        communication: mapCommunicationRowToDomain(record.communication),
+      }),
+    );
+  },
 };
 
 const invoices = {
@@ -745,20 +948,34 @@ const invoices = {
     );
   },
   createForJob(draft) {
-    return createSupabaseFallbackMutation(
+    const payload = mapInvoiceDraftToInsert(draft);
+
+    return runSupabaseMutation(
       "invoices.createForJob",
       mutationPlans.createInvoice,
-      mapInvoiceDraftToInsert(draft),
+      payload,
+      async (client) => {
+        const invoice = await runCreateInvoiceMutation(client, payload);
+        return runInvoiceDetailQuery(client, invoice.invoice_id);
+      },
+      mapHydratedInvoiceRowToRecord,
     );
   },
   updatePaymentStatus(invoiceId, patch) {
-    return createSupabaseFallbackMutation(
+    const updatePayload = mapInvoicePaymentPatchToUpdate(patch);
+
+    return runSupabaseMutation(
       "invoices.updatePaymentStatus",
       mutationPlans.updateInvoicePayment,
       {
         invoiceId,
-        ...mapInvoicePaymentPatchToUpdate(patch),
+        ...updatePayload,
       },
+      async (client) => {
+        await runUpdateInvoicePaymentMutation(client, invoiceId, updatePayload);
+        return runInvoiceDetailQuery(client, invoiceId);
+      },
+      mapHydratedInvoiceRowToRecord,
     );
   },
 };
@@ -886,10 +1103,18 @@ export const supabaseOperationsRepository = {
   },
   async getCommunicationsPageData() {
     return readWithFallback(
-      async () =>
-        buildCommunicationsPageData({
-          communicationRecords: await loadLiveCommunicationFeed(getSupabaseClient()),
-        }),
+      async () => {
+        const client = getSupabaseClient();
+        const [communicationRecords, unmatchedInboundRecords] = await Promise.all([
+          loadLiveCommunicationFeed(client),
+          loadLiveUnmatchedInboundQueue(client),
+        ]);
+
+        return buildCommunicationsPageData({
+          communicationRecords,
+          unmatchedInboundRecords,
+        });
+      },
       () => mockOperationsRepository.getCommunicationsPageData(),
     );
   },

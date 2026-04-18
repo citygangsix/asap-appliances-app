@@ -1,4 +1,4 @@
-import { createMutationPlaceholder } from "../placeholders";
+import { createMutationPlaceholder } from "../placeholders.js";
 
 function unwrapMutationResult(label, result) {
   if (result.error) {

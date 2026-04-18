@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DISPATCH_GROUPS } from "../lib/constants/status";
 import { formatStatusLabel, getJobsForDispatchGroup, getStatusTone } from "../lib/domain/jobs";
 import { Badge, Card, PrimaryButton, SecondaryButton } from "../components/ui";
@@ -7,9 +7,27 @@ import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { getOperationsRepository } from "../lib/repositories";
 
+const DISPATCH_ACTION_TONES = {
+  emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  amber: "border-amber-200 bg-amber-50 text-amber-700",
+  rose: "border-rose-200 bg-rose-50 text-rose-700",
+};
+
+const ASSIGNMENT_FIELD_CLASS =
+  "rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500";
+
 export function DispatchPage() {
   const repository = getOperationsRepository();
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [selectedAssignmentJobId, setSelectedAssignmentJobId] = useState(null);
+  const [selectedAssignmentTechId, setSelectedAssignmentTechId] = useState("");
+  const [selectedEscalationJobId, setSelectedEscalationJobId] = useState(null);
+  const [escalationNotes, setEscalationNotes] = useState("");
+  const [escalationCustomerUpdated, setEscalationCustomerUpdated] = useState(false);
+  const [assignmentFeedback, setAssignmentFeedback] = useState(null);
+  const [escalationFeedback, setEscalationFeedback] = useState(null);
+  const [activeAssignmentJobId, setActiveAssignmentJobId] = useState(null);
+  const [activeEscalationJobId, setActiveEscalationJobId] = useState(null);
   const { data, error, isLoading } = useAsyncValue(() => repository.getDispatchPageData(), [repository, refreshNonce]);
 
   const refreshBoard = () => {
@@ -17,12 +35,86 @@ export function DispatchPage() {
     setRefreshNonce((current) => current + 1);
   };
 
+  const jobRecords = data?.jobRecords || [];
+  const technicians = data?.technicians || [];
+  const unassignedJobs = data?.unassignedJobs || [];
+  const attentionJobs = data?.attentionJobs || [];
+  const assignmentJobs = useMemo(() => {
+    const orderedJobs = [...unassignedJobs, ...jobRecords];
+    const seenJobIds = new Set();
+
+    return orderedJobs.filter((job) => {
+      if (seenJobIds.has(job.jobId)) {
+        return false;
+      }
+
+      seenJobIds.add(job.jobId);
+      return true;
+    });
+  }, [jobRecords, unassignedJobs]);
+  const selectedAssignmentJob =
+    assignmentJobs.find((job) => job.jobId === selectedAssignmentJobId) || assignmentJobs[0] || null;
+  const isAssignmentUnchanged = (selectedAssignmentJob?.techId || "") === selectedAssignmentTechId;
+  const escalationJobs = useMemo(() => {
+    const orderedJobs = [...attentionJobs, ...jobRecords];
+    const seenJobIds = new Set();
+
+    return orderedJobs.filter((job) => {
+      if (seenJobIds.has(job.jobId)) {
+        return false;
+      }
+
+      seenJobIds.add(job.jobId);
+      return true;
+    });
+  }, [attentionJobs, jobRecords]);
+  const selectedEscalationJob =
+    escalationJobs.find((job) => job.jobId === selectedEscalationJobId) || escalationJobs[0] || null;
+  const isSelectedEscalationAlreadyOpen =
+    selectedEscalationJob?.dispatchStatus === "escalated" && selectedEscalationJob?.priority === "escalated";
+
+  const focusEscalationQueue = () => {
+    setSelectedEscalationJobId((attentionJobs[0] || escalationJobs[0] || selectedAssignmentJob || jobRecords[0])?.jobId || null);
+    setEscalationFeedback(null);
+  };
+
   const actions = (
     <>
       <SecondaryButton onClick={refreshBoard}>Refresh board</SecondaryButton>
-      <PrimaryButton>Escalation queue</PrimaryButton>
+      <PrimaryButton onClick={focusEscalationQueue}>Escalation queue</PrimaryButton>
     </>
   );
+
+  useEffect(() => {
+    if (!selectedAssignmentJobId && assignmentJobs[0]?.jobId) {
+      setSelectedAssignmentJobId(assignmentJobs[0].jobId);
+      return;
+    }
+
+    if (selectedAssignmentJobId && !assignmentJobs.some((job) => job.jobId === selectedAssignmentJobId)) {
+      setSelectedAssignmentJobId(assignmentJobs[0]?.jobId || null);
+    }
+  }, [assignmentJobs, selectedAssignmentJobId]);
+
+  useEffect(() => {
+    setSelectedAssignmentTechId(selectedAssignmentJob?.techId || "");
+  }, [selectedAssignmentJob?.jobId, selectedAssignmentJob?.techId]);
+
+  useEffect(() => {
+    if (!selectedEscalationJobId && escalationJobs[0]?.jobId) {
+      setSelectedEscalationJobId(escalationJobs[0].jobId);
+      return;
+    }
+
+    if (selectedEscalationJobId && !escalationJobs.some((job) => job.jobId === selectedEscalationJobId)) {
+      setSelectedEscalationJobId(escalationJobs[0]?.jobId || null);
+    }
+  }, [escalationJobs, selectedEscalationJobId]);
+
+  useEffect(() => {
+    setEscalationNotes("");
+    setEscalationCustomerUpdated(Boolean(selectedEscalationJob?.customerUpdated));
+  }, [selectedEscalationJob?.jobId, selectedEscalationJob?.customerUpdated]);
 
   if (isLoading) {
     return (
@@ -55,7 +147,80 @@ export function DispatchPage() {
     );
   }
 
-  const { jobRecords, technicians } = data;
+  const runAssignment = async () => {
+    if (!selectedAssignmentJob) {
+      return;
+    }
+
+    setActiveAssignmentJobId(selectedAssignmentJob.jobId);
+
+    try {
+      const result = await repository.dispatch.assignTechnician(selectedAssignmentJob.jobId, {
+        techId: selectedAssignmentTechId || null,
+      });
+
+      setAssignmentFeedback({
+        message: result.message,
+        tone:
+          result.source === "mock"
+            ? "amber"
+            : result.ok
+              ? "emerald"
+              : "rose",
+      });
+
+      if (result.ok) {
+        refreshBoard();
+      }
+    } catch (assignmentError) {
+      setAssignmentFeedback({
+        message: assignmentError.message,
+        tone: "rose",
+      });
+    } finally {
+      setActiveAssignmentJobId(null);
+    }
+  };
+
+  const runEscalation = async () => {
+    if (!selectedEscalationJob) {
+      return;
+    }
+
+    setActiveEscalationJobId(selectedEscalationJob.jobId);
+
+    try {
+      const result = await repository.dispatch.escalateJob(selectedEscalationJob.jobId, {
+        customerUpdated: escalationCustomerUpdated,
+        details: escalationNotes.trim() || null,
+        summary:
+          selectedEscalationJob.dispatchStatus === "late"
+            ? "Late dispatch job escalated for office review."
+            : "Job escalated for dispatch review.",
+      });
+
+      setEscalationFeedback({
+        message: result.message,
+        tone:
+          result.source === "mock"
+            ? "amber"
+            : result.ok
+              ? "emerald"
+              : "rose",
+      });
+
+      if (result.ok) {
+        refreshBoard();
+      }
+    } catch (escalationError) {
+      setEscalationFeedback({
+        message: escalationError.message,
+        tone: "rose",
+      });
+    } finally {
+      setActiveEscalationJobId(null);
+    }
+  };
 
   return (
     <PageScaffold
@@ -88,7 +253,15 @@ export function DispatchPage() {
                 <p className="text-sm font-semibold capitalize text-slate-800">{group.replace("_", " ")}</p>
                 <div className="mt-4 space-y-3">
                   {getJobsForDispatchGroup(jobRecords, group).map((job) => (
-                    <div key={job.jobId} className="rounded-2xl border border-[#dce2ec] bg-white p-3">
+                    <button
+                      key={job.jobId}
+                      onClick={() => setSelectedAssignmentJobId(job.jobId)}
+                      className={`w-full rounded-2xl border bg-white p-3 text-left transition hover:border-slate-400 ${
+                        selectedAssignmentJob?.jobId === job.jobId
+                          ? "border-indigo-300 bg-indigo-50/70"
+                          : "border-[#dce2ec]"
+                      }`}
+                    >
                       <p className="text-sm font-semibold text-slate-900">{job.customer?.name}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{job.jobId}</p>
                       <p className="mt-2 text-sm text-slate-500">{job.technician?.name || "Unassigned"}</p>
@@ -96,7 +269,7 @@ export function DispatchPage() {
                         <span>{job.etaLabel}</span>
                         <span>{job.customerUpdated ? "Updated" : "Not updated"}</span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -107,8 +280,178 @@ export function DispatchPage() {
 
       <div className="space-y-6">
         <Card className="p-6">
+          <p className="section-title">Escalation queue</p>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">Escalate dispatch risks</h2>
+            <Badge tone="rose">{attentionJobs.length} in queue</Badge>
+          </div>
+
+          {escalationFeedback ? (
+            <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${DISPATCH_ACTION_TONES[escalationFeedback.tone]}`}>
+              {escalationFeedback.message}
+            </div>
+          ) : null}
+
+          {!selectedEscalationJob ? (
+            <div className="mt-6">
+              <PageStateNotice
+                title="No dispatch jobs to escalate"
+                message="Once the live board has jobs, escalation can be triggered here."
+              />
+            </div>
+          ) : (
+            <div className="mt-6 space-y-4">
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                Job
+                <select
+                  value={selectedEscalationJob.jobId}
+                  onChange={(event) => setSelectedEscalationJobId(event.target.value)}
+                  className={ASSIGNMENT_FIELD_CLASS}
+                >
+                  {escalationJobs.map((job) => (
+                    <option key={job.jobId} value={job.jobId}>
+                      {job.customer?.name || "Unknown customer"} · {job.jobId} · {formatStatusLabel(job.dispatchStatus)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Badge tone={getStatusTone(selectedEscalationJob.dispatchStatus)}>
+                    {formatStatusLabel(selectedEscalationJob.dispatchStatus)}
+                  </Badge>
+                  <Badge tone={getStatusTone(selectedEscalationJob.priority)}>
+                    {formatStatusLabel(selectedEscalationJob.priority)}
+                  </Badge>
+                </div>
+                <p className="mt-3 font-medium text-slate-800">
+                  {selectedEscalationJob.customer?.name || "Unknown customer"}
+                </p>
+                <p className="mt-1">{selectedEscalationJob.jobId}</p>
+                <p className="mt-2">
+                  ETA: {selectedEscalationJob.etaLabel} · {selectedEscalationJob.latenessLabel}
+                </p>
+                <p className="mt-2">{selectedEscalationJob.issueSummary}</p>
+              </div>
+
+              {isSelectedEscalationAlreadyOpen ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                  This job is already escalated. The current UI blocks duplicate escalation writes to avoid extra timeline noise.
+                </div>
+              ) : null}
+
+              <label className="flex items-center gap-3 rounded-2xl border border-[#dce2ec] bg-white px-4 py-3 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={escalationCustomerUpdated}
+                  onChange={(event) => setEscalationCustomerUpdated(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
+                />
+                Customer updated
+              </label>
+
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                Escalation notes
+                <textarea
+                  value={escalationNotes}
+                  onChange={(event) => setEscalationNotes(event.target.value)}
+                  rows={4}
+                  placeholder="Optional office note for why this dispatch job is being escalated."
+                  className={`${ASSIGNMENT_FIELD_CLASS} resize-y`}
+                />
+              </label>
+
+              <PrimaryButton
+                onClick={runEscalation}
+                disabled={
+                  !selectedEscalationJob ||
+                  isSelectedEscalationAlreadyOpen ||
+                  activeEscalationJobId === selectedEscalationJob.jobId
+                }
+              >
+                {activeEscalationJobId === selectedEscalationJob.jobId ? "Saving..." : "Escalate job"}
+              </PrimaryButton>
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6">
           <p className="section-title">Technician assignment</p>
-          <h2 className="mt-2 text-lg font-semibold">Availability board</h2>
+          <h2 className="mt-2 text-lg font-semibold">Assign live board jobs</h2>
+
+          {assignmentFeedback ? (
+            <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${DISPATCH_ACTION_TONES[assignmentFeedback.tone]}`}>
+              {assignmentFeedback.message}
+            </div>
+          ) : null}
+
+          {!selectedAssignmentJob ? (
+            <div className="mt-6">
+              <PageStateNotice
+                title="No dispatch jobs ready"
+                message="Once the live board has jobs, you can assign them to technicians here."
+              />
+            </div>
+          ) : (
+            <div className="mt-6 space-y-4">
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                Job
+                <select
+                  value={selectedAssignmentJob.jobId}
+                  onChange={(event) => setSelectedAssignmentJobId(event.target.value)}
+                  className={ASSIGNMENT_FIELD_CLASS}
+                >
+                  {assignmentJobs.map((job) => (
+                    <option key={job.jobId} value={job.jobId}>
+                      {job.customer?.name || "Unknown customer"} · {job.jobId} · {job.technician?.name || "Unassigned"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                Technician
+                <select
+                  value={selectedAssignmentTechId}
+                  onChange={(event) => setSelectedAssignmentTechId(event.target.value)}
+                  className={ASSIGNMENT_FIELD_CLASS}
+                >
+                  <option value="">Unassigned</option>
+                  {technicians.map((tech) => (
+                    <option key={tech.techId} value={tech.techId}>
+                      {tech.name} · {tech.serviceArea}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <PrimaryButton
+                onClick={runAssignment}
+                disabled={
+                  !selectedAssignmentJob ||
+                  activeAssignmentJobId === selectedAssignmentJob.jobId ||
+                  isAssignmentUnchanged
+                }
+              >
+                {activeAssignmentJobId === selectedAssignmentJob.jobId ? "Saving..." : "Save assignment"}
+              </PrimaryButton>
+
+              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                <p className="font-medium text-slate-800">{selectedAssignmentJob.customer?.name || "Unknown customer"}</p>
+                <p className="mt-1">{selectedAssignmentJob.jobId}</p>
+                <p className="mt-2">
+                  Current technician: {selectedAssignmentJob.technician?.name || "Unassigned"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6 border-t border-[#e7ebf2] pt-6">
+            <p className="section-title">Live technician roster</p>
+            <h3 className="mt-2 text-lg font-semibold">Availability board</h3>
+          </div>
+
           <div className="mt-6 space-y-4">
             {technicians.length === 0 ? (
               <PageStateNotice

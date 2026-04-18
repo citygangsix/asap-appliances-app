@@ -1,4 +1,4 @@
-import { formatTimeLabelFromIso, stripUndefined, toNullable } from "./shared";
+import { formatTimeLabelFromIso, stripUndefined, toNullable } from "./shared.js";
 
 /** @typedef {import("../types/schema").CommunicationInsertPayload} CommunicationInsertPayload */
 /** @typedef {import("../types/schema").CommunicationRow} CommunicationRow */
@@ -46,12 +46,12 @@ export function mapCommunicationDraftToInsert(draft) {
     extracted_event_summary: toNullable(draft.extractedEventLabel),
     from_number: toNullable(draft.fromNumber),
     to_number: toNullable(draft.toNumber),
-    provider_name: null,
-    provider_message_sid: null,
-    provider_call_sid: null,
+    provider_name: toNullable(draft.providerName),
+    provider_message_sid: toNullable(draft.providerMessageSid),
+    provider_call_sid: toNullable(draft.providerCallSid),
     occurred_at: draft.occurredAt || new Date().toISOString(),
-    started_at: null,
-    ended_at: null,
+    started_at: toNullable(draft.startedAt),
+    ended_at: toNullable(draft.endedAt),
   };
 }
 

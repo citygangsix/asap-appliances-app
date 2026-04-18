@@ -10,6 +10,8 @@
 /** @typedef {"none_needed"|"quoted"|"awaiting_payment"|"ready_to_order"|"ordered"|"shipped"|"delivered"|"installed"} PartsStatus */
 /** @typedef {"clear"|"awaiting_callback"|"unread_message"|"unresolved"} CommunicationStatus */
 /** @typedef {"inbound"|"outbound"} CommunicationDirection */
+/** @typedef {"missing_phone"|"not_found"|"ambiguous"} UnmatchedInboundMatchStatus */
+/** @typedef {"pending"|"linked"|"ignored"} UnmatchedInboundResolutionStatus */
 
 /**
  * @typedef {Object} Job
@@ -41,11 +43,14 @@
  * @property {string} city
  * @property {string} serviceArea
  * @property {string} primaryPhone
+ * @property {string|null} secondaryPhone
+ * @property {string|null} email
  * @property {string} customerSegment
  * @property {number} lifetimeValue
  * @property {string} lastContactLabel
  * @property {CommunicationStatus} communicationStatus
  * @property {string|null} activeJobId
+ * @property {string|null} notes
  */
 
 /**
@@ -77,6 +82,23 @@
  * @property {string} extractedEventLabel
  * @property {string|null} [fromNumber]
  * @property {string|null} [toNumber]
+ * @property {string} [occurredAtLabel]
+ */
+
+/**
+ * @typedef {Object} UnmatchedInboundCommunication
+ * @property {string} unmatchedCommunicationId
+ * @property {"text"|"call"} communicationChannel
+ * @property {CommunicationDirection} direction
+ * @property {CommunicationStatus} communicationStatus
+ * @property {UnmatchedInboundMatchStatus} matchStatus
+ * @property {UnmatchedInboundResolutionStatus} resolutionStatus
+ * @property {string} previewText
+ * @property {string} transcriptText
+ * @property {string|null} [fromNumber]
+ * @property {string|null} [toNumber]
+ * @property {string|null} [providerMessageSid]
+ * @property {string|null} [providerCallSid]
  * @property {string} [occurredAtLabel]
  */
 
@@ -162,6 +184,20 @@
  */
 
 /**
+ * @typedef {Object} CustomerPatch
+ * @property {string} [name]
+ * @property {string} [primaryPhone]
+ * @property {string} [city]
+ * @property {string} [serviceArea]
+ * @property {string} [customerSegment]
+ * @property {CommunicationStatus} [communicationStatus]
+ * @property {string|null} [secondaryPhone]
+ * @property {string|null} [email]
+ * @property {string|null} [lastContactAt]
+ * @property {string|null} [notes]
+ */
+
+/**
  * @typedef {Object} JobDraft
  * @property {string} customerId
  * @property {string} applianceLabel
@@ -218,8 +254,13 @@
  * @property {string|null} [transcriptText]
  * @property {string|null} [extractedEventLabel]
  * @property {string|null} [occurredAt]
+ * @property {string|null} [startedAt]
+ * @property {string|null} [endedAt]
  * @property {string|null} [fromNumber]
  * @property {string|null} [toNumber]
+ * @property {string|null} [providerName]
+ * @property {string|null} [providerMessageSid]
+ * @property {string|null} [providerCallSid]
  */
 
 /**
@@ -227,6 +268,13 @@
  * @property {CommunicationDirection} [direction]
  * @property {CommunicationStatus} [communicationStatus]
  * @property {"text"|"call"} [communicationChannel]
+ */
+
+/**
+ * @typedef {Object} UnmatchedInboundResolutionDraft
+ * @property {string} customerId
+ * @property {string|null} [jobId]
+ * @property {string|null} [notes]
  */
 
 /**
@@ -364,6 +412,7 @@
 /**
  * @typedef {Object} CommunicationsPageData
  * @property {CommunicationRecord[]} communicationRecords
+ * @property {UnmatchedInboundCommunication[]} unmatchedInboundRecords
  */
 
 /**

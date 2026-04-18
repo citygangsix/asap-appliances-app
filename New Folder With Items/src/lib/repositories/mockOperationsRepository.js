@@ -3,6 +3,7 @@ import {
   mapCommunicationDraftToInsert,
   mapCommunicationStatusPatchToUpdate,
   mapCustomerDraftToInsert,
+  mapCustomerPatchToUpdate,
   mapInvoiceDraftToInsert,
   mapInvoicePaymentPatchToUpdate,
   mapJobAssignmentToUpdate,
@@ -11,6 +12,7 @@ import {
   mapJobWorkflowPatchToUpdate,
   mapPayoutInvoiceLinksToInsert,
   mapTechnicianPayoutDraftToInsert,
+  mapUnmatchedInboundCommunicationPatchToUpdate,
 } from "../../integrations/supabase/mappers";
 import { getMockDatabaseSnapshot } from "../../integrations/supabase/adapters/mockDatabaseSnapshot";
 import { buildOperationsReadModels } from "../../integrations/supabase/adapters/readModels";
@@ -60,6 +62,16 @@ const customers = {
       "customers.create",
       mapCustomerDraftToInsert(draft),
       "Mock source remains active. Customer create scaffolding is wired, but no persistence occurs yet.",
+    );
+  },
+  update(customerId, patch) {
+    return createMockMutation(
+      "customers.update",
+      {
+        customerId,
+        ...mapCustomerPatchToUpdate(patch),
+      },
+      "Mock source remains active. Customer update scaffolding is wired, but no persistence occurs yet.",
     );
   },
 };
@@ -166,6 +178,9 @@ const communications = {
   getDetail(communicationId) {
     return communications.listFeed().find((entry) => entry.communicationId === communicationId) || null;
   },
+  listUnmatchedInbound() {
+    return [];
+  },
   createLog(draft) {
     return createMockMutation(
       "communications.createLog",
@@ -229,6 +244,22 @@ const communications = {
           : null,
       },
       "Mock source remains active. Communication attach-to-job scaffolding is wired, but no persistence occurs yet.",
+    );
+  },
+  resolveUnmatchedInbound(unmatchedCommunicationId, draft) {
+    return createMockMutation(
+      "communications.resolveUnmatchedInbound",
+      {
+        unmatchedCommunicationId,
+        ...mapUnmatchedInboundCommunicationPatchToUpdate({
+          resolutionStatus: "linked",
+          linkedCustomerId: draft.customerId,
+          linkedJobId: draft.jobId ?? null,
+          resolutionNotes: draft.notes ?? null,
+          resolvedAt: new Date().toISOString(),
+        }),
+      },
+      "Mock source remains active. Unmatched inbound triage scaffolding is wired, but no persistence occurs yet.",
     );
   },
 };
@@ -321,6 +352,7 @@ export const mockOperationsRepository = {
   getCommunicationsPageData() {
     return buildCommunicationsPageData({
       communicationRecords: communications.listFeed(),
+      unmatchedInboundRecords: communications.listUnmatchedInbound(),
     });
   },
   getInvoicesPageData() {
