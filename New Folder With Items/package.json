@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "twilio:webhooks": "node server/twilioWebhookServer.js"
+    "twilio:webhooks": "node server/twilioWebhookServer.js",
+    "twilio:webhooks:smoke": "node server/twilioWebhookSmokeTest.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.3",

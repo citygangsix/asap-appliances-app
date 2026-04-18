@@ -69,6 +69,14 @@ Run the local Twilio webhook intake server:
 npm run twilio:webhooks
 ```
 
+Run the safe local webhook smoke test:
+
+```bash
+npm run twilio:webhooks:smoke
+```
+
+It validates local webhook health plus signed-request acceptance and invalid-signature rejection without creating live communication rows.
+
 ## Notes
 
 - `node_modules/` is intentionally ignored and should not be committed.
@@ -82,6 +90,7 @@ npm run twilio:webhooks
 - Communications review, approve/reject, and attach-to-job actions now use the real Supabase-backed repository path from the UI.
 - Twilio webhook intake now runs through a small server-side adapter in `server/twilioWebhookServer.js`.
 - Unmatched Twilio inbound calls and texts now persist into a safe triage queue until office staff link them to a real existing customer.
+- `.env.server.example` provides placeholder-only server env keys for local Twilio webhook setup.
 - Some non-invoice, non-assignment write flows elsewhere in the app still use scaffolded placeholders.
 
 ## Recommended Next Steps

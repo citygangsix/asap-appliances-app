@@ -25,6 +25,34 @@ Start from `.env.server.example` to avoid missing keys.
    - inbound messaging webhook to `POST /api/twilio/sms`
    - voice status callback webhook to `POST /api/twilio/calls/status`
 
+## Local Smoke Test
+
+Run:
+
+```bash
+npm run twilio:webhooks:smoke
+```
+
+What it does:
+
+- reuses a healthy local webhook server if one is already running, otherwise starts a temporary local server on `TWILIO_WEBHOOK_PORT`
+- checks `GET /health`
+- sends one Twilio-style signed SMS callback and one signed call-status callback to the local server
+- uses an intentionally wrong `To` number so both signed requests are accepted but ignored before any Supabase write path runs
+- sends one invalid-signature request and expects a `403`
+
+This gives you a repeatable local check for server health, signature validation, and route wiring without creating live `communications` or `unmatched_inbound_communications` rows.
+
+## Tunnel Rotation Checklist
+
+If your tunnel URL changes in a later session:
+
+1. Update `TWILIO_WEBHOOK_BASE_URL` in `.env.server.local`.
+2. Restart the local webhook server so it reloads the updated env.
+3. Update the Twilio console messaging webhook to `<new-base-url>/api/twilio/sms`.
+4. Update the Twilio console voice status callback to `<new-base-url>/api/twilio/calls/status`.
+5. Run `npm run twilio:webhooks:smoke` to confirm the local server still accepts valid signatures and rejects invalid ones.
+
 ## Current Matching Behavior
 
 - Inbound SMS and call events try to match a customer by normalized phone number against:
