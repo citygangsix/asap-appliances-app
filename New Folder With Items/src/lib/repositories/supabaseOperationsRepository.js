@@ -371,6 +371,51 @@ function createSupabaseMutationFailure(operation, plan, payload, error) {
   };
 }
 
+function getLocalOperationsServerUrl(pathname) {
+  const hostname =
+    typeof window !== "undefined" && window.location?.hostname
+      ? window.location.hostname
+      : "127.0.0.1";
+
+  return new URL(pathname, `http://${hostname}:8787`).toString();
+}
+
+async function requestLumiaInvoiceSms(invoiceRecord) {
+  const response = await fetch(getLocalOperationsServerUrl("/api/invoices/send-lumia"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      invoice: {
+        invoiceId: invoiceRecord.invoiceId,
+        customerName: invoiceRecord.customer?.name || null,
+        totalAmount: invoiceRecord.totalAmount,
+        outstandingBalance: invoiceRecord.outstandingBalance,
+      },
+    }),
+  });
+
+  const responseText = await response.text();
+  let responseJson = null;
+
+  if (responseText) {
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch (error) {
+      responseJson = null;
+    }
+  }
+
+  if (!response.ok || !responseJson?.ok) {
+    throw new Error(
+      responseJson?.message || `Invoice SMS request failed with status ${response.status}.`,
+    );
+  }
+
+  return responseJson;
+}
+
 async function readWithFallback(readOperation, mockFallback) {
   if (!isSupabaseConfigured()) {
     return mockFallback();
@@ -947,19 +992,68 @@ const invoices = {
       () => getCachedInvoiceDetail(invoiceId) || mockOperationsRepository.invoices.getDetail(invoiceId),
     );
   },
-  createForJob(draft) {
+  async createForJob(draft) {
     const payload = mapInvoiceDraftToInsert(draft);
 
-    return runSupabaseMutation(
-      "invoices.createForJob",
-      mutationPlans.createInvoice,
-      payload,
-      async (client) => {
-        const invoice = await runCreateInvoiceMutation(client, payload);
-        return runInvoiceDetailQuery(client, invoice.invoice_id);
-      },
-      mapHydratedInvoiceRowToRecord,
-    );
+    if (!isSupabaseConfigured()) {
+      return createSupabaseFallbackMutation(
+        "invoices.createForJob",
+        mutationPlans.createInvoice,
+        payload,
+      );
+    }
+
+    try {
+      const client = getSupabaseClient();
+
+      if (!client) {
+        return createSupabaseFallbackMutation(
+          "invoices.createForJob",
+          mutationPlans.createInvoice,
+          payload,
+        );
+      }
+
+      const invoice = await runCreateInvoiceMutation(client, payload);
+      const hydratedInvoice = await runInvoiceDetailQuery(client, invoice.invoice_id);
+      const record = mapHydratedInvoiceRowToRecord(hydratedInvoice);
+
+      clearRuntimeCaches();
+
+      try {
+        const invoiceSmsResult = await requestLumiaInvoiceSms(record);
+
+        return {
+          ok: true,
+          source: "supabase",
+          operation: "invoices.createForJob",
+          plan: mutationPlans.createInvoice,
+          payload,
+          record,
+          message: `Live Supabase mutation succeeded. ${invoiceSmsResult.message}`,
+        };
+      } catch (notificationError) {
+        console.error("Invoice created but Lumia SMS delivery failed.", notificationError);
+
+        return {
+          ok: true,
+          source: "supabase",
+          operation: "invoices.createForJob",
+          plan: mutationPlans.createInvoice,
+          payload,
+          record,
+          message: `Live Supabase mutation succeeded, but Lumia SMS failed: ${notificationError.message}`,
+        };
+      }
+    } catch (error) {
+      console.error("Supabase write failed.", error);
+      return createSupabaseMutationFailure(
+        "invoices.createForJob",
+        mutationPlans.createInvoice,
+        payload,
+        error,
+      );
+    }
   },
   updatePaymentStatus(invoiceId, patch) {
     const updatePayload = mapInvoicePaymentPatchToUpdate(patch);

@@ -8,6 +8,7 @@ Create `.env.server.local` in the app root and set:
 - `TWILIO_ACCOUNT_SID=...`
 - `TWILIO_AUTH_TOKEN=...`
 - `TWILIO_PHONE_NUMBER=...`
+- `LUMIA_INVOICE_SMS_PHONE_NUMBER=...`
 - `TWILIO_WEBHOOK_BASE_URL=...`
 - `TWILIO_WEBHOOK_PORT=8787` (optional)
 
@@ -42,6 +43,13 @@ What it does:
 - sends one invalid-signature request and expects a `403`
 
 This gives you a repeatable local check for server health, signature validation, and route wiring without creating live `communications` or `unmatched_inbound_communications` rows.
+
+## Lumia Invoice SMS
+
+- After a live invoice is created from the CRM invoice flow, the frontend calls the local server route `POST /api/invoices/send-lumia`.
+- The server uses `LUMIA_INVOICE_SMS_PHONE_NUMBER` plus the existing Twilio server credentials to send the outbound SMS.
+- If the invoice flow already has a hosted invoice URL in the future, the server can send that URL. Today it sends a concise summary with the invoice identifier, customer name, total amount, and amount due.
+- For safe validation without sending a real SMS, post `{"invoice": {...}, "dryRun": true}` to `POST /api/invoices/send-lumia`.
 
 ## Tunnel Rotation Checklist
 

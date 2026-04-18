@@ -1,12 +1,19 @@
 import http from "node:http";
 import { URL } from "node:url";
 import { getServerSupabaseClient, getTwilioServerConfig } from "./lib/supabaseAdmin.js";
+import { notifyLumiaAboutInvoice } from "./lib/lumiaInvoiceSms.js";
 import { isValidTwilioSignature } from "./lib/twilioSignature.js";
 import {
   matchesConfiguredTwilioNumber,
   persistInboundCallEvent,
   persistInboundSms,
 } from "./lib/twilioCommunications.js";
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-Twilio-Signature",
+};
 
 function readRequestBody(request) {
   return new Promise((resolve, reject) => {
@@ -25,14 +32,37 @@ function parseFormBody(body) {
   return Object.fromEntries(new URLSearchParams(body));
 }
 
+function parseJsonBody(body) {
+  if (!body.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    throw new Error("Invalid JSON request body.");
+  }
+}
+
 function respondJson(response, statusCode, payload) {
-  response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+  response.writeHead(statusCode, {
+    ...CORS_HEADERS,
+    "Content-Type": "application/json; charset=utf-8",
+  });
   response.end(JSON.stringify(payload));
 }
 
 function respondTwiml(response, statusCode = 200) {
-  response.writeHead(statusCode, { "Content-Type": "text/xml; charset=utf-8" });
+  response.writeHead(statusCode, {
+    ...CORS_HEADERS,
+    "Content-Type": "text/xml; charset=utf-8",
+  });
   response.end("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
+}
+
+function respondNoContent(response, statusCode = 204) {
+  response.writeHead(statusCode, CORS_HEADERS);
+  response.end();
 }
 
 function buildWebhookUrl(baseUrl, pathname) {
@@ -83,8 +113,20 @@ async function handleTwilioWebhook(request, response, pathname, persistEvent) {
 async function routeRequest(request, response) {
   const requestUrl = new URL(request.url, "http://127.0.0.1");
 
+  if (request.method === "OPTIONS") {
+    respondNoContent(response);
+    return;
+  }
+
   if (request.method === "GET" && requestUrl.pathname === "/health") {
     respondJson(response, 200, { ok: true, status: "ok" });
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/api/invoices/send-lumia") {
+    const body = await readRequestBody(request);
+    const result = await notifyLumiaAboutInvoice(parseJsonBody(body));
+    respondJson(response, result.status || (result.ok ? 200 : 500), result);
     return;
   }
 
@@ -114,4 +156,5 @@ server.listen(port, () => {
   console.log(`[twilio-webhooks] listening on http://127.0.0.1:${port}`);
   console.log("[twilio-webhooks] sms route: /api/twilio/sms");
   console.log("[twilio-webhooks] call route: /api/twilio/calls/status");
+  console.log("[twilio-webhooks] invoice sms route: /api/invoices/send-lumia");
 });
