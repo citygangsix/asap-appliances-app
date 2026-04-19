@@ -20,6 +20,11 @@ function readOptionalEnv(key) {
   return value ? value : null;
 }
 
+function readOptionalNumberEnv(key, fallback) {
+  const value = Number(process.env[key]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
 export function getTwilioServerConfig() {
   const lumiaInvoicePhoneNumber = readOptionalEnv("LUMIA_INVOICE_SMS_PHONE_NUMBER");
 
@@ -32,6 +37,10 @@ export function getTwilioServerConfig() {
     lumiaInvoicePhoneNumber,
     assistantOfficePhoneNumber:
       readOptionalEnv("ASSISTANT_OFFICE_PHONE_NUMBER") || lumiaInvoicePhoneNumber,
+    workflowDispatchLeadMinutes: readOptionalNumberEnv("WORKFLOW_DISPATCH_HEADS_UP_MINUTES", 60),
+    workflowPaymentFollowupMinutes: readOptionalNumberEnv("WORKFLOW_PAYMENT_FOLLOWUP_MINUTES", 8),
+    workflowFinalAlertLeadMinutes: readOptionalNumberEnv("WORKFLOW_FINAL_ALERT_LEAD_MINUTES", 10),
+    workflowLaborInvoiceAmount: readOptionalNumberEnv("WORKFLOW_LABOR_INVOICE_AMOUNT", 150),
     webhookBaseUrl: readRequiredEnv("TWILIO_WEBHOOK_BASE_URL").replace(/\/$/u, ""),
     port: Number(process.env.TWILIO_WEBHOOK_PORT || 8787),
   };

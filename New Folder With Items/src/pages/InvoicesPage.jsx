@@ -22,6 +22,41 @@ const INVOICE_ACTION_TONES = {
   rose: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
+function getLocalOperationsServerUrl(pathname) {
+  const hostname =
+    typeof window !== "undefined" && window.location?.hostname
+      ? window.location.hostname
+      : "127.0.0.1";
+
+  return new URL(pathname, `http://${hostname}:8787`).toString();
+}
+
+async function postOperationsJson(pathname, payload) {
+  const response = await fetch(getLocalOperationsServerUrl(pathname), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const responseText = await response.text();
+  let responseJson = null;
+
+  if (responseText) {
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch (error) {
+      responseJson = null;
+    }
+  }
+
+  if (!response.ok || !responseJson) {
+    throw new Error(responseJson?.message || `Operations request failed with status ${response.status}.`);
+  }
+
+  return responseJson;
+}
+
 function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -290,6 +325,24 @@ export function InvoicesPage() {
       });
 
       if (result.ok) {
+        if (isPaid) {
+          try {
+            const paidWorkflowResult = await postOperationsJson("/api/workflows/invoice-paid", {
+              invoiceId: selectedInvoice.invoiceId,
+            });
+
+            setInvoiceFeedback({
+              message: `${result.message} ${paidWorkflowResult.message}`,
+              tone: paidWorkflowResult.ok ? "emerald" : "amber",
+            });
+          } catch (workflowError) {
+            setInvoiceFeedback({
+              message: `${result.message} Paid confirmation failed: ${workflowError.message}`,
+              tone: "amber",
+            });
+          }
+        }
+
         refreshInvoices();
       }
     } catch (mutationError) {

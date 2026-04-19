@@ -26,7 +26,7 @@ function getLocalOperationsServerUrl(pathname) {
 }
 
 async function requestDispatchEtaNotifications(payload) {
-  const response = await fetch(getLocalOperationsServerUrl("/api/dispatch/notify-eta"), {
+  const response = await fetch(getLocalOperationsServerUrl("/api/workflows/dispatch"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -51,24 +51,55 @@ async function requestDispatchEtaNotifications(payload) {
   return responseJson;
 }
 
+async function requestFinalWorkWorkflow(payload) {
+  const response = await fetch(getLocalOperationsServerUrl("/api/workflows/final-work"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const responseText = await response.text();
+  let responseJson = null;
+
+  if (responseText) {
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch (error) {
+      responseJson = null;
+    }
+  }
+
+  if (!response.ok || !responseJson) {
+    throw new Error(responseJson?.message || `Final work workflow failed with status ${response.status}.`);
+  }
+
+  return responseJson;
+}
+
 export function DispatchPage() {
   const repository = getOperationsRepository();
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [selectedAssignmentJobId, setSelectedAssignmentJobId] = useState(null);
   const [selectedAssignmentTechId, setSelectedAssignmentTechId] = useState("");
+  const [etaAtInput, setEtaAtInput] = useState("");
   const [etaWindowText, setEtaWindowText] = useState("");
   const [notifyTechnicianSms, setNotifyTechnicianSms] = useState(true);
   const [notifyTechnicianCall, setNotifyTechnicianCall] = useState(false);
   const [notifyCustomerSms, setNotifyCustomerSms] = useState(true);
   const [notifyCustomerCall, setNotifyCustomerCall] = useState(false);
+  const [laborAmount, setLaborAmount] = useState("150");
+  const [finalWorkNotes, setFinalWorkNotes] = useState("");
   const [selectedEscalationJobId, setSelectedEscalationJobId] = useState(null);
   const [escalationNotes, setEscalationNotes] = useState("");
   const [escalationCustomerUpdated, setEscalationCustomerUpdated] = useState(false);
   const [assignmentFeedback, setAssignmentFeedback] = useState(null);
   const [etaFeedback, setEtaFeedback] = useState(null);
+  const [finalWorkFeedback, setFinalWorkFeedback] = useState(null);
   const [escalationFeedback, setEscalationFeedback] = useState(null);
   const [activeAssignmentJobId, setActiveAssignmentJobId] = useState(null);
   const [activeEtaJobId, setActiveEtaJobId] = useState(null);
+  const [activeFinalWorkJobId, setActiveFinalWorkJobId] = useState(null);
   const [activeEscalationJobId, setActiveEscalationJobId] = useState(null);
   const { data, error, isLoading } = useAsyncValue(() => repository.getDispatchPageData(), [repository, refreshNonce]);
 
@@ -144,7 +175,9 @@ export function DispatchPage() {
 
   useEffect(() => {
     if (!selectedAssignmentJob) {
+      setEtaAtInput("");
       setEtaWindowText("");
+      setFinalWorkNotes("");
       return;
     }
 
@@ -239,6 +272,21 @@ export function DispatchPage() {
     }
 
     const nextEtaWindowText = etaWindowText.trim();
+    let nextEtaAt = null;
+
+    if (etaAtInput.trim()) {
+      const parsedEtaDate = new Date(etaAtInput);
+
+      if (Number.isNaN(parsedEtaDate.getTime())) {
+        setEtaFeedback({
+          message: "Arrival time must be a valid date and time.",
+          tone: "amber",
+        });
+        return;
+      }
+
+      nextEtaAt = parsedEtaDate.toISOString();
+    }
 
     if (!nextEtaWindowText) {
       setEtaFeedback({
@@ -252,6 +300,7 @@ export function DispatchPage() {
 
     try {
       const updateResult = await repository.dispatch.updateEta(selectedAssignmentJob.jobId, {
+        etaAt: nextEtaAt,
         etaWindowText: nextEtaWindowText,
         customerUpdated:
           notifyCustomerSms || notifyCustomerCall ? true : selectedAssignmentJob.customerUpdated,
@@ -279,7 +328,9 @@ export function DispatchPage() {
 
       const notificationResult = await requestDispatchEtaNotifications({
         jobId: selectedAssignmentJob.jobId,
+        etaAt: nextEtaAt,
         etaWindowText: nextEtaWindowText,
+        customerLeadMinutes: 60,
         notifyTechnician: {
           sms: notifyTechnicianSms,
           call: notifyTechnicianCall,
@@ -308,6 +359,48 @@ export function DispatchPage() {
       });
     } finally {
       setActiveEtaJobId(null);
+    }
+  };
+
+  const runFinalWorkWorkflow = async () => {
+    if (!selectedAssignmentJob) {
+      return;
+    }
+
+    const nextLaborAmount = Number.parseFloat(laborAmount);
+
+    if (!Number.isFinite(nextLaborAmount) || nextLaborAmount <= 0) {
+      setFinalWorkFeedback({
+        message: "Labor amount must be greater than zero.",
+        tone: "amber",
+      });
+      return;
+    }
+
+    setActiveFinalWorkJobId(selectedAssignmentJob.jobId);
+
+    try {
+      const workflowResult = await requestFinalWorkWorkflow({
+        jobId: selectedAssignmentJob.jobId,
+        laborAmount: nextLaborAmount,
+        notes: finalWorkNotes.trim() || null,
+      });
+
+      setFinalWorkFeedback({
+        message: workflowResult.message,
+        tone: workflowResult.ok ? "emerald" : "amber",
+      });
+
+      if (workflowResult.ok) {
+        refreshBoard();
+      }
+    } catch (workflowError) {
+      setFinalWorkFeedback({
+        message: workflowError.message,
+        tone: "rose",
+      });
+    } finally {
+      setActiveFinalWorkJobId(null);
     }
   };
 
@@ -631,6 +724,16 @@ export function DispatchPage() {
               </div>
 
               <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                Arrival time
+                <input
+                  type="datetime-local"
+                  value={etaAtInput}
+                  onChange={(event) => setEtaAtInput(event.target.value)}
+                  className={ASSIGNMENT_FIELD_CLASS}
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                 ETA update text
                 <input
                   value={etaWindowText}
@@ -639,6 +742,10 @@ export function DispatchPage() {
                   placeholder="Arriving in 20 minutes"
                 />
               </label>
+
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+                If an arrival time is set, customer notifications are scheduled about 1 hour before arrival. Technician updates still go out immediately.
+              </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border border-[#dce2ec] bg-white p-4">
@@ -695,6 +802,66 @@ export function DispatchPage() {
                 disabled={!selectedAssignmentJob || activeEtaJobId === selectedAssignmentJob.jobId}
               >
                 {activeEtaJobId === selectedAssignmentJob.jobId ? "Sending..." : "Save ETA and notify"}
+              </PrimaryButton>
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-6">
+          <p className="section-title">Final work automation</p>
+          <h2 className="mt-2 text-lg font-semibold">10-minute finish workflow</h2>
+
+          {finalWorkFeedback ? (
+            <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${DISPATCH_ACTION_TONES[finalWorkFeedback.tone]}`}>
+              {finalWorkFeedback.message}
+            </div>
+          ) : null}
+
+          {!selectedAssignmentJob ? (
+            <div className="mt-6">
+              <PageStateNotice
+                title="No job selected for final-work automation"
+                message="Select a dispatch job first, then trigger the assistant alert and automatic labor invoice workflow."
+              />
+            </div>
+          ) : (
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                <p className="font-medium text-slate-800">{selectedAssignmentJob.customer?.name || "Unknown customer"}</p>
+                <p className="mt-1">{selectedAssignmentJob.jobId}</p>
+                <p className="mt-2">This workflow alerts the assistant, creates a labor invoice, notifies the customer, and schedules an 8-minute unpaid follow-up.</p>
+              </div>
+
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                Labor amount
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={laborAmount}
+                  onChange={(event) => setLaborAmount(event.target.value)}
+                  className={ASSIGNMENT_FIELD_CLASS}
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                Workflow notes
+                <textarea
+                  value={finalWorkNotes}
+                  onChange={(event) => setFinalWorkNotes(event.target.value)}
+                  rows={3}
+                  placeholder="Optional note for the automatic labor invoice."
+                  className={`${ASSIGNMENT_FIELD_CLASS} resize-y`}
+                />
+              </label>
+
+              <PrimaryButton
+                onClick={runFinalWorkWorkflow}
+                disabled={!selectedAssignmentJob || activeFinalWorkJobId === selectedAssignmentJob.jobId}
+              >
+                {activeFinalWorkJobId === selectedAssignmentJob.jobId
+                  ? "Running..."
+                  : "Trigger 10-minute finish workflow"}
               </PrimaryButton>
             </div>
           )}

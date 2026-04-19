@@ -1,4 +1,4 @@
-import { getTwilioServerConfig } from "./supabaseAdmin.js";
+import { getServerSupabaseClient, getTwilioServerConfig } from "./supabaseAdmin.js";
 import { sendOutboundCall, sendOutboundSms } from "./twilioOutboundNotifications.js";
 
 function toNullableString(value) {
@@ -39,6 +39,10 @@ function normalizeInvoiceNotificationPayload(payload = {}) {
     invoiceId: toNullableString(invoice.invoiceId),
     invoiceNumber: toNullableString(invoice.invoiceNumber),
     customerName: toNullableString(invoice.customerName || invoice.customer?.name),
+    customerPhone:
+      toNullableString(invoice.customerPhone) ||
+      toNullableString(invoice.customer?.primaryPhone) ||
+      toNullableString(invoice.customer?.secondaryPhone),
     totalAmount: toFiniteNumber(invoice.totalAmount),
     outstandingBalance: toFiniteNumber(invoice.outstandingBalance, toFiniteNumber(invoice.totalAmount)),
     invoiceUrl: looksLikeUrl(invoice.invoiceUrl) ? invoice.invoiceUrl : null,
@@ -62,12 +66,85 @@ export function buildLumiaInvoiceSmsBody(invoice) {
 
 export function buildLumiaInvoiceCallMessage(invoice) {
   const customerLabel = invoice.customerName || "this customer";
-  return `Hey, they're finished there. I need you to invoice ${customerLabel}. We just texted you the invoice. You can look at it now.`;
+  return `They're finished there. Invoice sent to you and ${customerLabel}. You can look at it now.`;
+}
+
+function buildCustomerInvoiceSmsBody(invoice) {
+  const invoiceReference = buildInvoiceReference(invoice);
+
+  if (invoice.invoiceUrl) {
+    return `ASAP Appliances sent invoice ${invoiceReference}. You can view it here: ${invoice.invoiceUrl}`;
+  }
+
+  return `ASAP Appliances invoice ${invoiceReference}. Total ${formatCurrency(invoice.totalAmount)}. Amount due ${formatCurrency(invoice.outstandingBalance)}.`;
+}
+
+function buildCustomerInvoiceCallMessage(invoice) {
+  return `Hello, this is ASAP Appliances. We just sent your invoice ${buildInvoiceReference(invoice)} by text message. Please review it when you have a moment.`;
+}
+
+async function loadInvoiceNotificationContext(invoiceId) {
+  const client = getServerSupabaseClient();
+  const result = await client
+    .from("invoices")
+    .select(`
+      invoice_id,
+      invoice_number,
+      total_amount,
+      outstanding_balance,
+      job:jobs!invoices_job_id_fkey(
+        customer:customers!jobs_customer_id_fkey(
+          name,
+          primary_phone,
+          secondary_phone
+        )
+      )
+    `)
+    .eq("invoice_id", invoiceId)
+    .maybeSingle();
+
+  if (result.error) {
+    throw new Error(`invoice.notificationContext: ${result.error.message}`);
+  }
+
+  if (!result.data) {
+    throw new Error("Invoice notification context was not found.");
+  }
+
+  return {
+    invoiceId: result.data.invoice_id,
+    invoiceNumber: result.data.invoice_number,
+    customerName: toNullableString(result.data.job?.customer?.name),
+    customerPhone:
+      toNullableString(result.data.job?.customer?.primary_phone) ||
+      toNullableString(result.data.job?.customer?.secondary_phone),
+    totalAmount: toFiniteNumber(result.data.total_amount),
+    outstandingBalance: toFiniteNumber(result.data.outstanding_balance),
+    invoiceUrl: null,
+  };
+}
+
+async function resolveInvoiceNotificationPayload(payload) {
+  const invoice = normalizeInvoiceNotificationPayload(payload);
+
+  if (
+    invoice.invoiceId &&
+    (!invoice.customerName || !invoice.customerPhone || !invoice.totalAmount)
+  ) {
+    const hydratedInvoice = await loadInvoiceNotificationContext(invoice.invoiceId);
+
+    return {
+      ...hydratedInvoice,
+      invoiceUrl: invoice.invoiceUrl || hydratedInvoice.invoiceUrl,
+    };
+  }
+
+  return invoice;
 }
 
 export async function notifyLumiaAboutInvoice(payload = {}) {
   const config = getTwilioServerConfig();
-  const invoice = normalizeInvoiceNotificationPayload(payload);
+  const invoice = await resolveInvoiceNotificationPayload(payload);
   const dryRun = payload.dryRun === true;
 
   if (!invoice.invoiceId && !invoice.invoiceNumber) {
@@ -81,6 +158,8 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
 
   const smsBody = buildLumiaInvoiceSmsBody(invoice);
   const callMessage = buildLumiaInvoiceCallMessage(invoice);
+  const customerSmsBody = buildCustomerInvoiceSmsBody(invoice);
+  const customerCallMessage = buildCustomerInvoiceCallMessage(invoice);
 
   if (dryRun) {
     console.log("[invoice-notifications][dry-run]", {
@@ -88,6 +167,9 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
       toConfigured: Boolean(config.assistantOfficePhoneNumber),
       smsBody,
       callMessage,
+      customerPhone: invoice.customerPhone,
+      customerSmsBody,
+      customerCallMessage,
     });
 
     return {
@@ -102,6 +184,9 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
         invoiceReference: buildInvoiceReference(invoice),
         smsBody,
         callMessage,
+        customerPhone: invoice.customerPhone,
+        customerSmsBody,
+        customerCallMessage,
       },
     };
   }
@@ -157,6 +242,48 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
     });
   }
 
+  if (invoice.customerPhone) {
+    try {
+      results.push(
+        await sendOutboundSms({
+          toNumber: invoice.customerPhone,
+          body: customerSmsBody,
+          dryRun: false,
+          label: "customer-invoice-sms",
+        }),
+      );
+    } catch (error) {
+      results.push({
+        ok: false,
+        channel: "sms",
+        label: "customer-invoice-sms",
+        dryRun: false,
+        skipped: false,
+        message: error.message,
+      });
+    }
+
+    try {
+      results.push(
+        await sendOutboundCall({
+          toNumber: invoice.customerPhone,
+          message: customerCallMessage,
+          dryRun: false,
+          label: "customer-invoice-call",
+        }),
+      );
+    } catch (error) {
+      results.push({
+        ok: false,
+        channel: "call",
+        label: "customer-invoice-call",
+        dryRun: false,
+        skipped: false,
+        message: error.message,
+      });
+    }
+  }
+
   const succeeded = results.filter((result) => result.ok);
   const failed = results.filter((result) => !result.ok);
 
@@ -172,8 +299,8 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
       results.find((result) => result.channel === "call" && result.ok)?.providerCallSid || null,
     message:
       failed.length > 0
-        ? `Assistant invoice notifications partially failed: ${failed.map((result) => result.message).join(" ")}`
-        : "Assistant invoice SMS sent and call placed.",
+        ? `Invoice notifications partially failed: ${failed.map((result) => result.message).join(" ")}`
+        : "Assistant and customer invoice notifications sent.",
     results,
   };
 }

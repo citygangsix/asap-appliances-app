@@ -10,6 +10,10 @@ Create `.env.server.local` in the app root and set:
 - `TWILIO_PHONE_NUMBER=...`
 - `ASSISTANT_OFFICE_PHONE_NUMBER=...` (optional but recommended for office invoice notifications)
 - `LUMIA_INVOICE_SMS_PHONE_NUMBER=...`
+- `WORKFLOW_DISPATCH_HEADS_UP_MINUTES=60` (optional)
+- `WORKFLOW_FINAL_ALERT_LEAD_MINUTES=10` (optional)
+- `WORKFLOW_PAYMENT_FOLLOWUP_MINUTES=8` (optional)
+- `WORKFLOW_LABOR_INVOICE_AMOUNT=150` (optional)
 - `TWILIO_WEBHOOK_BASE_URL=...`
 - `TWILIO_WEBHOOK_PORT=8787` (optional)
 
@@ -58,6 +62,23 @@ This gives you a repeatable local check for server health, signature validation,
 - The Dispatch page now includes an `ETA notifications` panel that saves the ETA text update through the live repository path and then posts to `POST /api/dispatch/notify-eta`.
 - The server resolves the selected job, customer phone, and technician phone from Supabase, then sends the requested mix of text and voice notifications.
 - For safe validation without placing real calls or texts, post a payload like `{"jobId":"<job-id>","etaWindowText":"Arriving in 20 minutes","notifyTechnician":{"sms":true},"notifyCustomer":{"sms":true,"call":true},"dryRun":true}` to `POST /api/dispatch/notify-eta`.
+
+## Workflow Automation
+
+- `POST /api/workflows/dispatch`
+  - reuses the current job and ETA context
+  - sends technician notifications immediately
+  - can schedule the customer heads-up based on `etaAt` and `customerLeadMinutes`
+- `POST /api/workflows/generate-invoice`
+  - creates a workflow invoice for diagnosis or parts approval
+  - notifies the assistant and customer
+- `POST /api/workflows/invoice-paid`
+  - sends paid-in-full confirmation to the customer
+- `POST /api/workflows/final-work`
+  - alerts the assistant about the final 10-minute window
+  - creates the labor invoice
+  - notifies the assistant and customer
+  - schedules an assistant follow-up if the invoice is still unpaid after the configured follow-up window
 
 ## Tunnel Rotation Checklist
 

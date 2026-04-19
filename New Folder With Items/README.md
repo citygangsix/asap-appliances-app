@@ -91,6 +91,7 @@ When the live invoice flow creates a new invoice, the app now also calls the loc
 - Invoices now support real invoice creation and payment-status updates through the Supabase-backed repository path.
 - Live invoice creation now attempts a server-side Twilio SMS summary plus a short voice call to the assistant or office phone after the invoice row is created.
 - Dispatch now supports saving ETA text updates and then sending text or call notifications to the technician and customer from the same UI flow.
+- Dispatch workflow automation now supports one-hour customer heads-up scheduling, diagnosis invoice generation, paid-invoice confirmations, and a 10-minute final-work labor invoice workflow on the local server.
 - Communications review, approve/reject, and attach-to-job actions now use the real Supabase-backed repository path from the UI.
 - Twilio webhook intake now runs through a small server-side adapter in `server/twilioWebhookServer.js`.
 - Unmatched Twilio inbound calls and texts now persist into a safe triage queue until office staff link them to a real existing customer.
