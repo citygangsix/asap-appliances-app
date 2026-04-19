@@ -1,5 +1,13 @@
 import { createMutationPlaceholder } from "../placeholders";
 
+function unwrapMutationResult(label, result) {
+  if (result.error) {
+    throw new Error(`${label}: ${result.error.message}`);
+  }
+
+  return result.data ?? null;
+}
+
 export function createInvoiceMutation() {
   return createMutationPlaceholder({
     key: "invoices.createForJob",
@@ -11,6 +19,11 @@ export function createInvoiceMutation() {
   });
 }
 
+export async function runCreateInvoiceMutation(client, payload) {
+  const result = await client.from("invoices").insert(payload).select("*").single();
+  return unwrapMutationResult("invoices.createForJob", result);
+}
+
 export function updateInvoicePaymentMutation() {
   return createMutationPlaceholder({
     key: "invoices.updatePaymentStatus",
@@ -20,4 +33,9 @@ export function updateInvoicePaymentMutation() {
     expectedPayload: "InvoicePaymentUpdatePayload",
     expectedResult: "InvoiceRow",
   });
+}
+
+export async function runUpdateInvoicePaymentMutation(client, invoiceId, payload) {
+  const result = await client.from("invoices").update(payload).eq("invoice_id", invoiceId).select("*").single();
+  return unwrapMutationResult("invoices.updatePaymentStatus", result);
 }
