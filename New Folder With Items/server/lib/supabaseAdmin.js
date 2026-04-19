@@ -21,13 +21,17 @@ function readOptionalEnv(key) {
 }
 
 export function getTwilioServerConfig() {
+  const lumiaInvoicePhoneNumber = readOptionalEnv("LUMIA_INVOICE_SMS_PHONE_NUMBER");
+
   return {
     supabaseUrl: readRequiredEnv("VITE_SUPABASE_URL"),
     supabaseServiceRoleKey: readRequiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
     accountSid: readRequiredEnv("TWILIO_ACCOUNT_SID"),
     authToken: readRequiredEnv("TWILIO_AUTH_TOKEN"),
     phoneNumber: readRequiredEnv("TWILIO_PHONE_NUMBER"),
-    lumiaInvoicePhoneNumber: readOptionalEnv("LUMIA_INVOICE_SMS_PHONE_NUMBER"),
+    lumiaInvoicePhoneNumber,
+    assistantOfficePhoneNumber:
+      readOptionalEnv("ASSISTANT_OFFICE_PHONE_NUMBER") || lumiaInvoicePhoneNumber,
     webhookBaseUrl: readRequiredEnv("TWILIO_WEBHOOK_BASE_URL").replace(/\/$/u, ""),
     port: Number(process.env.TWILIO_WEBHOOK_PORT || 8787),
   };

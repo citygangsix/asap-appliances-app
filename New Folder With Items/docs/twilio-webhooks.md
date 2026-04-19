@@ -8,6 +8,7 @@ Create `.env.server.local` in the app root and set:
 - `TWILIO_ACCOUNT_SID=...`
 - `TWILIO_AUTH_TOKEN=...`
 - `TWILIO_PHONE_NUMBER=...`
+- `ASSISTANT_OFFICE_PHONE_NUMBER=...` (optional but recommended for office invoice notifications)
 - `LUMIA_INVOICE_SMS_PHONE_NUMBER=...`
 - `TWILIO_WEBHOOK_BASE_URL=...`
 - `TWILIO_WEBHOOK_PORT=8787` (optional)
@@ -44,12 +45,19 @@ What it does:
 
 This gives you a repeatable local check for server health, signature validation, and route wiring without creating live `communications` or `unmatched_inbound_communications` rows.
 
-## Lumia Invoice SMS
+## Assistant Invoice Notifications
 
 - After a live invoice is created from the CRM invoice flow, the frontend calls the local server route `POST /api/invoices/send-lumia`.
-- The server uses `LUMIA_INVOICE_SMS_PHONE_NUMBER` plus the existing Twilio server credentials to send the outbound SMS.
+- The server uses `ASSISTANT_OFFICE_PHONE_NUMBER` and falls back to `LUMIA_INVOICE_SMS_PHONE_NUMBER` if the assistant key is not set.
+- The server sends both an outbound SMS summary and a short voice call that tells the office the technician is finished and the invoice was just texted over.
 - If the invoice flow already has a hosted invoice URL in the future, the server can send that URL. Today it sends a concise summary with the invoice identifier, customer name, total amount, and amount due.
-- For safe validation without sending a real SMS, post `{"invoice": {...}, "dryRun": true}` to `POST /api/invoices/send-lumia`.
+- For safe validation without sending a real SMS or call, post `{"invoice": {...}, "dryRun": true}` to `POST /api/invoices/send-lumia`.
+
+## Dispatch ETA Notifications
+
+- The Dispatch page now includes an `ETA notifications` panel that saves the ETA text update through the live repository path and then posts to `POST /api/dispatch/notify-eta`.
+- The server resolves the selected job, customer phone, and technician phone from Supabase, then sends the requested mix of text and voice notifications.
+- For safe validation without placing real calls or texts, post a payload like `{"jobId":"<job-id>","etaWindowText":"Arriving in 20 minutes","notifyTechnician":{"sms":true},"notifyCustomer":{"sms":true,"call":true},"dryRun":true}` to `POST /api/dispatch/notify-eta`.
 
 ## Tunnel Rotation Checklist
 

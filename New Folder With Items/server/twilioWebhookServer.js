@@ -1,6 +1,7 @@
 import http from "node:http";
 import { URL } from "node:url";
 import { getServerSupabaseClient, getTwilioServerConfig } from "./lib/supabaseAdmin.js";
+import { notifyDispatchEtaUpdate } from "./lib/twilioOutboundNotifications.js";
 import { notifyLumiaAboutInvoice } from "./lib/lumiaInvoiceSms.js";
 import { isValidTwilioSignature } from "./lib/twilioSignature.js";
 import {
@@ -130,6 +131,13 @@ async function routeRequest(request, response) {
     return;
   }
 
+  if (request.method === "POST" && requestUrl.pathname === "/api/dispatch/notify-eta") {
+    const body = await readRequestBody(request);
+    const result = await notifyDispatchEtaUpdate(parseJsonBody(body));
+    respondJson(response, result.status || (result.ok ? 200 : 500), result);
+    return;
+  }
+
   if (request.method === "POST" && requestUrl.pathname === "/api/twilio/sms") {
     await handleTwilioWebhook(request, response, requestUrl.pathname, persistInboundSms);
     return;
@@ -157,4 +165,5 @@ server.listen(port, () => {
   console.log("[twilio-webhooks] sms route: /api/twilio/sms");
   console.log("[twilio-webhooks] call route: /api/twilio/calls/status");
   console.log("[twilio-webhooks] invoice sms route: /api/invoices/send-lumia");
+  console.log("[twilio-webhooks] dispatch notify route: /api/dispatch/notify-eta");
 });

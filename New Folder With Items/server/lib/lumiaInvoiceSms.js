@@ -1,4 +1,5 @@
 import { getTwilioServerConfig } from "./supabaseAdmin.js";
+import { sendOutboundCall, sendOutboundSms } from "./twilioOutboundNotifications.js";
 
 function toNullableString(value) {
   const trimmed = String(value ?? "").trim();
@@ -59,40 +60,9 @@ export function buildLumiaInvoiceSmsBody(invoice) {
   return `ASAP invoice ${invoiceReference} for ${customerLabel}. Total ${formatCurrency(invoice.totalAmount)}. Amount due ${formatCurrency(invoice.outstandingBalance)}.`;
 }
 
-async function sendTwilioSms({ accountSid, authToken, fromNumber, toNumber, body }) {
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      From: fromNumber,
-      To: toNumber,
-      Body: body,
-    }),
-  });
-
-  const responseText = await response.text();
-  let responseJson = null;
-
-  if (responseText) {
-    try {
-      responseJson = JSON.parse(responseText);
-    } catch (error) {
-      responseJson = null;
-    }
-  }
-
-  if (!response.ok) {
-    const errorMessage =
-      responseJson?.message ||
-      `Twilio SMS request failed with status ${response.status}.`;
-
-    throw new Error(errorMessage);
-  }
-
-  return responseJson;
+export function buildLumiaInvoiceCallMessage(invoice) {
+  const customerLabel = invoice.customerName || "this customer";
+  return `Hey, they're finished there. I need you to invoice ${customerLabel}. We just texted you the invoice. You can look at it now.`;
 }
 
 export async function notifyLumiaAboutInvoice(payload = {}) {
@@ -110,12 +80,14 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
   }
 
   const smsBody = buildLumiaInvoiceSmsBody(invoice);
+  const callMessage = buildLumiaInvoiceCallMessage(invoice);
 
   if (dryRun) {
-    console.log("[invoice-sms][dry-run]", {
+    console.log("[invoice-notifications][dry-run]", {
       invoiceReference: buildInvoiceReference(invoice),
-      toConfigured: Boolean(config.lumiaInvoicePhoneNumber),
-      body: smsBody,
+      toConfigured: Boolean(config.assistantOfficePhoneNumber),
+      smsBody,
+      callMessage,
     });
 
     return {
@@ -123,38 +95,85 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
       status: 200,
       dryRun: true,
       smsRequested: false,
-      toConfigured: Boolean(config.lumiaInvoicePhoneNumber),
-      message: "Dry run prepared Lumia invoice SMS.",
+      callRequested: false,
+      toConfigured: Boolean(config.assistantOfficePhoneNumber),
+      message: "Dry run prepared assistant invoice notifications.",
       preview: {
         invoiceReference: buildInvoiceReference(invoice),
-        body: smsBody,
+        smsBody,
+        callMessage,
       },
     };
   }
 
-  if (!config.lumiaInvoicePhoneNumber) {
+  if (!config.assistantOfficePhoneNumber) {
     return {
       ok: false,
       status: 412,
       dryRun: false,
-      message: "LUMIA_INVOICE_SMS_PHONE_NUMBER is not configured on the server.",
+      message: "ASSISTANT_OFFICE_PHONE_NUMBER or LUMIA_INVOICE_SMS_PHONE_NUMBER must be configured on the server.",
     };
   }
 
-  const twilioResponse = await sendTwilioSms({
-    accountSid: config.accountSid,
-    authToken: config.authToken,
-    fromNumber: config.phoneNumber,
-    toNumber: config.lumiaInvoicePhoneNumber,
-    body: smsBody,
-  });
+  const results = [];
+
+  try {
+    results.push(
+      await sendOutboundSms({
+        toNumber: config.assistantOfficePhoneNumber,
+        body: smsBody,
+        dryRun: false,
+        label: "assistant-invoice-sms",
+      }),
+    );
+  } catch (error) {
+    results.push({
+      ok: false,
+      channel: "sms",
+      label: "assistant-invoice-sms",
+      dryRun: false,
+      skipped: false,
+      message: error.message,
+    });
+  }
+
+  try {
+    results.push(
+      await sendOutboundCall({
+        toNumber: config.assistantOfficePhoneNumber,
+        message: callMessage,
+        dryRun: false,
+        label: "assistant-invoice-call",
+      }),
+    );
+  } catch (error) {
+    results.push({
+      ok: false,
+      channel: "call",
+      label: "assistant-invoice-call",
+      dryRun: false,
+      skipped: false,
+      message: error.message,
+    });
+  }
+
+  const succeeded = results.filter((result) => result.ok);
+  const failed = results.filter((result) => !result.ok);
 
   return {
-    ok: true,
-    status: 200,
+    ok: succeeded.length > 0,
+    status: succeeded.length > 0 ? 200 : 502,
     dryRun: false,
-    smsRequested: true,
-    providerMessageSid: twilioResponse?.sid || null,
-    message: "Invoice SMS sent to Lumia.",
+    smsRequested: results.some((result) => result.channel === "sms" && result.ok),
+    callRequested: results.some((result) => result.channel === "call" && result.ok),
+    providerMessageSid:
+      results.find((result) => result.channel === "sms" && result.ok)?.providerMessageSid || null,
+    providerCallSid:
+      results.find((result) => result.channel === "call" && result.ok)?.providerCallSid || null,
+    message:
+      failed.length > 0
+        ? `Assistant invoice notifications partially failed: ${failed.map((result) => result.message).join(" ")}`
+        : "Assistant invoice SMS sent and call placed.",
+    results,
   };
 }

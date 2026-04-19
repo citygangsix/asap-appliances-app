@@ -77,7 +77,7 @@ npm run twilio:webhooks:smoke
 
 It validates local webhook health plus signed-request acceptance and invalid-signature rejection without creating live communication rows.
 
-When the live invoice flow creates a new invoice, the app now also calls the local server to send Lumia an outbound SMS summary through Twilio. Set `LUMIA_INVOICE_SMS_PHONE_NUMBER` in `.env.server.local` to enable delivery.
+When the live invoice flow creates a new invoice, the app now also calls the local server to send the assistant or office phone an outbound SMS summary and a short voice call through Twilio. Set `ASSISTANT_OFFICE_PHONE_NUMBER` in `.env.server.local` to enable delivery. If you only set `LUMIA_INVOICE_SMS_PHONE_NUMBER`, the server uses that as the fallback office destination.
 
 ## Notes
 
@@ -89,7 +89,8 @@ When the live invoice flow creates a new invoice, the app now also calls the loc
 - Jobs and Dispatch technician assignment now use the real Supabase-backed repository path from the UI.
 - Customers now support real customer creation and basic profile updates through the Supabase-backed repository path.
 - Invoices now support real invoice creation and payment-status updates through the Supabase-backed repository path.
-- Live invoice creation now attempts a server-side Twilio SMS summary to Lumia after the invoice row is created.
+- Live invoice creation now attempts a server-side Twilio SMS summary plus a short voice call to the assistant or office phone after the invoice row is created.
+- Dispatch now supports saving ETA text updates and then sending text or call notifications to the technician and customer from the same UI flow.
 - Communications review, approve/reject, and attach-to-job actions now use the real Supabase-backed repository path from the UI.
 - Twilio webhook intake now runs through a small server-side adapter in `server/twilioWebhookServer.js`.
 - Unmatched Twilio inbound calls and texts now persist into a safe triage queue until office staff link them to a real existing customer.

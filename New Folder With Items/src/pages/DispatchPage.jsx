@@ -16,17 +16,59 @@ const DISPATCH_ACTION_TONES = {
 const ASSIGNMENT_FIELD_CLASS =
   "rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500";
 
+function getLocalOperationsServerUrl(pathname) {
+  const hostname =
+    typeof window !== "undefined" && window.location?.hostname
+      ? window.location.hostname
+      : "127.0.0.1";
+
+  return new URL(pathname, `http://${hostname}:8787`).toString();
+}
+
+async function requestDispatchEtaNotifications(payload) {
+  const response = await fetch(getLocalOperationsServerUrl("/api/dispatch/notify-eta"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const responseText = await response.text();
+  let responseJson = null;
+
+  if (responseText) {
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch (error) {
+      responseJson = null;
+    }
+  }
+
+  if (!response.ok || !responseJson) {
+    throw new Error(responseJson?.message || `Dispatch notifications failed with status ${response.status}.`);
+  }
+
+  return responseJson;
+}
+
 export function DispatchPage() {
   const repository = getOperationsRepository();
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [selectedAssignmentJobId, setSelectedAssignmentJobId] = useState(null);
   const [selectedAssignmentTechId, setSelectedAssignmentTechId] = useState("");
+  const [etaWindowText, setEtaWindowText] = useState("");
+  const [notifyTechnicianSms, setNotifyTechnicianSms] = useState(true);
+  const [notifyTechnicianCall, setNotifyTechnicianCall] = useState(false);
+  const [notifyCustomerSms, setNotifyCustomerSms] = useState(true);
+  const [notifyCustomerCall, setNotifyCustomerCall] = useState(false);
   const [selectedEscalationJobId, setSelectedEscalationJobId] = useState(null);
   const [escalationNotes, setEscalationNotes] = useState("");
   const [escalationCustomerUpdated, setEscalationCustomerUpdated] = useState(false);
   const [assignmentFeedback, setAssignmentFeedback] = useState(null);
+  const [etaFeedback, setEtaFeedback] = useState(null);
   const [escalationFeedback, setEscalationFeedback] = useState(null);
   const [activeAssignmentJobId, setActiveAssignmentJobId] = useState(null);
+  const [activeEtaJobId, setActiveEtaJobId] = useState(null);
   const [activeEscalationJobId, setActiveEscalationJobId] = useState(null);
   const { data, error, isLoading } = useAsyncValue(() => repository.getDispatchPageData(), [repository, refreshNonce]);
 
@@ -99,6 +141,15 @@ export function DispatchPage() {
   useEffect(() => {
     setSelectedAssignmentTechId(selectedAssignmentJob?.techId || "");
   }, [selectedAssignmentJob?.jobId, selectedAssignmentJob?.techId]);
+
+  useEffect(() => {
+    if (!selectedAssignmentJob) {
+      setEtaWindowText("");
+      return;
+    }
+
+    setEtaWindowText(selectedAssignmentJob.etaLabel === "Not set" ? "" : selectedAssignmentJob.etaLabel);
+  }, [selectedAssignmentJob?.jobId, selectedAssignmentJob?.etaLabel]);
 
   useEffect(() => {
     if (!selectedEscalationJobId && escalationJobs[0]?.jobId) {
@@ -179,6 +230,84 @@ export function DispatchPage() {
       });
     } finally {
       setActiveAssignmentJobId(null);
+    }
+  };
+
+  const runEtaUpdate = async () => {
+    if (!selectedAssignmentJob) {
+      return;
+    }
+
+    const nextEtaWindowText = etaWindowText.trim();
+
+    if (!nextEtaWindowText) {
+      setEtaFeedback({
+        message: "ETA text is required before dispatch notifications can be sent.",
+        tone: "amber",
+      });
+      return;
+    }
+
+    setActiveEtaJobId(selectedAssignmentJob.jobId);
+
+    try {
+      const updateResult = await repository.dispatch.updateEta(selectedAssignmentJob.jobId, {
+        etaWindowText: nextEtaWindowText,
+        customerUpdated:
+          notifyCustomerSms || notifyCustomerCall ? true : selectedAssignmentJob.customerUpdated,
+      });
+
+      if (!updateResult.ok) {
+        setEtaFeedback({
+          message: updateResult.message,
+          tone: updateResult.source === "mock" ? "amber" : "rose",
+        });
+        return;
+      }
+
+      const notificationsRequested =
+        notifyTechnicianSms || notifyTechnicianCall || notifyCustomerSms || notifyCustomerCall;
+
+      if (!notificationsRequested) {
+        setEtaFeedback({
+          message: `${updateResult.message} No ETA notifications were selected.`,
+          tone: updateResult.source === "mock" ? "amber" : "emerald",
+        });
+        refreshBoard();
+        return;
+      }
+
+      const notificationResult = await requestDispatchEtaNotifications({
+        jobId: selectedAssignmentJob.jobId,
+        etaWindowText: nextEtaWindowText,
+        notifyTechnician: {
+          sms: notifyTechnicianSms,
+          call: notifyTechnicianCall,
+        },
+        notifyCustomer: {
+          sms: notifyCustomerSms,
+          call: notifyCustomerCall,
+        },
+      });
+
+      setEtaFeedback({
+        message: `${updateResult.message} ${notificationResult.message}`,
+        tone:
+          notificationResult.ok
+            ? "emerald"
+            : updateResult.source === "mock"
+              ? "amber"
+              : "rose",
+      });
+
+      refreshBoard();
+    } catch (etaError) {
+      setEtaFeedback({
+        message: etaError.message,
+        tone: "rose",
+      });
+    } finally {
+      setActiveEtaJobId(null);
     }
   };
 
@@ -472,6 +601,103 @@ export function DispatchPage() {
               ))
             )}
           </div>
+        </Card>
+
+        <Card className="p-6">
+          <p className="section-title">ETA notifications</p>
+          <h2 className="mt-2 text-lg font-semibold">Text and call updates</h2>
+
+          {etaFeedback ? (
+            <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${DISPATCH_ACTION_TONES[etaFeedback.tone]}`}>
+              {etaFeedback.message}
+            </div>
+          ) : null}
+
+          {!selectedAssignmentJob ? (
+            <div className="mt-6">
+              <PageStateNotice
+                title="No job selected for ETA updates"
+                message="Select a dispatch job first, then save the ETA update and notify the customer or technician."
+              />
+            </div>
+          ) : (
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                <p className="font-medium text-slate-800">{selectedAssignmentJob.customer?.name || "Unknown customer"}</p>
+                <p className="mt-1">{selectedAssignmentJob.jobId}</p>
+                <p className="mt-2">
+                  Technician: {selectedAssignmentJob.technician?.name || "Unassigned"}
+                </p>
+              </div>
+
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                ETA update text
+                <input
+                  value={etaWindowText}
+                  onChange={(event) => setEtaWindowText(event.target.value)}
+                  className={ASSIGNMENT_FIELD_CLASS}
+                  placeholder="Arriving in 20 minutes"
+                />
+              </label>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-[#dce2ec] bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Technician</p>
+                  <div className="mt-4 space-y-3">
+                    <label className="flex items-center gap-3 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={notifyTechnicianSms}
+                        onChange={(event) => setNotifyTechnicianSms(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
+                      />
+                      Send text
+                    </label>
+                    <label className="flex items-center gap-3 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={notifyTechnicianCall}
+                        onChange={(event) => setNotifyTechnicianCall(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
+                      />
+                      Place call
+                    </label>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-[#dce2ec] bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Customer</p>
+                  <div className="mt-4 space-y-3">
+                    <label className="flex items-center gap-3 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={notifyCustomerSms}
+                        onChange={(event) => setNotifyCustomerSms(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
+                      />
+                      Send text
+                    </label>
+                    <label className="flex items-center gap-3 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={notifyCustomerCall}
+                        onChange={(event) => setNotifyCustomerCall(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
+                      />
+                      Place call
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <PrimaryButton
+                onClick={runEtaUpdate}
+                disabled={!selectedAssignmentJob || activeEtaJobId === selectedAssignmentJob.jobId}
+              >
+                {activeEtaJobId === selectedAssignmentJob.jobId ? "Sending..." : "Save ETA and notify"}
+              </PrimaryButton>
+            </div>
+          )}
         </Card>
 
         <Card className="p-6">
