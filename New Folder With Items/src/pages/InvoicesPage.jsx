@@ -31,7 +31,8 @@ function getLocalOperationsServerUrl(pathname) {
   return new URL(pathname, `http://${hostname}:8787`).toString();
 }
 
-async function postOperationsJson(pathname, payload) {
+async function postOperationsJson(pathname, payload, options = {}) {
+  const { allowErrorResponse = false } = options;
   const response = await fetch(getLocalOperationsServerUrl(pathname), {
     method: "POST",
     headers: {
@@ -50,8 +51,12 @@ async function postOperationsJson(pathname, payload) {
     }
   }
 
-  if (!response.ok || !responseJson) {
+  if (!responseJson) {
     throw new Error(responseJson?.message || `Operations request failed with status ${response.status}.`);
+  }
+
+  if (!response.ok && !allowErrorResponse) {
+    throw new Error(responseJson.message || `Operations request failed with status ${response.status}.`);
   }
 
   return responseJson;
@@ -209,14 +214,6 @@ export function InvoicesPage() {
   };
 
   const runCreateInvoice = async () => {
-    if (!createDraft.invoiceNumber.trim()) {
-      setInvoiceFeedback({
-        message: "Invoice number is required before creating an invoice.",
-        tone: "amber",
-      });
-      return;
-    }
-
     if (!createDraft.jobId.trim()) {
       setInvoiceFeedback({
         message: "Job ID is required before creating an invoice.",
@@ -245,32 +242,32 @@ export function InvoicesPage() {
     setActiveMutationKey(actionKey);
 
     try {
-      const result = await repository.invoices.createForJob({
-        jobId: createDraft.jobId.trim(),
-        invoiceNumber: createDraft.invoiceNumber.trim(),
-        invoiceType: createDraft.invoiceType,
-        paymentStatus: createDraft.paymentStatus,
-        issuedOn: createDraft.issuedOn,
-        dueOn: createDraft.dueOn || null,
-        totalAmount: createTotalAmount,
-        collectedAmount: createCollectedAmount,
-        outstandingBalance: createOutstandingBalance,
-        techId: createDraft.techId || null,
-        processorReference: createDraft.processorReference.trim() || null,
-        notes: createDraft.notes.trim() || null,
-      });
+      const result = await postOperationsJson(
+        "/api/workflows/generate-invoice",
+        {
+          jobId: createDraft.jobId.trim(),
+          invoiceNumber: createDraft.invoiceNumber.trim() || null,
+          invoiceType: createDraft.invoiceType,
+          paymentStatus: createDraft.paymentStatus,
+          issuedOn: createDraft.issuedOn,
+          dueOn: createDraft.dueOn || null,
+          totalAmount: createTotalAmount,
+          collectedAmount: createCollectedAmount,
+          outstandingBalance: createOutstandingBalance,
+          techId: createDraft.techId || null,
+          processorReference: createDraft.processorReference.trim() || null,
+          notes: createDraft.notes.trim() || null,
+        },
+        { allowErrorResponse: true },
+      );
 
       setInvoiceFeedback({
         message: result.message,
-        tone:
-          result.source === "mock"
-            ? "amber"
-            : result.ok
-              ? "emerald"
-              : "rose",
+        tone: result.ok ? "emerald" : "amber",
       });
 
-      if (result.ok) {
+      if (result.invoice?.invoiceId) {
+        setSelectedInvoiceId(result.invoice.invoiceId);
         setShowCreateForm(false);
         refreshInvoices();
       }
@@ -411,7 +408,7 @@ export function InvoicesPage() {
                 value={createDraft.invoiceNumber}
                 onChange={(event) => updateCreateDraft("invoiceNumber", event.target.value)}
                 className={INVOICE_FIELD_CLASS}
-                placeholder="INV-2026-0417-01"
+                placeholder="Optional override"
               />
             </label>
             <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
@@ -525,6 +522,7 @@ export function InvoicesPage() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <span>Create uses the live invoice workflow and will send the existing assistant and customer notifications.</span>
             <span>Outstanding balance will be {formatCurrency(createOutstandingBalance)}</span>
             <PrimaryButton
               onClick={runCreateInvoice}

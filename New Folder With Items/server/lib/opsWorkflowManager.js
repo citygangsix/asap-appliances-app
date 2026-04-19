@@ -421,7 +421,7 @@ export async function runInvoiceGenerationWorkflow(payload = {}) {
     {
       jobId: job.job_id,
       techId: toNullableString(job.tech_id),
-      invoiceNumber: toNullableString(payload.invoiceNumber) || buildWorkflowInvoiceNumber("DIAG"),
+      invoiceNumber: toNullableString(payload.invoiceNumber) || buildWorkflowInvoiceNumber("INV"),
       invoiceType: payload.invoiceType || "parts_deposit",
       paymentStatus: payload.paymentStatus || "parts_due",
       issuedOn: payload.issuedOn,
@@ -460,8 +460,10 @@ export async function runInvoiceGenerationWorkflow(payload = {}) {
     dryRun,
     message:
       dryRun
-        ? "Dry run prepared diagnosis invoice creation and notifications."
-        : "Diagnosis invoice created and notifications sent.",
+        ? "Dry run prepared workflow invoice creation and notifications."
+        : notificationResult.ok
+          ? "Workflow invoice created and notifications sent."
+          : `Workflow invoice created, but notifications had issues. ${notificationResult.message}`,
     invoice: invoiceResult,
     notifications: notificationResult,
   };
