@@ -163,7 +163,11 @@ async function loadInvoiceWorkflowContext(invoiceId) {
 }
 
 function buildAssistantAlertMessage(job, leadMinutes) {
-  return `Heads up. ${job.customer?.name || "Your customer"} at ${job.service_address || "the service address"} is about ${leadMinutes} minutes from finishing. Prep the final labor invoice.`;
+  const technicianLabel = job.technician?.name || "The technician";
+  const customerLabel = job.customer?.name || "the customer";
+  const finishingWindow = leadMinutes > 0 ? `in about ${leadMinutes} minutes` : "now";
+
+  return `${technicianLabel} is finishing with ${customerLabel} ${finishingWindow}. It is time to invoice ${customerLabel} now.`;
 }
 
 function buildCustomerPaidSmsBody(invoice) {
@@ -439,6 +443,8 @@ export async function runInvoiceGenerationWorkflow(payload = {}) {
 
   const notificationResult = await notifyLumiaAboutInvoice({
     dryRun,
+    notifyAssistant: payload.notifyAssistant,
+    notifyCustomer: payload.notifyCustomer,
     invoice: dryRun
       ? {
           invoiceNumber: invoiceResult.insertPayload.invoice_number,
@@ -507,6 +513,10 @@ export async function runFinalWorkWorkflow(payload = {}) {
     paymentStatus: "labor_due",
     totalAmount: laborAmount,
     notes: payload.notes || `Automatic labor invoice created ${leadMinutes} minutes before completion.`,
+    notifyAssistant: {
+      sms: false,
+      call: false,
+    },
     dryRun,
   });
   const scheduling = [];

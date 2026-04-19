@@ -53,6 +53,13 @@ function buildInvoiceReference(invoice) {
   return invoice.invoiceNumber || invoice.invoiceId || "invoice";
 }
 
+function normalizeChannelPreferences(preferences = {}, defaults = { sms: true, call: true }) {
+  return {
+    sms: preferences.sms !== false && defaults.sms !== false,
+    call: preferences.call !== false && defaults.call !== false,
+  };
+}
+
 export function buildLumiaInvoiceSmsBody(invoice) {
   const customerLabel = invoice.customerName || "customer";
   const invoiceReference = buildInvoiceReference(invoice);
@@ -146,6 +153,8 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
   const config = getTwilioServerConfig();
   const invoice = await resolveInvoiceNotificationPayload(payload);
   const dryRun = payload.dryRun === true;
+  const notifyAssistant = normalizeChannelPreferences(payload.notifyAssistant);
+  const notifyCustomer = normalizeChannelPreferences(payload.notifyCustomer);
 
   if (!invoice.invoiceId && !invoice.invoiceNumber) {
     return {
@@ -167,9 +176,11 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
       toConfigured: Boolean(config.assistantOfficePhoneNumber),
       smsBody,
       callMessage,
+      notifyAssistant,
       customerPhone: invoice.customerPhone,
       customerSmsBody,
       customerCallMessage,
+      notifyCustomer,
     });
 
     return {
@@ -184,14 +195,16 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
         invoiceReference: buildInvoiceReference(invoice),
         smsBody,
         callMessage,
+        notifyAssistant,
         customerPhone: invoice.customerPhone,
         customerSmsBody,
         customerCallMessage,
+        notifyCustomer,
       },
     };
   }
 
-  if (!config.assistantOfficePhoneNumber) {
+  if ((notifyAssistant.sms || notifyAssistant.call) && !config.assistantOfficePhoneNumber) {
     return {
       ok: false,
       status: 412,
@@ -202,47 +215,51 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
 
   const results = [];
 
-  try {
-    results.push(
-      await sendOutboundSms({
-        toNumber: config.assistantOfficePhoneNumber,
-        body: smsBody,
-        dryRun: false,
+  if (notifyAssistant.sms) {
+    try {
+      results.push(
+        await sendOutboundSms({
+          toNumber: config.assistantOfficePhoneNumber,
+          body: smsBody,
+          dryRun: false,
+          label: "assistant-invoice-sms",
+        }),
+      );
+    } catch (error) {
+      results.push({
+        ok: false,
+        channel: "sms",
         label: "assistant-invoice-sms",
-      }),
-    );
-  } catch (error) {
-    results.push({
-      ok: false,
-      channel: "sms",
-      label: "assistant-invoice-sms",
-      dryRun: false,
-      skipped: false,
-      message: error.message,
-    });
-  }
-
-  try {
-    results.push(
-      await sendOutboundCall({
-        toNumber: config.assistantOfficePhoneNumber,
-        message: callMessage,
         dryRun: false,
-        label: "assistant-invoice-call",
-      }),
-    );
-  } catch (error) {
-    results.push({
-      ok: false,
-      channel: "call",
-      label: "assistant-invoice-call",
-      dryRun: false,
-      skipped: false,
-      message: error.message,
-    });
+        skipped: false,
+        message: error.message,
+      });
+    }
   }
 
-  if (invoice.customerPhone) {
+  if (notifyAssistant.call) {
+    try {
+      results.push(
+        await sendOutboundCall({
+          toNumber: config.assistantOfficePhoneNumber,
+          message: callMessage,
+          dryRun: false,
+          label: "assistant-invoice-call",
+        }),
+      );
+    } catch (error) {
+      results.push({
+        ok: false,
+        channel: "call",
+        label: "assistant-invoice-call",
+        dryRun: false,
+        skipped: false,
+        message: error.message,
+      });
+    }
+  }
+
+  if (invoice.customerPhone && notifyCustomer.sms) {
     try {
       results.push(
         await sendOutboundSms({
@@ -262,7 +279,9 @@ export async function notifyLumiaAboutInvoice(payload = {}) {
         message: error.message,
       });
     }
+  }
 
+  if (invoice.customerPhone && notifyCustomer.call) {
     try {
       results.push(
         await sendOutboundCall({
