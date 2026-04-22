@@ -156,11 +156,14 @@ export function HomePage() {
           <h2 className="mt-2 text-lg font-semibold">What slows onboarding</h2>
           <div className="mt-6 space-y-4">
             {hiringCandidates.slice(0, 3).map((candidate) => (
-              <div key={candidate.id} className="rounded-2xl bg-slate-50 p-4">
+              <div key={candidate.candidateId} className="rounded-2xl bg-slate-50 p-4">
                 <p className="font-medium text-slate-800">{candidate.name}</p>
                 <p className="mt-2 text-sm text-slate-500">
-                  {candidate.trade} · {candidate.city}
+                  {[candidate.trade, candidate.city].filter(Boolean).join(" · ") || "Hiring lead"}
                 </p>
+                {candidate.availabilitySummary ? (
+                  <p className="mt-2 text-sm text-slate-500">{candidate.availabilitySummary}</p>
+                ) : null}
                 <p className="mt-2 text-sm text-slate-500">{candidate.nextStep}</p>
               </div>
             ))}

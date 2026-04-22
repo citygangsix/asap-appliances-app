@@ -9,7 +9,7 @@ export const homeKpis = [
 
 export const activityFeed = [
   "09:08 AM · Parts quote sent to Renee Walker for Samsung refrigerator repair.",
-  "09:41 AM · Andre Lewis marked onsite at Julian Brooks washer job.",
+  "09:41 AM · Steven Knapp marked onsite at Julian Brooks washer job.",
   "10:06 AM · Kelly Warren labor authorization card failed on retry.",
   "10:22 AM · Dispatch escalated Nadia Hart due to tight service window.",
   "10:37 AM · Bianca Flores requested callback before assigning technician.",

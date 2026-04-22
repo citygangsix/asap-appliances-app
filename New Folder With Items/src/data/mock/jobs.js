@@ -5,7 +5,7 @@ export const jobs = [
   {
     jobId: "ASAP-1042",
     customerId: "cust-1",
-    techId: "tech-1",
+    techId: "tech-5",
     invoiceId: "INV-2042",
     applianceLabel: "Samsung French Door Refrigerator",
     applianceBrand: "Samsung",
@@ -26,7 +26,7 @@ export const jobs = [
   {
     jobId: "ASAP-1048",
     customerId: "cust-2",
-    techId: "tech-2",
+    techId: "tech-6",
     invoiceId: "INV-2048",
     applianceLabel: "Whirlpool Washer",
     applianceBrand: "Whirlpool",
@@ -68,7 +68,7 @@ export const jobs = [
   {
     jobId: "ASAP-1055",
     customerId: "cust-4",
-    techId: "tech-4",
+    techId: "tech-8",
     invoiceId: "INV-2055",
     applianceLabel: "Bosch Dishwasher",
     applianceBrand: "Bosch",
@@ -89,7 +89,7 @@ export const jobs = [
   {
     jobId: "ASAP-1059",
     customerId: "cust-5",
-    techId: "tech-3",
+    techId: "tech-7",
     invoiceId: "INV-2059",
     applianceLabel: "LG Dryer",
     applianceBrand: "LG",
@@ -110,7 +110,7 @@ export const jobs = [
   {
     jobId: "ASAP-1063",
     customerId: "cust-6",
-    techId: "tech-1",
+    techId: "tech-5",
     invoiceId: "INV-2063",
     applianceLabel: "Frigidaire Ice Maker",
     applianceBrand: "Frigidaire",

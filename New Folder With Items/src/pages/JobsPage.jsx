@@ -27,15 +27,13 @@ const JOB_ACTION_TONES = {
   rose: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
+const ASSIGNMENT_FIELD_CLASS =
+  "rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500";
+
 function getQuickActionUpdate(job, action) {
   const eventAt = new Date().toISOString();
 
   switch (action) {
-    case "Assign tech":
-      return {
-        message: "Assign tech still needs a technician-selection UI before it can perform a real write.",
-        tone: "amber",
-      };
     case "Mark en route":
       if (!job.techId) {
         return {
@@ -105,6 +103,7 @@ export function JobsPage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [activeActionKey, setActiveActionKey] = useState(null);
   const [actionFeedback, setActionFeedback] = useState(null);
+  const [selectedAssignmentTechId, setSelectedAssignmentTechId] = useState("");
   const [filters, setFilters] = useState({
     search: "",
     technician: "All technicians",
@@ -139,6 +138,11 @@ export function JobsPage() {
   );
 
   const selectedJob = selectedJobDetail.data || selectedListJob;
+  const techniciansQuery = useAsyncValue(() => repository.technicians.list(), [repository, refreshNonce]);
+  const technicians = techniciansQuery.data || [];
+  const selectedAssignmentTechnician =
+    technicians.find((technician) => technician.techId === selectedAssignmentTechId) || null;
+  const isAssignmentUnchanged = (selectedJob?.techId || "") === selectedAssignmentTechId;
 
   useEffect(() => {
     if (!selectedJobId && jobRecords[0]?.jobId) {
@@ -151,6 +155,10 @@ export function JobsPage() {
     }
   }, [jobRecords, selectedJobId]);
 
+  useEffect(() => {
+    setSelectedAssignmentTechId(selectedJob?.techId || "");
+  }, [selectedJob?.jobId, selectedJob?.techId]);
+
   const updateFilter = (key, value) => {
     setFilters((current) => ({ ...current, [key]: value }));
   };
@@ -160,7 +168,48 @@ export function JobsPage() {
     setRefreshNonce((current) => current + 1);
   };
 
+  const runAssignment = async (jobId) => {
+    const actionKey = `${jobId}:assign`;
+    setActiveActionKey(actionKey);
+
+    try {
+      const result = await repository.jobs.assignTechnician(jobId, {
+        techId: selectedAssignmentTechId || null,
+      });
+
+      setActionFeedback({
+        message: result.message,
+        tone:
+          result.source === "mock"
+            ? "amber"
+            : result.ok
+              ? "emerald"
+              : "rose",
+      });
+
+      if (result.ok) {
+        refreshJobs();
+      }
+    } catch (error) {
+      setActionFeedback({
+        message: error.message,
+        tone: "rose",
+      });
+    } finally {
+      setActiveActionKey(null);
+    }
+  };
+
   const runQuickAction = async (job, action) => {
+    if (action === "Assign tech") {
+      setSelectedJobId(job.jobId);
+      setActionFeedback({
+        message: "Select a technician in the Job details panel, then save the assignment.",
+        tone: "amber",
+      });
+      return;
+    }
+
     const update = getQuickActionUpdate(job, action);
 
     if (!update.patch) {
@@ -383,6 +432,64 @@ export function JobsPage() {
                     <p className="mt-2 text-sm leading-6 text-slate-700">{value}</p>
                   </div>
                 ))}
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-[#e1e6ef] bg-white p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Technician assignment
+                    </p>
+                    <p className="mt-2 text-sm text-slate-600">
+                      Assign or reassign the selected job through the live repository path.
+                    </p>
+                  </div>
+                  <Badge tone={selectedJob.techId ? "indigo" : "amber"}>
+                    {selectedJob.technician?.name || "Needs assignment"}
+                  </Badge>
+                </div>
+
+                {techniciansQuery.error ? (
+                  <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                    <p className="text-sm font-medium text-rose-700">Technician roster unavailable</p>
+                    <p className="mt-2 text-sm text-rose-600">{techniciansQuery.error.message}</p>
+                  </div>
+                ) : (
+                  <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                      Technician
+                      <select
+                        value={selectedAssignmentTechId}
+                        onChange={(event) => setSelectedAssignmentTechId(event.target.value)}
+                        disabled={techniciansQuery.isLoading}
+                        className={ASSIGNMENT_FIELD_CLASS}
+                      >
+                        <option value="">Unassigned</option>
+                        {technicians.map((technician) => (
+                          <option key={technician.techId} value={technician.techId}>
+                            {technician.name} · {technician.serviceArea}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <PrimaryButton
+                      onClick={() => runAssignment(selectedJob.jobId)}
+                      disabled={
+                        techniciansQuery.isLoading ||
+                        activeActionKey === `${selectedJob.jobId}:assign` ||
+                        isAssignmentUnchanged
+                      }
+                    >
+                      {activeActionKey === `${selectedJob.jobId}:assign` ? "Saving..." : "Save assignment"}
+                    </PrimaryButton>
+                  </div>
+                )}
+
+                <p className="mt-4 text-sm text-slate-500">
+                  {selectedAssignmentTechnician
+                    ? `Selected technician: ${selectedAssignmentTechnician.name}`
+                    : "Select Unassigned to remove the current technician from this job."}
+                </p>
               </div>
 
               <div className="mt-6 rounded-2xl bg-[#202430] p-5 text-white">

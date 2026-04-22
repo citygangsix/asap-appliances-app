@@ -6,6 +6,7 @@ import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { getOperationsRepository } from "../lib/repositories";
+import { extractZipCode, findBestTechnicianForZip } from "../lib/domain/technicianCoverage";
 
 const DISPATCH_ACTION_TONES = {
   emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -88,6 +89,9 @@ export function DispatchPage() {
   const [notifyTechnicianCall, setNotifyTechnicianCall] = useState(false);
   const [notifyCustomerSms, setNotifyCustomerSms] = useState(true);
   const [notifyCustomerCall, setNotifyCustomerCall] = useState(false);
+  const [technicianConfirmedGoing, setTechnicianConfirmedGoing] = useState(false);
+  const [technicianConfirmationResponse, setTechnicianConfirmationResponse] = useState("");
+  const [paymentCollectedBeforeTechLeft, setPaymentCollectedBeforeTechLeft] = useState(false);
   const [laborAmount, setLaborAmount] = useState("150");
   const [finalWorkNotes, setFinalWorkNotes] = useState("");
   const [selectedEscalationJobId, setSelectedEscalationJobId] = useState(null);
@@ -127,6 +131,16 @@ export function DispatchPage() {
   }, [jobRecords, unassignedJobs]);
   const selectedAssignmentJob =
     assignmentJobs.find((job) => job.jobId === selectedAssignmentJobId) || assignmentJobs[0] || null;
+  const selectedAssignmentJobZipCode = selectedAssignmentJob
+    ? extractZipCode(selectedAssignmentJob.serviceAddress)
+    : null;
+  const recommendedAssignmentTech = useMemo(
+    () =>
+      selectedAssignmentJobZipCode
+        ? findBestTechnicianForZip(selectedAssignmentJobZipCode, technicians)
+        : null,
+    [selectedAssignmentJobZipCode, technicians],
+  );
   const isAssignmentUnchanged = (selectedAssignmentJob?.techId || "") === selectedAssignmentTechId;
   const escalationJobs = useMemo(() => {
     const orderedJobs = [...attentionJobs, ...jobRecords];
@@ -170,19 +184,33 @@ export function DispatchPage() {
   }, [assignmentJobs, selectedAssignmentJobId]);
 
   useEffect(() => {
-    setSelectedAssignmentTechId(selectedAssignmentJob?.techId || "");
-  }, [selectedAssignmentJob?.jobId, selectedAssignmentJob?.techId]);
+    setSelectedAssignmentTechId(
+      selectedAssignmentJob?.techId || recommendedAssignmentTech?.techId || "",
+    );
+  }, [selectedAssignmentJob?.jobId, selectedAssignmentJob?.techId, recommendedAssignmentTech?.techId]);
 
   useEffect(() => {
     if (!selectedAssignmentJob) {
       setEtaAtInput("");
       setEtaWindowText("");
       setFinalWorkNotes("");
+      setTechnicianConfirmedGoing(false);
+      setTechnicianConfirmationResponse("");
+      setPaymentCollectedBeforeTechLeft(false);
       return;
     }
 
     setEtaWindowText(selectedAssignmentJob.etaLabel === "Not set" ? "" : selectedAssignmentJob.etaLabel);
-  }, [selectedAssignmentJob?.jobId, selectedAssignmentJob?.etaLabel]);
+    setTechnicianConfirmedGoing(Boolean(selectedAssignmentJob.dispatchConfirmationReceivedAt));
+    setTechnicianConfirmationResponse(selectedAssignmentJob.technicianConfirmationResponse || "");
+    setPaymentCollectedBeforeTechLeft(Boolean(selectedAssignmentJob.paymentCollectedBeforeTechLeft));
+  }, [
+    selectedAssignmentJob?.jobId,
+    selectedAssignmentJob?.etaLabel,
+    selectedAssignmentJob?.dispatchConfirmationReceivedAt,
+    selectedAssignmentJob?.technicianConfirmationResponse,
+    selectedAssignmentJob?.paymentCollectedBeforeTechLeft,
+  ]);
 
   useEffect(() => {
     if (!selectedEscalationJobId && escalationJobs[0]?.jobId) {
@@ -296,6 +324,22 @@ export function DispatchPage() {
       return;
     }
 
+    if (technicianConfirmedGoing && !selectedAssignmentJob.techId) {
+      setEtaFeedback({
+        message: "Assign a technician before logging ETA confirmation for this job.",
+        tone: "amber",
+      });
+      return;
+    }
+
+    if (technicianConfirmedGoing && !technicianConfirmationResponse.trim()) {
+      setEtaFeedback({
+        message: "Capture the technician response before sending the office ETA confirmation alert.",
+        tone: "amber",
+      });
+      return;
+    }
+
     setActiveEtaJobId(selectedAssignmentJob.jobId);
 
     try {
@@ -315,11 +359,15 @@ export function DispatchPage() {
       }
 
       const notificationsRequested =
-        notifyTechnicianSms || notifyTechnicianCall || notifyCustomerSms || notifyCustomerCall;
+        notifyTechnicianSms ||
+        notifyTechnicianCall ||
+        notifyCustomerSms ||
+        notifyCustomerCall ||
+        technicianConfirmedGoing;
 
       if (!notificationsRequested) {
         setEtaFeedback({
-          message: `${updateResult.message} No ETA notifications were selected.`,
+          message: `${updateResult.message} No ETA notifications or technician confirmations were selected.`,
           tone: updateResult.source === "mock" ? "amber" : "emerald",
         });
         refreshBoard();
@@ -338,6 +386,13 @@ export function DispatchPage() {
         notifyCustomer: {
           sms: notifyCustomerSms,
           call: notifyCustomerCall,
+        },
+        technicianConfirmation: {
+          confirmedGoing: technicianConfirmedGoing,
+          response: technicianConfirmationResponse.trim() || null,
+          paymentCollectedBeforeTechLeft: technicianConfirmedGoing
+            ? paymentCollectedBeforeTechLeft
+            : null,
         },
       });
 
@@ -665,6 +720,11 @@ export function DispatchPage() {
                 <p className="mt-2">
                   Current technician: {selectedAssignmentJob.technician?.name || "Unassigned"}
                 </p>
+                {recommendedAssignmentTech && !selectedAssignmentJob.techId ? (
+                  <p className="mt-2 text-indigo-700">
+                    Recommended by ZIP {selectedAssignmentJobZipCode}: {recommendedAssignmentTech.name}
+                  </p>
+                ) : null}
               </div>
             </div>
           )}
@@ -721,6 +781,9 @@ export function DispatchPage() {
                 <p className="mt-2">
                   Technician: {selectedAssignmentJob.technician?.name || "Unassigned"}
                 </p>
+                {selectedAssignmentJobZipCode ? (
+                  <p className="mt-2">Service ZIP: {selectedAssignmentJobZipCode}</p>
+                ) : null}
               </div>
 
               <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
@@ -745,6 +808,48 @@ export function DispatchPage() {
 
               <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
                 If an arrival time is set, customer notifications are scheduled about 1 hour before arrival. Technician updates still go out immediately.
+              </div>
+
+              <div className="rounded-2xl border border-[#dce2ec] bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Technician confirmation
+                </p>
+                <div className="mt-4 space-y-4">
+                  <label className="flex items-center gap-3 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={technicianConfirmedGoing}
+                      onChange={(event) => setTechnicianConfirmedGoing(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
+                    />
+                    Technician confirmed ETA and accepted the job
+                  </label>
+
+                  <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                    Technician response
+                    <textarea
+                      value={technicianConfirmationResponse}
+                      onChange={(event) => setTechnicianConfirmationResponse(event.target.value)}
+                      rows={3}
+                      placeholder="Example: On my way, 25 minutes out and I will wait for payment."
+                      className={`${ASSIGNMENT_FIELD_CLASS} resize-y`}
+                    />
+                  </label>
+
+                  <label className="flex items-center gap-3 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={paymentCollectedBeforeTechLeft}
+                      onChange={(event) => setPaymentCollectedBeforeTechLeft(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
+                    />
+                    Technician stayed until payment was collected
+                  </label>
+
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                    When this confirmation is checked, the office number linked to Twilio is alerted by both text and call with the ETA, technician response, and payment-stay note.
+                  </div>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getCommunicationJobContext } from "../lib/domain/communications";
 import { formatStatusLabel, getStatusTone } from "../lib/domain/jobs";
 import { Badge, Card, PrimaryButton, SecondaryButton } from "../components/ui";
+import { CallInsightsPanel } from "../components/communications/CallInsightsPanel";
 import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
@@ -671,8 +672,19 @@ export function CommunicationsPage() {
                 </span>
               </div>
               <p className="mt-4 text-sm leading-6 text-slate-600">
-                {selectedCommunication.transcriptText || selectedCommunication.previewText}
+                {selectedCommunication.communicationChannel === "call"
+                  ? selectedCommunication.previewText
+                  : selectedCommunication.transcriptText || selectedCommunication.previewText}
               </p>
+              {selectedCommunication.communicationChannel === "call" ? (
+                <div className="mt-4">
+                  <CallInsightsPanel
+                    communication={selectedCommunication}
+                    transcriptTitle="Full call transcript"
+                    highlightsTitle="Call highlights"
+                  />
+                </div>
+              ) : null}
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Linked job context

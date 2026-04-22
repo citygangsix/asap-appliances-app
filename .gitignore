@@ -6,6 +6,7 @@ dist/
 .env.*
 !.env.local.example
 !New Folder With Items/.env.local.example
+!New Folder With Items/.env.server.example
 *.local
 *.log
 npm-debug.log*

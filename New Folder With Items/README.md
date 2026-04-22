@@ -79,6 +79,8 @@ It validates local webhook health plus signed-request acceptance and invalid-sig
 
 When the live invoice flow creates a new invoice, the app now also calls the local server to send the assistant or office phone an outbound SMS summary and a short voice call through Twilio. Set `ASSISTANT_OFFICE_PHONE_NUMBER` in `.env.server.local` to enable delivery. If you only set `LUMIA_INVOICE_SMS_PHONE_NUMBER`, the server uses that as the fallback office destination.
 
+The webhook server also exposes `POST /api/thumbtack/lead`, which takes a protected JSON payload with a customer name and phone number, calls Lamia first, and only dials the customer after she answers so her Egyptian Vodafone number stays hidden.
+
 ## Notes
 
 - `node_modules/` is intentionally ignored and should not be committed.
@@ -92,6 +94,7 @@ When the live invoice flow creates a new invoice, the app now also calls the loc
 - Live invoice creation now attempts a server-side Twilio SMS summary plus a short voice call to the assistant or office phone after the invoice row is created.
 - Dispatch now supports saving ETA text updates and then sending text or call notifications to the technician and customer from the same UI flow.
 - Dispatch workflow automation now supports one-hour customer heads-up scheduling, diagnosis invoice generation, paid-invoice confirmations, and a 10-minute final-work labor invoice workflow on the local server.
+- Thumbtack lead intake can now trigger the same Twilio agent-first bridge flow through `POST /api/thumbtack/lead`.
 - Communications review, approve/reject, and attach-to-job actions now use the real Supabase-backed repository path from the UI.
 - Twilio webhook intake now runs through a small server-side adapter in `server/twilioWebhookServer.js`.
 - Unmatched Twilio inbound calls and texts now persist into a safe triage queue until office staff link them to a real existing customer.

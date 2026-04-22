@@ -19,6 +19,7 @@ export {
   mapTechnicianPayoutPatchToUpdate,
   mapTechnicianPayoutRowToDomain,
 } from "./technicianPayouts";
+export { mapHiringCandidateRowToDomain } from "./hiringCandidates";
 export { mapTechnicianPatchToUpdate, mapTechnicianRowToDomain } from "./technicians";
 export {
   mapUnmatchedInboundCommunicationDraftToInsert,

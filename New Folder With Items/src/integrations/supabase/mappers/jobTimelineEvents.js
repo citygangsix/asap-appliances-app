@@ -53,6 +53,7 @@ export function mapJobTimelineEventRowToDomain(row) {
       hour: "numeric",
       minute: "2-digit",
     }).format(new Date(row.event_at)),
+    eventAt: row.event_at,
     summary: row.summary,
     details: row.details || "",
   };

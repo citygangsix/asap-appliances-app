@@ -41,10 +41,12 @@ export function buildCustomerRecord(customer, customerJobs, customerComms, custo
   return {
     ...customer,
     activeJob,
+    communicationRecords: customerComms,
     jobs: customerJobs,
     openBalance,
     unresolvedCount: customerComms.filter((entry) => entry.communicationStatus !== "clear").length,
-    latestCommunication: customerComms[0]?.previewText || "No recent communication",
+    latestCommunication:
+      customerComms[0]?.callHighlights || customerComms[0]?.previewText || "No recent communication",
   };
 }
 

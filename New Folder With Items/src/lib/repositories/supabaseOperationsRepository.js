@@ -63,6 +63,10 @@ import {
   runListInvoicesCollectionsQuery,
 } from "../../integrations/supabase/queries/invoices";
 import {
+  listHiringCandidatesQuery,
+  runListHiringCandidatesQuery,
+} from "../../integrations/supabase/queries/hiringCandidates";
+import {
   listJobTimelineEventsQuery,
   runListJobTimelineEventsQuery,
 } from "../../integrations/supabase/queries/jobTimelineEvents";
@@ -141,6 +145,7 @@ import {
   mapJobRowToDomain,
   mapJobTimelineEventDraftToInsert,
   mapJobTimelineEventRowToDomain,
+  mapHiringCandidateRowToDomain,
   mapJobWorkflowPatchToUpdate,
   mapPayoutInvoiceLinksToInsert,
   mapTechnicianRowToDomain,
@@ -150,6 +155,10 @@ import {
 } from "../../integrations/supabase/mappers";
 import { mockOperationsRepository } from "./mockOperationsRepository";
 import { buildDispatchTechnicianAvailabilitySummary } from "../domain/jobs";
+import {
+  extractZipCode,
+  findBestTechnicianForZip,
+} from "../domain/technicianCoverage";
 import {
   buildCommunicationsPageData,
   buildCustomersPageData,
@@ -188,6 +197,7 @@ const readPlans = {
   communicationRowsByJob: getCommunicationsByJobQuery("<job_id>"),
   invoiceRows: listInvoicesQuery(),
   technicianRows: listTechniciansQuery(),
+  hiringCandidates: listHiringCandidatesQuery(),
   payoutRows: listTechnicianPayoutsQuery(),
   payoutRecords: getTechnicianPayoutsHydrationQueryPlan(),
   timelineRows: listJobTimelineEventsQuery("<job_id>"),
@@ -302,6 +312,10 @@ async function loadLiveDispatchBoardJobs(client) {
 
 async function loadLiveTechnicianRoster(client) {
   return (await runListTechniciansQuery(client)).map(mapTechnicianRowToDomain);
+}
+
+async function loadLiveHiringCandidates(client) {
+  return (await runListHiringCandidatesQuery(client)).map(mapHiringCandidateRowToDomain);
 }
 
 async function loadLiveCustomerDirectory(client) {
@@ -555,8 +569,29 @@ const jobs = {
       () => getCachedJobDetail(jobId) || mockOperationsRepository.jobs.getDetail(jobId),
     );
   },
-  create(draft) {
-    const payload = mapJobDraftToInsert(draft);
+  async create(draft) {
+    let nextDraft = draft;
+
+    if (!draft.techId && isSupabaseConfigured()) {
+      const serviceZipCode = extractZipCode(draft.serviceAddress);
+      const client = getSupabaseClient();
+
+      if (serviceZipCode && client) {
+        const matchedTechnician = findBestTechnicianForZip(
+          serviceZipCode,
+          await loadLiveTechnicianRoster(client),
+        );
+
+        if (matchedTechnician?.techId) {
+          nextDraft = {
+            ...draft,
+            techId: matchedTechnician.techId,
+          };
+        }
+      }
+    }
+
+    const payload = mapJobDraftToInsert(nextDraft);
 
     return runSupabaseMutation(
       "jobs.create",
@@ -940,6 +975,24 @@ const communications = {
               linkedJobId: draft.jobId ?? null,
               invoiceId: null,
               transcriptText: unmatchedInbound.transcript_text,
+              callHighlights: unmatchedInbound.call_highlights,
+              callSummarySections: unmatchedInbound.call_summary_sections
+                ? {
+                    customerNeed: unmatchedInbound.call_summary_sections.customer_need || "",
+                    applianceOrSystem:
+                      unmatchedInbound.call_summary_sections.appliance_or_system || "",
+                    schedulingAndLocation:
+                      unmatchedInbound.call_summary_sections.scheduling_and_location || "",
+                    partsAndWarranty:
+                      unmatchedInbound.call_summary_sections.parts_and_warranty || "",
+                    billingAndPayment:
+                      unmatchedInbound.call_summary_sections.billing_and_payment || "",
+                    followUpActions:
+                      unmatchedInbound.call_summary_sections.follow_up_actions || "",
+                  }
+                : null,
+              transcriptionStatus: unmatchedInbound.transcription_status,
+              transcriptionError: unmatchedInbound.transcription_error,
               extractedEventLabel: null,
               occurredAt: unmatchedInbound.occurred_at,
               startedAt: unmatchedInbound.started_at,
@@ -1147,11 +1200,18 @@ export const supabaseOperationsRepository = {
     return readWithFallback(
       async () => {
         const client = getSupabaseClient();
-        const [jobRecords, communicationRecords, invoiceRecords, technicians] = await Promise.all([
+        const [
+          jobRecords,
+          communicationRecords,
+          invoiceRecords,
+          technicians,
+          hiringCandidates,
+        ] = await Promise.all([
           loadLiveHomeJobs(client),
           loadLiveCommunicationFeed(client),
           loadLiveInvoiceList(client),
           loadLiveTechnicianRoster(client),
+          loadLiveHiringCandidates(client),
         ]);
 
         return buildHomePageData({
@@ -1159,6 +1219,7 @@ export const supabaseOperationsRepository = {
           communicationRecords,
           invoiceRecords: cacheLiveInvoiceList(invoiceRecords),
           technicians,
+          hiringCandidates,
         });
       },
       () => mockOperationsRepository.getHomePageData(),
@@ -1240,10 +1301,18 @@ export const supabaseOperationsRepository = {
   },
   async getTechniciansPageData() {
     return readWithFallback(
-      async () =>
-        buildTechniciansPageData({
-          technicians: await loadLiveTechnicianRoster(getSupabaseClient()),
-        }),
+      async () => {
+        const client = getSupabaseClient();
+        const [technicians, hiringCandidates] = await Promise.all([
+          loadLiveTechnicianRoster(client),
+          loadLiveHiringCandidates(client),
+        ]);
+
+        return buildTechniciansPageData({
+          technicians,
+          hiringCandidates,
+        });
+      },
       () => mockOperationsRepository.getTechniciansPageData(),
     );
   },

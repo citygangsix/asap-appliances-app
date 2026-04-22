@@ -73,6 +73,13 @@ export function mapJobRowToDomain(row, relations = {}) {
     latenessLabel: formatLatenessLabel(row),
     priority: row.priority,
     internalNotes: row.internal_notes || "No field notes yet.",
+    dispatchConfirmationRequestedAt: row.dispatch_confirmation_requested_at,
+    dispatchConfirmationReceivedAt: row.dispatch_confirmation_received_at,
+    dispatchResponseMinutes: row.dispatch_response_minutes,
+    technicianConfirmationResponse: row.technician_confirmation_response,
+    paymentCollectedBeforeTechLeft: row.payment_collected_before_tech_left,
+    scheduledStartAt: row.scheduled_start_at,
+    completedAt: row.completed_at,
   };
 }
 
@@ -106,6 +113,11 @@ export function mapJobDraftToInsert(draft) {
     priority: draft.priority || "normal",
     lateness_minutes: null,
     internal_notes: toNullable(draft.internalNotes),
+    dispatch_confirmation_requested_at: null,
+    dispatch_confirmation_received_at: null,
+    dispatch_response_minutes: null,
+    technician_confirmation_response: null,
+    payment_collected_before_tech_left: null,
   };
 }
 

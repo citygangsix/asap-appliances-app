@@ -1,5 +1,56 @@
 # Twilio Webhook Intake
 
+## Quick Start
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create local env files from the examples:
+
+```bash
+cp .env.local.example .env.local
+cp .env.server.example .env.server.local
+```
+
+3. Fill in the env vars listed in `Required Frontend Env` and `Required Server Env`.
+4. Apply the Supabase migration `supabase/migrations/20260420_000004_twilio_voice_recordings.sql` before expecting recording callbacks to persist successfully.
+5. Start the frontend:
+
+```bash
+npm run dev
+```
+
+6. Start the local webhook server in a second terminal:
+
+```bash
+npm run twilio:webhooks
+```
+
+7. Run the smoke test on a fresh port so it does not reuse an older local process:
+
+```bash
+TWILIO_WEBHOOK_PORT=8788 npm run twilio:webhooks:smoke
+```
+
+8. In Twilio Console, set the inbound voice webhook to:
+
+```text
+<TWILIO_WEBHOOK_BASE_URL>/api/twilio/voice
+```
+
+9. In the app, open `Customers`, select a customer, and click `Call via Twilio` in the `Primary contact` card.
+
+## Required Frontend Env
+
+Create `.env.local` in the app root and set:
+
+- `VITE_APP_DATA_SOURCE=supabase`
+- `VITE_SUPABASE_URL=...`
+- `VITE_SUPABASE_ANON_KEY=...`
+
 ## Required Server Env
 
 Create `.env.server.local` in the app root and set:
@@ -7,7 +58,15 @@ Create `.env.server.local` in the app root and set:
 - `SUPABASE_SERVICE_ROLE_KEY=...`
 - `TWILIO_ACCOUNT_SID=...`
 - `TWILIO_AUTH_TOKEN=...`
-- `TWILIO_PHONE_NUMBER=...`
+- `TWILIO_PHONE_NUMBER=...` (default outbound caller ID and primary managed business line)
+- `TWILIO_MANAGED_PHONE_NUMBERS=...` (optional comma-separated list of additional Twilio or BYOC business lines the webhook server should accept as yours)
+- `TWILIO_VOICE_FORWARD_TO=...` (optional but recommended for inbound voice forwarding)
+- `TWILIO_CLICK_TO_CALL_AGENT_NUMBER=...` (optional override for outbound click-to-call; otherwise the server falls back to `ASSISTANT_OFFICE_PHONE_NUMBER`)
+- `THUMBTACK_ASSISTANT_PHONE_NUMBER=...` (optional override for Thumbtack lead calls; set this to Lamia's Vodafone number if you only want Thumbtack leads to ring her first)
+- `THUMBTACK_WEBHOOK_SECRET=...` (required for `POST /api/thumbtack/lead`)
+- `TWILIO_CLICK_TO_CALL_AUTO_COOLDOWN_HOURS=24` (optional; blocks automated re-calls to the same customer during the cooldown window)
+- `TWILIO_CLICK_TO_CALL_MISSED_SMS_DELAY_SECONDS=120` (optional; delay before the missed-call follow-up SMS is sent)
+- `TWILIO_CLICK_TO_CALL_MISSED_SMS_BODY=...` (optional; supports `{{customerName}}`)
 - `ASSISTANT_OFFICE_PHONE_NUMBER=...` (optional but recommended for office invoice notifications)
 - `LUMIA_INVOICE_SMS_PHONE_NUMBER=...`
 - `WORKFLOW_DISPATCH_HEADS_UP_MINUTES=60` (optional)
@@ -29,7 +88,36 @@ Start from `.env.server.example` to avoid missing keys.
 4. Set `TWILIO_WEBHOOK_BASE_URL` to that public base URL.
 5. In the Twilio console, point:
    - inbound messaging webhook to `POST /api/twilio/sms`
-   - voice status callback webhook to `POST /api/twilio/calls/status`
+   - inbound voice webhook to `POST /api/twilio/voice`
+   - voice status callback webhook to `POST /api/twilio/calls/status` if you still want the existing inbound call event log
+
+The app can also initiate outbound click-to-call requests against the local server route `POST /api/twilio/outbound/calls`.
+Thumbtack or any intermediary automation can post new leads to `POST /api/thumbtack/lead`.
+
+## Twilio Console Setup
+
+Use `TWILIO_WEBHOOK_BASE_URL` as the public base URL. With the current route structure:
+
+- Twilio Console inbound voice webhook:
+  - `POST <TWILIO_WEBHOOK_BASE_URL>/api/twilio/voice`
+- Separate inbound call-status callback:
+  - optional
+  - only needed if you want inbound call event logging in `communications`
+  - `POST <TWILIO_WEBHOOK_BASE_URL>/api/twilio/calls/status`
+- Outbound click-to-call route:
+  - not entered in Twilio Console
+  - the app calls `POST /api/twilio/outbound/calls` on the local server directly
+- Thumbtack lead route:
+  - not entered in Twilio Console
+  - your Thumbtack automation, iPhone shortcut, Zapier scenario, or other integration posts to `POST /api/thumbtack/lead`
+- Routes Twilio itself will hit during outbound click-to-call:
+  - `POST <TWILIO_WEBHOOK_BASE_URL>/api/twilio/outbound/bridge`
+  - `POST <TWILIO_WEBHOOK_BASE_URL>/api/twilio/outbound/calls/status`
+  - `POST <TWILIO_WEBHOOK_BASE_URL>/api/twilio/recordings/status`
+- Number called first during outbound click-to-call:
+  - `TWILIO_CLICK_TO_CALL_AGENT_NUMBER`
+  - if unset, `ASSISTANT_OFFICE_PHONE_NUMBER`
+  - if that is unset, `TWILIO_VOICE_FORWARD_TO`
 
 ## Local Smoke Test
 
@@ -43,8 +131,9 @@ What it does:
 
 - reuses a healthy local webhook server if one is already running, otherwise starts a temporary local server on `TWILIO_WEBHOOK_PORT`
 - checks `GET /health`
-- sends one Twilio-style signed SMS callback and one signed call-status callback to the local server
-- uses an intentionally wrong `To` number so both signed requests are accepted but ignored before any Supabase write path runs
+- sends one click-to-call dry run, one signed click-to-call bridge webhook, one Twilio-style signed SMS callback, one signed inbound voice webhook, one signed call-status callback, and one safe recording-callback request to the local server
+- uses an intentionally wrong `To` number for the SMS and call-status checks so both signed requests are accepted but ignored before any Supabase write path runs
+- uses a mismatched `AccountSid` for the recording callback check so the route is verified without creating a recording row
 - sends one invalid-signature request and expects a `403`
 
 This gives you a repeatable local check for server health, signature validation, and route wiring without creating live `communications` or `unmatched_inbound_communications` rows.
@@ -87,8 +176,85 @@ If your tunnel URL changes in a later session:
 1. Update `TWILIO_WEBHOOK_BASE_URL` in `.env.server.local`.
 2. Restart the local webhook server so it reloads the updated env.
 3. Update the Twilio console messaging webhook to `<new-base-url>/api/twilio/sms`.
-4. Update the Twilio console voice status callback to `<new-base-url>/api/twilio/calls/status`.
-5. Run `npm run twilio:webhooks:smoke` to confirm the local server still accepts valid signatures and rejects invalid ones.
+4. Update the Twilio console inbound voice webhook to `<new-base-url>/api/twilio/voice`.
+5. Update the Twilio console voice status callback to `<new-base-url>/api/twilio/calls/status` if you use it.
+6. The server-generated recording callback will post to `<new-base-url>/api/twilio/recordings/status`.
+7. Run `npm run twilio:webhooks:smoke` to confirm the local server still accepts valid signatures and rejects invalid ones.
+
+## Recorded Call Behavior
+
+- Inbound calls:
+  - Twilio hits `POST /api/twilio/voice`
+  - the server forwards the caller to `TWILIO_VOICE_FORWARD_TO`
+  - the bridged call is recorded from answer with dual-channel Dial recording
+  - recording callbacks post to `POST /api/twilio/recordings/status`
+
+- Outbound click-to-call:
+  - the app hits `POST /api/twilio/outbound/calls`
+  - the server tells Twilio to call the agent number first
+  - after the agent answers, Twilio fetches `POST /api/twilio/outbound/bridge`
+  - that bridge TwiML dials the customer and records the bridged call from answer
+  - recording callbacks reuse `POST /api/twilio/recordings/status`
+  - only one live customer call is attempted per trigger
+- if the customer does not answer, the server waits `TWILIO_CLICK_TO_CALL_MISSED_SMS_DELAY_SECONDS` and then sends one polite SMS follow-up from the business number
+- no automatic rapid retry calling is performed
+- automated triggers respect customer opt-outs and a 24-hour auto-call cooldown by default
+
+## BYOC Notes
+
+- If you want `561-564-1545` to become your main business line, complete the carrier-side Twilio BYOC trunk setup first, then set `TWILIO_PHONE_NUMBER=+15615641545`.
+- If you want the CRM to accept multiple business lines at once, keep your current primary line in `TWILIO_PHONE_NUMBER` and add every Twilio or BYOC-owned line to `TWILIO_MANAGED_PHONE_NUMBERS`.
+- Outbound click-to-call can optionally pass a `businessPhoneNumber` field when you want a specific managed line to be used as the caller ID.
+
+## Thumbtack Lead Trigger
+
+- Route:
+  - `POST /api/thumbtack/lead`
+- Auth:
+  - send `Authorization: Bearer <THUMBTACK_WEBHOOK_SECRET>`
+  - or `x-thumbtack-secret: <THUMBTACK_WEBHOOK_SECRET>`
+  - or `{"webhookSecret":"<THUMBTACK_WEBHOOK_SECRET>"}` in the JSON body
+- Supported lead fields:
+  - `customerName`
+  - `customerPhone`
+  - `phone`
+  - `contactPhone`
+  - `customer.phone`
+  - plus related `name` and `leadId` variants
+- Behavior:
+  - the server normalizes the customer phone number
+  - calls `THUMBTACK_ASSISTANT_PHONE_NUMBER` first when set, otherwise falls back to `TWILIO_CLICK_TO_CALL_AGENT_NUMBER`
+  - only after Lamia answers does Twilio dial the customer
+  - the customer only sees `TWILIO_PHONE_NUMBER`, not Lamia's Egypt Vodafone number
+  - the trigger is treated as automated, so opt-out and cooldown protections still apply
+
+Example:
+
+```bash
+curl -X POST "$TWILIO_WEBHOOK_BASE_URL/api/thumbtack/lead" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $THUMBTACK_WEBHOOK_SECRET" \
+  -d '{"customerName":"Thumbtack Customer","customerPhone":"+15551234567","leadId":"tt-123","dryRun":true}'
+```
+
+## In-App Click Path
+
+- Page: `Customers`
+- Location: selected customer detail panel
+- Card: `Primary contact`
+- Action button: `Call via Twilio`
+- Behavior:
+  - uses the customer `primaryPhone`
+  - falls back to `secondaryPhone`
+  - shows inline loading, success, and error feedback in the page banner
+
+## Supabase Migration Requirement
+
+- Recording callback persistence depends on the table created by:
+  - `supabase/migrations/20260420_000004_twilio_voice_recordings.sql`
+- If that migration is not applied yet:
+  - inbound and outbound calls can still be placed
+  - `POST /api/twilio/recordings/status` will fail to persist metadata until the migration is applied
 
 ## Current Matching Behavior
 
@@ -107,17 +273,50 @@ If your tunnel URL changes in a later session:
 - `POST /api/twilio/sms`
   - validates Twilio signature
   - verifies `AccountSid`
-  - verifies the `To` number matches `TWILIO_PHONE_NUMBER`
+  - verifies the `To` number matches `TWILIO_PHONE_NUMBER` or one of `TWILIO_MANAGED_PHONE_NUMBERS`
   - creates one inbound `communications` row per unique `MessageSid` when there is a unique customer match
   - otherwise creates or reuses one pending `unmatched_inbound_communications` row per unique `MessageSid`
+
+- `POST /api/twilio/voice`
+  - validates Twilio signature
+  - verifies `AccountSid`
+  - verifies the `To` number matches `TWILIO_PHONE_NUMBER` or one of `TWILIO_MANAGED_PHONE_NUMBERS`
+  - returns TwiML that forwards the inbound caller to `TWILIO_VOICE_FORWARD_TO`
+  - records from answer using dual-channel Dial recording
+  - points recording callbacks to `POST /api/twilio/recordings/status`
 
 - `POST /api/twilio/calls/status`
   - validates Twilio signature
   - verifies `AccountSid`
-  - verifies the `To` number matches `TWILIO_PHONE_NUMBER`
+  - verifies the `To` number matches `TWILIO_PHONE_NUMBER` or one of `TWILIO_MANAGED_PHONE_NUMBERS`
   - logs inbound calls into `communications` when there is a unique customer match
   - otherwise creates or updates one pending `unmatched_inbound_communications` row by `CallSid`
   - updates the existing persisted row on later callbacks by `CallSid`
+
+- `POST /api/twilio/recordings/status`
+  - validates Twilio signature
+  - verifies `AccountSid`
+  - upserts one recording metadata row per unique `RecordingSid`
+  - stores the raw callback payload plus normalized recording metadata
+  - links the callback back to a `communications` row when the Twilio `CallSid` or `ParentCallSid` matches an existing inbound call log
+  - when `OPENAI_API_KEY` is configured, downloads the recording, generates a full transcript, and stores structured call highlights plus category sections back onto the communication record (or unmatched inbound queue item)
+
+- `POST /api/twilio/outbound/calls`
+  - accepts an app-origin JSON payload with customer identity and phone context
+  - places the first outbound Twilio call to `TWILIO_CLICK_TO_CALL_AGENT_NUMBER`
+  - configures Twilio to fetch bridge TwiML from `POST /api/twilio/outbound/bridge`
+  - configures Twilio status callbacks to `POST /api/twilio/outbound/calls/status`
+
+- `POST /api/twilio/outbound/bridge`
+  - validates Twilio signature
+  - returns TwiML that dials the customer after the agent answers first
+  - records the bridged conversation from answer with dual-channel recording
+  - points recording callbacks to `POST /api/twilio/recordings/status`
+
+- `POST /api/twilio/outbound/calls/status`
+  - validates Twilio signature
+  - accepts outbound parent-leg and customer-leg status callbacks for click-to-call
+  - logs callback details on the server for operational visibility
 
 ## Communications Triage Flow
 

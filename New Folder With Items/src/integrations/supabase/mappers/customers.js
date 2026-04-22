@@ -4,6 +4,7 @@ import { formatTimeLabelFromIso, stripUndefined, toNullable } from "./shared";
 /** @typedef {import("../types/schema").CustomerRow} CustomerRow */
 /** @typedef {import("../../types/models").Customer} Customer */
 /** @typedef {import("../../types/models").CustomerDraft} CustomerDraft */
+/** @typedef {import("../../types/models").CustomerPatch} CustomerPatch */
 
 /**
  * @param {CustomerRow} row
@@ -17,11 +18,14 @@ export function mapCustomerRowToDomain(row, relations = {}) {
     city: row.city,
     serviceArea: row.service_area,
     primaryPhone: row.primary_phone,
+    secondaryPhone: row.secondary_phone,
+    email: row.email,
     customerSegment: row.customer_segment,
     lifetimeValue: row.lifetime_value,
     lastContactLabel: formatTimeLabelFromIso(row.last_contact_at, "No recent contact"),
     communicationStatus: row.communication_status,
     activeJobId: relations.activeJobId ?? null,
+    notes: row.notes,
   };
 }
 
@@ -46,19 +50,21 @@ export function mapCustomerDraftToInsert(draft) {
 }
 
 /**
- * @param {Partial<CustomerDraft>} patch
+ * @param {CustomerPatch} patch
  */
 export function mapCustomerPatchToUpdate(patch) {
   return stripUndefined({
     name: patch.name,
     primary_phone: patch.primaryPhone,
-    secondary_phone: patch.secondaryPhone,
-    email: patch.email,
+    secondary_phone:
+      patch.secondaryPhone === undefined ? undefined : toNullable(patch.secondaryPhone),
+    email: patch.email === undefined ? undefined : toNullable(patch.email),
     city: patch.city,
     service_area: patch.serviceArea,
     customer_segment: patch.customerSegment,
     communication_status: patch.communicationStatus,
-    last_contact_at: patch.lastContactAt,
-    notes: patch.notes,
+    last_contact_at:
+      patch.lastContactAt === undefined ? undefined : toNullable(patch.lastContactAt),
+    notes: patch.notes === undefined ? undefined : toNullable(patch.notes),
   });
 }

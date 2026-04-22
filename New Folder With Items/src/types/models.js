@@ -12,6 +12,7 @@
 /** @typedef {"inbound"|"outbound"} CommunicationDirection */
 /** @typedef {"missing_phone"|"not_found"|"ambiguous"} UnmatchedInboundMatchStatus */
 /** @typedef {"pending"|"linked"|"ignored"} UnmatchedInboundResolutionStatus */
+/** @typedef {"contacted"|"interviewed"|"trial_scheduled"|"documents_pending"|"offered"|"onboarded"|"rejected"} HiringCandidateStage */
 
 /**
  * @typedef {Object} Job
@@ -34,6 +35,13 @@
  * @property {string} latenessLabel
  * @property {"normal"|"high"|"escalated"} priority
  * @property {string} internalNotes
+ * @property {string} [scheduledStartAt]
+ * @property {string|null} [completedAt]
+ * @property {string|null} [dispatchConfirmationRequestedAt]
+ * @property {string|null} [dispatchConfirmationReceivedAt]
+ * @property {number|null} [dispatchResponseMinutes]
+ * @property {string|null} [technicianConfirmationResponse]
+ * @property {boolean|null} [paymentCollectedBeforeTechLeft]
  */
 
 /**
@@ -57,15 +65,62 @@
  * @typedef {Object} Technician
  * @property {string} techId
  * @property {string} name
+ * @property {string|null} primaryPhone
+ * @property {string|null} email
  * @property {string} serviceArea
+ * @property {string[]} serviceZipCodes
  * @property {string[]} skills
+ * @property {string|null} [hireStartDate]
+ * @property {string|null} [hireStartDateLabel]
  * @property {string} availabilityLabel
+ * @property {string[]} [availabilityDays]
+ * @property {string[]} [availabilityTimePreferences]
  * @property {number} jobsCompletedThisWeek
  * @property {number} callbackRatePercent
  * @property {number} payoutTotal
  * @property {number} gasReimbursementTotal
  * @property {"unassigned"|"en_route"|"onsite"|"late"} statusToday
  * @property {number} score
+ * @property {number|null} [averageDispatchResponseMinutes]
+ * @property {number|null} [lastDispatchResponseMinutes]
+ * @property {number} [pendingDispatchConfirmationCount]
+ * @property {number|null} [stayedForCollectionRatePercent]
+ * @property {"stayed"|"left_early"|"unknown"} [lastCollectionBehavior]
+ */
+
+/**
+ * @typedef {Object} HiringCandidate
+ * @property {string} candidateId
+ * @property {string} name
+ * @property {string|null} primaryPhone
+ * @property {string|null} email
+ * @property {string|null} source
+ * @property {HiringCandidateStage} stage
+ * @property {string|null} trade
+ * @property {string|null} city
+ * @property {string|null} serviceArea
+ * @property {string|null} [structuredStartDate]
+ * @property {string|null} [structuredStartDateLabel]
+ * @property {string|null} availabilitySummary
+ * @property {string[]} [availabilityDays]
+ * @property {string[]} [availabilityTimePreferences]
+ * @property {string|null} payoutExpectationSummary
+ * @property {string|null} experienceSummary
+ * @property {string|null} nextStep
+ * @property {string} callHighlights
+ * @property {string} transcriptText
+ * @property {string|null} linkedCommunicationId
+ * @property {string|null} providerCallSid
+ * @property {string|null} [promotedTechId]
+ * @property {string|null} [promotedAtLabel]
+ * @property {string} lastContactLabel
+ * @property {number} [manualOutreachTotalCalls]
+ * @property {number} [manualOutreachVoicemailLeftCount]
+ * @property {number} [manualOutreachNoAnswerCount]
+ * @property {number} [manualOutreachConnectedCount]
+ * @property {string|null} [manualOutreachLastOutcome]
+ * @property {string|null} [manualOutreachLastAgentPhone]
+ * @property {string|null} [manualOutreachLastOccurredAtLabel]
  */
 
 /**
@@ -79,10 +134,15 @@
  * @property {CommunicationStatus} communicationStatus
  * @property {string} previewText
  * @property {string} transcriptText
+ * @property {string} callHighlights
+ * @property {CallSummarySections|null} callSummarySections
+ * @property {"pending"|"completed"|"failed"|null} [transcriptionStatus]
+ * @property {string|null} [transcriptionError]
  * @property {string} extractedEventLabel
  * @property {string|null} [fromNumber]
  * @property {string|null} [toNumber]
  * @property {string} [occurredAtLabel]
+ * @property {string|null} [occurredAt]
  */
 
 /**
@@ -95,6 +155,10 @@
  * @property {UnmatchedInboundResolutionStatus} resolutionStatus
  * @property {string} previewText
  * @property {string} transcriptText
+ * @property {string} callHighlights
+ * @property {CallSummarySections|null} callSummarySections
+ * @property {"pending"|"completed"|"failed"|null} [transcriptionStatus]
+ * @property {string|null} [transcriptionError]
  * @property {string|null} [fromNumber]
  * @property {string|null} [toNumber]
  * @property {string|null} [providerMessageSid]
@@ -143,6 +207,7 @@
  * @property {string} actorLabel
  * @property {string} eventType
  * @property {string} eventAtLabel
+ * @property {string} [eventAt]
  * @property {string} summary
  * @property {string} details
  */
@@ -243,6 +308,16 @@
  */
 
 /**
+ * @typedef {Object} CallSummarySections
+ * @property {string} customerNeed
+ * @property {string} applianceOrSystem
+ * @property {string} schedulingAndLocation
+ * @property {string} partsAndWarranty
+ * @property {string} billingAndPayment
+ * @property {string} followUpActions
+ */
+
+/**
  * @typedef {Object} CommunicationDraft
  * @property {string} customerId
  * @property {"text"|"call"} communicationChannel
@@ -252,6 +327,10 @@
  * @property {string|null} [linkedJobId]
  * @property {string|null} [invoiceId]
  * @property {string|null} [transcriptText]
+ * @property {string|null} [callHighlights]
+ * @property {CallSummarySections|null} [callSummarySections]
+ * @property {"pending"|"completed"|"failed"|null} [transcriptionStatus]
+ * @property {string|null} [transcriptionError]
  * @property {string|null} [extractedEventLabel]
  * @property {string|null} [occurredAt]
  * @property {string|null} [startedAt]
@@ -284,7 +363,13 @@
  * @property {string|null} [invoiceId]
  * @property {string} [previewText]
  * @property {string|null} [transcriptText]
+ * @property {string|null} [callHighlights]
+ * @property {CallSummarySections|null} [callSummarySections]
+ * @property {"pending"|"completed"|"failed"|null} [transcriptionStatus]
+ * @property {string|null} [transcriptionError]
  * @property {string|null} [extractedEventLabel]
+ * @property {string|null} [startedAt]
+ * @property {string|null} [endedAt]
  */
 
 /**
@@ -386,7 +471,7 @@
  * @property {SummaryStat[]} callMetrics
  * @property {{ label: string, count: number, jobIds: string[] }[]} urgentQueues
  * @property {Technician[]} technicians
- * @property {Array<Record<string, any>>} hiringCandidates
+ * @property {HiringCandidate[]} hiringCandidates
  * @property {JobRecord[]} watchListJobs
  */
 
@@ -434,6 +519,7 @@
 /**
  * @typedef {Object} TechniciansPageData
  * @property {Technician[]} technicians
+ * @property {HiringCandidate[]} hiringCandidates
  */
 
 /**
@@ -455,9 +541,10 @@
  * @typedef {Customer & {
  *   activeJob: JobRecord|null,
  *   jobs: JobRecord[],
+ *   communicationRecords: CommunicationRecord[],
  *   openBalance: number,
  *   unresolvedCount: number,
- *   latestCommunication: string
+  *   latestCommunication: string
  * }} CustomerRecord
  */
 

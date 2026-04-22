@@ -24,6 +24,7 @@ import {
   getDispatchBoardJobs,
   getUnassignedDispatchJobs,
 } from "../domain/jobs";
+import { extractZipCode, findBestTechnicianForZip } from "../domain/technicianCoverage";
 import {
   buildCommunicationsPageData,
   buildCustomersPageData,
@@ -90,9 +91,21 @@ const jobs = {
     return jobs.list().find((job) => job.jobId === jobId) || null;
   },
   create(draft) {
+    const matchedTechnician =
+      draft.techId || !extractZipCode(draft.serviceAddress)
+        ? null
+        : findBestTechnicianForZip(extractZipCode(draft.serviceAddress), technicians.list());
+    const nextDraft =
+      draft.techId || !matchedTechnician?.techId
+        ? draft
+        : {
+            ...draft,
+            techId: matchedTechnician.techId,
+          };
+
     return createMockMutation(
       "jobs.create",
-      mapJobDraftToInsert(draft),
+      mapJobDraftToInsert(nextDraft),
       "Mock source remains active. Job create scaffolding is wired, but no persistence occurs yet.",
     );
   },

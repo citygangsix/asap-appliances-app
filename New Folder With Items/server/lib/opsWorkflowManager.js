@@ -90,6 +90,11 @@ async function loadJobWorkflowContext(jobId) {
       eta_at,
       eta_window_text,
       customer_updated,
+      dispatch_confirmation_requested_at,
+      dispatch_confirmation_received_at,
+      dispatch_response_minutes,
+      technician_confirmation_response,
+      payment_collected_before_tech_left,
       customer:customers!jobs_customer_id_fkey(
         customer_id,
         name,
@@ -170,6 +175,26 @@ function buildAssistantAlertMessage(job, leadMinutes) {
   return `${technicianLabel} is finishing with ${customerLabel} ${finishingWindow}. It is time to invoice ${customerLabel} now.`;
 }
 
+function buildTechnicianEtaConfirmationMessage(job, { etaLabel, response, paymentCollectedBeforeTechLeft }) {
+  const technicianLabel = job.technician?.name || "The technician";
+  const customerLabel = job.customer?.name || "the customer";
+  const paymentBehavior =
+    paymentCollectedBeforeTechLeft === true
+      ? "They confirmed they will stay until payment is collected."
+      : paymentCollectedBeforeTechLeft === false
+        ? "They did not confirm they will stay for payment collection."
+        : "Payment-collection behavior was not confirmed.";
+
+  return `${technicianLabel} confirmed they are taking job ${job.job_id} for ${customerLabel}. ETA: ${etaLabel}. Response: ${response || "No additional response provided."} ${paymentBehavior}`;
+}
+
+function buildTechnicianNoResponseMessage(job, followupMinutes) {
+  const technicianLabel = job.technician?.name || "The technician";
+  const customerLabel = job.customer?.name || "the customer";
+
+  return `${technicianLabel} has not responded to the AI dispatch outreach for job ${job.job_id} with ${customerLabel} after ${followupMinutes} minutes. Please call and text the technician for ETA confirmation now.`;
+}
+
 function buildCustomerPaidSmsBody(invoice) {
   return `ASAP payment confirmation: invoice ${invoice.invoice_number || invoice.invoice_id} for ${invoice.job?.customer?.name || "your service"} is paid in full. Thank you.`;
 }
@@ -192,25 +217,63 @@ async function sendAssistantAlert({ message, dryRun, labelPrefix }) {
   const destination = config.assistantOfficePhoneNumber;
   const results = [];
 
-  results.push(
-    await sendOutboundSms({
-      toNumber: destination,
-      body: message,
-      dryRun,
+  try {
+    results.push(
+      await sendOutboundSms({
+        toNumber: destination,
+        body: message,
+        dryRun,
+        label: `${labelPrefix}-assistant-sms`,
+      }),
+    );
+  } catch (error) {
+    results.push({
+      ok: false,
+      channel: "sms",
       label: `${labelPrefix}-assistant-sms`,
-    }),
-  );
-
-  results.push(
-    await sendOutboundCall({
-      toNumber: destination,
-      message,
       dryRun,
+      skipped: false,
+      message: error.message,
+    });
+  }
+
+  try {
+    results.push(
+      await sendOutboundCall({
+        toNumber: destination,
+        message,
+        dryRun,
+        label: `${labelPrefix}-assistant-call`,
+      }),
+    );
+  } catch (error) {
+    results.push({
+      ok: false,
+      channel: "call",
       label: `${labelPrefix}-assistant-call`,
-    }),
-  );
+      dryRun,
+      skipped: false,
+      message: error.message,
+    });
+  }
 
   return results;
+}
+
+async function updateDispatchConfirmationState(jobId, patch) {
+  const client = getServerSupabaseClient();
+  const result = await client
+    .from("jobs")
+    .update(patch)
+    .eq("job_id", jobId)
+    .select("job_id")
+    .maybeSingle();
+
+  if (result.error) {
+    throw new Error(`workflow.updateDispatchConfirmationState: ${result.error.message}`);
+  }
+
+  return result.data;
 }
 
 async function sendCustomerPaidConfirmation(invoiceId, dryRun = false) {
@@ -324,10 +387,25 @@ export async function runDispatchWorkflow(payload = {}) {
     payload.customerLeadMinutes,
     config.workflowDispatchLeadMinutes,
   );
+  const technicianFollowupMinutes = toFiniteNumber(
+    payload.technicianResponseFollowupMinutes,
+    config.workflowTechnicianResponseFollowupMinutes || 15,
+  );
   const notifyTechnician = payload.notifyTechnician || {};
   const notifyCustomer = payload.notifyCustomer || {};
+  const technicianConfirmation = payload.technicianConfirmation || {};
   const results = [];
   const scheduling = [];
+  const technicianFollowupTaskKey = buildWorkflowTaskKey("dispatch-technician-response", job.job_id);
+  const etaLabel =
+    toNullableString(payload.etaWindowText) ||
+    toNullableString(job.eta_window_text) ||
+    (etaAt ? new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(etaAt)) : "an updated ETA");
 
   if (notifyTechnician.sms || notifyTechnician.call) {
     const immediateResult = await (await import("./twilioOutboundNotifications.js")).notifyDispatchEtaUpdate({
@@ -340,6 +418,44 @@ export async function runDispatchWorkflow(payload = {}) {
     });
 
     results.push(...(immediateResult.results || []));
+
+    if (!dryRun) {
+      await updateDispatchConfirmationState(job.job_id, {
+        dispatch_confirmation_requested_at: new Date().toISOString(),
+        dispatch_confirmation_received_at: null,
+        dispatch_response_minutes: null,
+        technician_confirmation_response: null,
+        payment_collected_before_tech_left: null,
+      });
+    }
+
+    if (!technicianConfirmation.confirmedGoing) {
+      const runAt = new Date(Date.now() + technicianFollowupMinutes * 60 * 1000);
+
+      if (!dryRun) {
+        scheduleWorkflowTask(technicianFollowupTaskKey, runAt, async () => {
+          const refreshedJob = await loadJobWorkflowContext(job.job_id);
+
+          if (refreshedJob.dispatch_confirmation_received_at) {
+            return;
+          }
+
+          await sendAssistantAlert({
+            message: buildTechnicianNoResponseMessage(refreshedJob, technicianFollowupMinutes),
+            dryRun: false,
+            labelPrefix: "dispatch-tech-followup",
+          });
+        });
+      }
+
+      scheduling.push({
+        taskKey: technicianFollowupTaskKey,
+        audience: "assistant",
+        runAt: runAt.toISOString(),
+        reason: "technician-response-followup",
+        dryRun,
+      });
+    }
   }
 
   const shouldNotifyCustomer = notifyCustomer.sms || notifyCustomer.call;
@@ -399,6 +515,48 @@ export async function runDispatchWorkflow(payload = {}) {
 
       results.push(...(immediateCustomerResult.results || []));
     }
+  }
+
+  if (technicianConfirmation.confirmedGoing) {
+    clearScheduledWorkflowTask(technicianFollowupTaskKey);
+
+    const requestedAt = job.dispatch_confirmation_requested_at
+      ? new Date(job.dispatch_confirmation_requested_at)
+      : null;
+    const receivedAt = new Date();
+    const responseMinutes =
+      requestedAt && !Number.isNaN(requestedAt.getTime())
+        ? Math.max(Math.round((receivedAt.getTime() - requestedAt.getTime()) / (60 * 1000)), 0)
+        : null;
+
+    if (!dryRun) {
+      await updateDispatchConfirmationState(job.job_id, {
+        dispatch_confirmation_received_at: receivedAt.toISOString(),
+        dispatch_response_minutes: responseMinutes,
+        technician_confirmation_response: toNullableString(technicianConfirmation.response),
+        payment_collected_before_tech_left:
+          technicianConfirmation.paymentCollectedBeforeTechLeft === null ||
+          technicianConfirmation.paymentCollectedBeforeTechLeft === undefined
+            ? null
+            : technicianConfirmation.paymentCollectedBeforeTechLeft === true,
+      });
+    }
+
+    results.push(
+      ...(await sendAssistantAlert({
+        message: buildTechnicianEtaConfirmationMessage(job, {
+          etaLabel,
+          response: toNullableString(technicianConfirmation.response),
+          paymentCollectedBeforeTechLeft:
+            technicianConfirmation.paymentCollectedBeforeTechLeft === null ||
+            technicianConfirmation.paymentCollectedBeforeTechLeft === undefined
+              ? null
+              : technicianConfirmation.paymentCollectedBeforeTechLeft === true,
+        }),
+        dryRun,
+        labelPrefix: "dispatch-tech-confirmed",
+      })),
+    );
   }
 
   return {

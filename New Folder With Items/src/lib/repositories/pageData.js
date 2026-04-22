@@ -1,4 +1,4 @@
-import { hiringCandidates, settingsGroups } from "../../data/mock";
+import { hiringCandidates as mockHiringCandidates, settingsGroups } from "../../data/mock";
 import { getCommunicationJobContext } from "../domain/communications";
 import { formatCurrency, getInvoiceSummary, getRevenueBars } from "../domain/finance";
 import {
@@ -11,6 +11,31 @@ import {
 
 function sum(items, selector) {
   return items.reduce((total, item) => total + selector(item), 0);
+}
+
+function buildLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isIsoOnLocalDate(isoValue, localDateKey) {
+  if (!isoValue) {
+    return false;
+  }
+
+  const parsed = new Date(isoValue);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  return buildLocalDateKey(parsed) === localDateKey;
+}
+
+function isDateOnlyOnLocalDate(dateValue, localDateKey) {
+  return Boolean(dateValue && String(dateValue).slice(0, 10) === localDateKey);
 }
 
 function getReferenceDate(invoiceRecords) {
@@ -49,8 +74,11 @@ function buildRevenueTrendPoints(invoiceRecords) {
 }
 
 function buildHomeKpis({ communicationRecords, invoiceRecords, jobRecords, technicians }) {
-  const activeJobs = jobRecords.filter((job) => !["completed", "canceled"].includes(job.lifecycleStatus));
-  const atRiskJobs = jobRecords.filter((job) =>
+  const localDateKey = buildLocalDateKey();
+  const jobsToday = jobRecords.filter((job) => isIsoOnLocalDate(job.scheduledStartAt, localDateKey));
+  const activeJobs = jobsToday.filter((job) => !["completed", "canceled"].includes(job.lifecycleStatus));
+  const completedJobsToday = jobsToday.filter((job) => job.lifecycleStatus === "completed");
+  const atRiskJobs = jobsToday.filter((job) =>
     ["failed", "partial", "parts_due", "awaiting_payment", "late", "escalated"].some(
       (status) =>
         job.paymentStatus === status ||
@@ -63,12 +91,14 @@ function buildHomeKpis({ communicationRecords, invoiceRecords, jobRecords, techn
     ["awaiting_callback", "unresolved"].includes(item.communicationStatus),
   );
   const partsAwaitingPayment = jobRecords.filter((job) => job.partsStatus === "awaiting_payment");
+  const laborInvoicesDueToday = invoiceRecords.filter(
+    (invoice) =>
+      invoice.invoiceType === "labor" &&
+      ["labor_due", "partial", "failed"].includes(invoice.paymentStatus) &&
+      isDateOnlyOnLocalDate(invoice.dueOn || invoice.issuedOn, localDateKey),
+  );
   const laborDueToday = sum(
-    invoiceRecords.filter(
-      (invoice) =>
-        invoice.invoiceType === "labor" &&
-        ["labor_due", "partial", "failed"].includes(invoice.paymentStatus),
-    ),
+    laborInvoicesDueToday,
     (invoice) => invoice.outstandingBalance,
   );
   const unresolvedCommunications = communicationRecords.filter(
@@ -80,8 +110,8 @@ function buildHomeKpis({ communicationRecords, invoiceRecords, jobRecords, techn
   return [
     {
       label: "Jobs today",
-      value: String(jobRecords.length),
-      detail: `${activeJobs.length} active, ${jobRecords.filter((job) => job.lifecycleStatus === "completed").length} completed, ${atRiskJobs.length} at risk`,
+      value: String(jobsToday.length),
+      detail: `${activeJobs.length} active, ${completedJobsToday.length} completed, ${atRiskJobs.length} at risk`,
     },
     {
       label: "Callbacks needed",
@@ -101,7 +131,7 @@ function buildHomeKpis({ communicationRecords, invoiceRecords, jobRecords, techn
     {
       label: "Labor due today",
       value: formatCurrency(laborDueToday),
-      detail: `${invoiceRecords.filter((invoice) => invoice.invoiceType === "labor").length} labor invoices in the current cycle`,
+      detail: `${laborInvoicesDueToday.length} labor invoices due today`,
     },
     {
       label: "Unresolved communications",
@@ -112,26 +142,34 @@ function buildHomeKpis({ communicationRecords, invoiceRecords, jobRecords, techn
 }
 
 function buildActivityFeed({ communicationRecords, jobRecords }) {
+  const localDateKey = buildLocalDateKey();
   const items = [
     ...jobRecords.flatMap((job) =>
       (job.timelineEvents || []).map((event) => ({
+        eventAt: event.eventAt,
         occurredAt: event.eventAtLabel,
         message: `${event.summary}${job.customer?.name ? ` for ${job.customer.name}` : ""}.`,
       })),
     ),
     ...communicationRecords.map((item) => ({
+      eventAt: item.occurredAt,
       occurredAt: item.linkedJob?.scheduledStartLabel || item.customer?.lastContactLabel || "Recent",
       message: `${item.customer?.name || "Customer"} · ${getCommunicationJobContext(item)}.`,
     })),
   ];
 
-  return items.slice(0, 5).map((item) => `${item.occurredAt} · ${item.message}`);
+  return items
+    .filter((item) => isIsoOnLocalDate(item.eventAt, localDateKey))
+    .slice(0, 5)
+    .map((item) => `${item.occurredAt} · ${item.message}`);
 }
 
 function buildCallMetrics(communicationRecords) {
-  const calls = communicationRecords.filter((item) => item.communicationChannel === "call");
-  const texts = communicationRecords.filter((item) => item.communicationChannel === "text");
-  const unresolved = communicationRecords.filter((item) => item.communicationStatus !== "clear");
+  const localDateKey = buildLocalDateKey();
+  const todayRecords = communicationRecords.filter((item) => isIsoOnLocalDate(item.occurredAt, localDateKey));
+  const calls = todayRecords.filter((item) => item.communicationChannel === "call");
+  const texts = todayRecords.filter((item) => item.communicationChannel === "text");
+  const unresolved = todayRecords.filter((item) => item.communicationStatus !== "clear");
 
   return [
     { label: "Calls logged", value: calls.length, detail: `${calls.filter((item) => item.communicationStatus !== "clear").length} still unresolved` },
@@ -193,7 +231,7 @@ export function buildHomePageData(readModels) {
     callMetrics: buildCallMetrics(readModels.communicationRecords),
     urgentQueues: buildUrgentQueues(readModels.jobRecords),
     technicians: readModels.technicians,
-    hiringCandidates,
+    hiringCandidates: readModels.hiringCandidates || mockHiringCandidates,
     watchListJobs: getWatchListJobs(readModels.jobRecords),
   };
 }
@@ -280,8 +318,64 @@ export function buildRevenuePageData(readModels) {
   };
 }
 
+function toAverageMinutes(responseMinutes = []) {
+  if (responseMinutes.length === 0) {
+    return null;
+  }
+
+  return Math.round(responseMinutes.reduce((total, minutes) => total + minutes, 0) / responseMinutes.length);
+}
+
+function buildTechnicianAccountability(technician, jobRecords) {
+  const technicianJobs = jobRecords.filter((job) => job.techId === technician.techId);
+  const responseJobs = technicianJobs
+    .filter((job) => Number.isFinite(job.dispatchResponseMinutes))
+    .sort((left, right) =>
+      String(right.dispatchConfirmationReceivedAt || "").localeCompare(
+        String(left.dispatchConfirmationReceivedAt || ""),
+      ),
+    );
+  const collectionJobs = technicianJobs
+    .filter((job) => typeof job.paymentCollectedBeforeTechLeft === "boolean")
+    .sort((left, right) =>
+      String(right.dispatchConfirmationReceivedAt || "").localeCompare(
+        String(left.dispatchConfirmationReceivedAt || ""),
+      ),
+    );
+  const stayedForCollectionCount = collectionJobs.filter(
+    (job) => job.paymentCollectedBeforeTechLeft === true,
+  ).length;
+
+  return {
+    ...technician,
+    averageDispatchResponseMinutes: toAverageMinutes(
+      responseJobs.map((job) => Number(job.dispatchResponseMinutes)),
+    ),
+    lastDispatchResponseMinutes:
+      responseJobs.length > 0 ? Number(responseJobs[0].dispatchResponseMinutes) : null,
+    pendingDispatchConfirmationCount: technicianJobs.filter(
+      (job) => job.dispatchConfirmationRequestedAt && !job.dispatchConfirmationReceivedAt,
+    ).length,
+    stayedForCollectionRatePercent:
+      collectionJobs.length > 0
+        ? Math.round((stayedForCollectionCount / collectionJobs.length) * 100)
+        : null,
+    lastCollectionBehavior:
+      collectionJobs.length === 0
+        ? "unknown"
+        : collectionJobs[0].paymentCollectedBeforeTechLeft
+          ? "stayed"
+          : "left_early",
+  };
+}
+
 export function buildTechniciansPageData(readModels) {
-  return { technicians: readModels.technicians };
+  return {
+    technicians: readModels.technicians.map((technician) =>
+      buildTechnicianAccountability(technician, readModels.jobRecords),
+    ),
+    hiringCandidates: readModels.hiringCandidates || mockHiringCandidates,
+  };
 }
 
 export function buildSettingsPageData() {

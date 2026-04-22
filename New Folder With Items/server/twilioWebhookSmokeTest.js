@@ -16,6 +16,19 @@ function readRequiredEnv(key) {
   return value;
 }
 
+function readOptionalListEnv(key) {
+  const value = process.env[key];
+
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(/[,\n]/u)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function normalizeBaseUrl(value) {
   return value.replace(/\/$/u, "");
 }
@@ -70,6 +83,16 @@ async function fetchJson(url, options) {
     ...response,
     json: parsedBody,
   };
+}
+
+async function postJson(url, body) {
+  return fetchJson(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 async function isServerHealthy(localBaseUrl) {
@@ -188,11 +211,65 @@ async function postSignedForm({
   });
 }
 
+async function postSignedFormText({
+  authToken,
+  publicBaseUrl,
+  localBaseUrl,
+  pathname,
+  params,
+  useValidSignature = true,
+}) {
+  const signature = useValidSignature
+    ? buildTwilioSignature(authToken, `${publicBaseUrl}${pathname}`, params)
+    : "invalid-signature";
+
+  return fetchText(`${localBaseUrl}${pathname}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-Twilio-Signature": signature,
+    },
+    body: new URLSearchParams(params).toString(),
+  });
+}
+
+async function getSignedText({
+  authToken,
+  publicBaseUrl,
+  localBaseUrl,
+  pathname,
+  useValidSignature = true,
+}) {
+  const signature = useValidSignature
+    ? buildTwilioSignature(authToken, `${publicBaseUrl}${pathname}`, {})
+    : "invalid-signature";
+
+  return fetchText(`${localBaseUrl}${pathname}`, {
+    method: "GET",
+    headers: {
+      "X-Twilio-Signature": signature,
+    },
+  });
+}
+
 async function main() {
   const appRoot = process.cwd();
   const accountSid = readRequiredEnv("TWILIO_ACCOUNT_SID");
   const authToken = readRequiredEnv("TWILIO_AUTH_TOKEN");
   const configuredPhoneNumber = readRequiredEnv("TWILIO_PHONE_NUMBER");
+  const managedPhoneNumbers = Array.from(
+    new Set([configuredPhoneNumber, ...readOptionalListEnv("TWILIO_MANAGED_PHONE_NUMBERS")]),
+  );
+  const expectedVoiceForwardTo =
+    process.env.TWILIO_VOICE_FORWARD_TO ||
+    process.env.LUMIA_INVOICE_SMS_PHONE_NUMBER ||
+    process.env.ASSISTANT_OFFICE_PHONE_NUMBER ||
+    null;
+  const expectedClickToCallAgent =
+    process.env.TWILIO_CLICK_TO_CALL_AGENT_NUMBER ||
+    process.env.ASSISTANT_OFFICE_PHONE_NUMBER ||
+    process.env.TWILIO_VOICE_FORWARD_TO ||
+    null;
   const publicBaseUrl = normalizeBaseUrl(readRequiredEnv("TWILIO_WEBHOOK_BASE_URL"));
   const localBaseUrl = `http://127.0.0.1:${Number(process.env.TWILIO_WEBHOOK_PORT || 8787)}`;
   const wrongToNumber = buildAlternatePhoneNumber(configuredPhoneNumber);
@@ -228,14 +305,148 @@ async function main() {
     assert(safeSms.status === 202, `Expected signed SMS smoke request to return 202, received ${safeSms.status}`);
     assert(
       safeSms.json?.message?.includes("destination number does not match"),
-      "Expected signed SMS smoke request to be ignored because To does not match TWILIO_PHONE_NUMBER.",
+      "Expected signed SMS smoke request to be ignored because To does not match the configured managed business lines.",
     );
     console.log("[twilio-smoke] PASS signed SMS ignored safely");
+
+    const clickToCallDryRun = await postJson(`${localBaseUrl}/api/twilio/outbound/calls`, {
+      customerId: "00000000-0000-0000-0000-000000000401",
+      customerName: "Smoke Test Customer",
+      customerPhone: "+15551110004",
+      jobId: "00000000-0000-0000-0000-000000000402",
+      dryRun: true,
+    });
+
+    assert(
+      clickToCallDryRun.status === 200 && clickToCallDryRun.json?.ok === true,
+      "Expected click-to-call dry run to succeed.",
+    );
+    assert(
+      clickToCallDryRun.json?.preview?.agentPhone === expectedClickToCallAgent,
+      `Expected click-to-call dry run to target ${expectedClickToCallAgent} first.`,
+    );
+    assert(
+      managedPhoneNumbers.includes(clickToCallDryRun.json?.preview?.businessPhoneNumber),
+      "Expected click-to-call dry run to report a managed business line as the outbound caller ID.",
+    );
+    assert(
+      clickToCallDryRun.json?.preview?.bridgeTwiml?.includes('record="record-from-answer-dual"'),
+      "Expected click-to-call dry run TwiML to enable dual-channel recording.",
+    );
+    assert(
+      clickToCallDryRun.json?.preview?.bridgeTwiml?.includes("/api/twilio/recordings/status"),
+      "Expected click-to-call dry run TwiML to include the recording callback route.",
+    );
+    assert(
+      clickToCallDryRun.json?.preview?.bridgeTwiml?.includes("+15551110004"),
+      "Expected click-to-call dry run TwiML to dial the customer phone number.",
+    );
+    assert(
+      clickToCallDryRun.json?.preview?.followUpPolicy?.maxLiveCustomerCallsPerTrigger === 1,
+      "Expected click-to-call dry run to limit outbound attempts to one live customer call.",
+    );
+    assert(
+      clickToCallDryRun.json?.preview?.followUpPolicy?.additionalAutoCallAttempts === 0,
+      "Expected click-to-call dry run to disable additional automatic retry calls.",
+    );
+    console.log("[twilio-smoke] PASS click-to-call dry run prepares agent-first recorded bridge");
+
+    const clickToCallBridge = await postSignedFormText({
+      authToken,
+      publicBaseUrl,
+      localBaseUrl,
+      pathname: "/api/twilio/outbound/bridge?customerName=Smoke%20Test%20Customer&customerPhone=%2B15551110004",
+      params: {
+        AccountSid: accountSid,
+        CallSid: "CAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX01",
+        Direction: "outbound-api",
+        From: configuredPhoneNumber,
+        To: expectedClickToCallAgent,
+      },
+    });
+
+    assert(clickToCallBridge.status === 200, `Expected click-to-call bridge to return 200, received ${clickToCallBridge.status}`);
+    assert(
+      clickToCallBridge.headers.get("content-type")?.includes("text/xml"),
+      "Expected click-to-call bridge POST response to return TwiML XML.",
+    );
+    assert(clickToCallBridge.body.includes("<Dial"), "Expected click-to-call bridge TwiML to include a Dial verb.");
+    assert(
+      clickToCallBridge.body.includes("/api/twilio/outbound/calls/status"),
+      "Expected click-to-call bridge TwiML to include the outbound status callback route.",
+    );
+    console.log("[twilio-smoke] PASS click-to-call bridge route returns recorded Dial TwiML");
+
+    const clickToCallBridgeGet = await getSignedText({
+      authToken,
+      publicBaseUrl,
+      localBaseUrl,
+      pathname:
+        "/api/twilio/outbound/bridge?AccountSid=" +
+        encodeURIComponent(accountSid) +
+        "&CallSid=CAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX03&Direction=outbound-api&From=" +
+        encodeURIComponent(configuredPhoneNumber) +
+        "&To=" +
+        encodeURIComponent(expectedClickToCallAgent) +
+        "&customerName=Smoke+Test+Customer&customerPhone=%2B15551110004",
+    });
+
+    assert(
+      clickToCallBridgeGet.status === 200,
+      `Expected GET click-to-call bridge to return 200, received ${clickToCallBridgeGet.status}`,
+    );
+    assert(
+      clickToCallBridgeGet.headers.get("content-type")?.includes("text/xml"),
+      "Expected click-to-call bridge GET response to return TwiML XML.",
+    );
+    assert(
+      clickToCallBridgeGet.body.includes("+15551110004"),
+      "Expected GET click-to-call bridge TwiML to dial the customer phone number.",
+    );
+    console.log("[twilio-smoke] PASS click-to-call bridge accepts signed GET requests");
+
+    const voiceWebhook = await postSignedFormText({
+      authToken,
+      publicBaseUrl,
+      localBaseUrl,
+      pathname: "/api/twilio/voice",
+      params: {
+        AccountSid: accountSid,
+        CallSid: "CAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX02",
+        Direction: "inbound",
+        From: "+15551110003",
+        To: configuredPhoneNumber,
+      },
+    });
+
+    assert(voiceWebhook.status === 200, `Expected voice webhook to return 200, received ${voiceWebhook.status}`);
+    assert(
+      voiceWebhook.headers.get("content-type")?.includes("text/xml"),
+      "Expected voice webhook to return TwiML XML.",
+    );
+    assert(voiceWebhook.body.includes("<Dial"), "Expected voice webhook TwiML to include a Dial verb.");
+    assert(
+      voiceWebhook.body.includes('record="record-from-answer-dual"'),
+      "Expected voice webhook TwiML to enable dual-channel recording from answer.",
+    );
+    assert(
+      voiceWebhook.body.includes("/api/twilio/recordings/status"),
+      "Expected voice webhook TwiML to include the recording status callback route.",
+    );
+
+    if (expectedVoiceForwardTo) {
+      assert(
+        voiceWebhook.body.includes(expectedVoiceForwardTo),
+        `Expected voice webhook TwiML to dial ${expectedVoiceForwardTo}.`,
+      );
+    }
+
+    console.log("[twilio-smoke] PASS inbound voice webhook returns forwarding TwiML");
 
     const safeCallParams = {
       AccountSid: accountSid,
       CallDuration: "0",
-      CallSid: "CAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX01",
+      CallSid: "CAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX03",
       CallStatus: "ringing",
       Direction: "inbound",
       From: "+15551110002",
@@ -253,9 +464,32 @@ async function main() {
     assert(safeCall.status === 202, `Expected signed call smoke request to return 202, received ${safeCall.status}`);
     assert(
       safeCall.json?.message?.includes("destination number does not match"),
-      "Expected signed call smoke request to be ignored because To does not match TWILIO_PHONE_NUMBER.",
+      "Expected signed call smoke request to be ignored because To does not match the configured managed business lines.",
     );
     console.log("[twilio-smoke] PASS signed call ignored safely");
+
+    const recordingCallback = await postSignedForm({
+      authToken,
+      publicBaseUrl,
+      localBaseUrl,
+      pathname: "/api/twilio/recordings/status",
+      params: {
+        AccountSid: "ACWRONGACCOUNTXXXXXXXXXXXXXXXXXX",
+        CallSid: "CAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX04",
+        RecordingSid: "REXXXXXXXXXXXXXXXXXXXXXXXXXXXX04",
+        RecordingStatus: "completed",
+      },
+    });
+
+    assert(
+      recordingCallback.status === 403,
+      `Expected recording callback with wrong AccountSid to return 403, received ${recordingCallback.status}`,
+    );
+    assert(
+      recordingCallback.json?.message === "Twilio AccountSid mismatch.",
+      "Expected recording callback to reject mismatched AccountSid before any write path runs.",
+    );
+    console.log("[twilio-smoke] PASS recording callback route rejects mismatched account safely");
 
     const invalidSignature = await postSignedForm({
       authToken,
