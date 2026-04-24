@@ -60,6 +60,12 @@ async function parseTwilioResponse(response) {
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(
+        "Twilio rejected the server credentials. Update TWILIO_AUTH_TOKEN or TWILIO_API_KEY_SECRET in .env.server.local, then restart the webhook server.",
+      );
+    }
+
     throw new Error(
       responseJson?.message || `Twilio request failed with status ${response.status}.`,
     );
