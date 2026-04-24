@@ -200,8 +200,8 @@ async function validateTwilioWebhookRequest(request, response, options = {}) {
   const requestUrl = new URL(request.url, "http://127.0.0.1");
   const body = request.method === "POST" ? await readRequestBody(request) : "";
   const formPayload = parseFormBody(body);
-  const payload =
-    request.method === "GET" ? Object.fromEntries(requestUrl.searchParams.entries()) : formPayload;
+  const queryPayload = Object.fromEntries(requestUrl.searchParams.entries());
+  const payload = request.method === "GET" ? queryPayload : { ...queryPayload, ...formPayload };
   const signatureParams = request.method === "GET" ? {} : formPayload;
   const signature = request.headers["x-twilio-signature"];
 

@@ -8,6 +8,7 @@ import { HomePage } from "./pages/HomePage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { NewHiresCandidatesPage } from "./pages/NewHiresCandidatesPage";
 import { PhonePage } from "./pages/PhonePage";
 import { RevenuePage } from "./pages/RevenuePage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -29,6 +30,7 @@ function App() {
           <Route path="invoices" element={<InvoicesPage />} />
           <Route path="revenue" element={<RevenuePage />} />
           <Route path="technicians" element={<TechniciansPage />} />
+          <Route path="new-hires-candidates" element={<NewHiresCandidatesPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
@@ -42,6 +44,7 @@ function App() {
       <Route path="/invoices" element={<Navigate replace to="/dashboard/invoices" />} />
       <Route path="/revenue" element={<Navigate replace to="/dashboard/revenue" />} />
       <Route path="/technicians" element={<Navigate replace to="/dashboard/technicians" />} />
+      <Route path="/new-hires-candidates" element={<Navigate replace to="/dashboard/new-hires-candidates" />} />
       <Route path="/settings" element={<Navigate replace to="/dashboard/settings" />} />
       <Route path="*" element={<Navigate replace to="/dashboard" />} />
     </Routes>

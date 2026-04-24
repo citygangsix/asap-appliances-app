@@ -34,6 +34,23 @@ const HIRING_AVAILABILITY_TIME_PREFERENCES = new Set([
   "anytime",
 ]);
 
+const HIRED_DECISION_PATTERNS = [
+  /\byou('re| are)\s+hired\b/iu,
+  /\bwe('re| are)\s+hiring\s+you\b/iu,
+  /\bwelcome\s+(aboard|to\s+the\s+team)\b/iu,
+  /\bbring\s+you\s+on(board)?\b/iu,
+  /\bstart(?:ing)?\s+(with\s+us|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week)\b/iu,
+  /\b(send|sent|sending)\s+(you\s+)?(the\s+)?(onboarding|paperwork|documents|w-?9|direct\s+deposit)\b/iu,
+  /\b(first|trial)\s+(job|day|route|call)\s+(is\s+)?(scheduled|set|booked)\b/iu,
+];
+
+const TRIAL_SCHEDULED_PATTERNS = [
+  /\btrial\s+(day|job|route|call)\b/iu,
+  /\b(first)\s+(job|route|call)\b/iu,
+  /\btry\s+you\s+out\b/iu,
+  /\bsee\s+how\s+you\s+do\b/iu,
+];
+
 function readOptionalEnv(key) {
   const value = process.env[key];
   return value ? value : null;
@@ -71,6 +88,40 @@ function buildOpenAiHeaders(apiKey, headers = {}) {
   return {
     Authorization: `Bearer ${apiKey}`,
     ...headers,
+  };
+}
+
+function inferHiringDecisionFromTranscript(transcriptText) {
+  const transcript = normalizeOptionalString(transcriptText);
+
+  if (!transcript) {
+    return {
+      isHired: false,
+      stage: null,
+      criteria: [],
+    };
+  }
+
+  const criteria = HIRED_DECISION_PATTERNS.filter((pattern) => pattern.test(transcript)).map((pattern) =>
+    pattern.source,
+  );
+
+  if (criteria.length) {
+    return {
+      isHired: true,
+      stage: "onboarded",
+      criteria,
+    };
+  }
+
+  const trialCriteria = TRIAL_SCHEDULED_PATTERNS.filter((pattern) => pattern.test(transcript)).map(
+    (pattern) => pattern.source,
+  );
+
+  return {
+    isHired: false,
+    stage: trialCriteria.length ? "trial_scheduled" : null,
+    criteria: trialCriteria,
   };
 }
 
@@ -417,16 +468,19 @@ async function analyzeTranscript(transcriptText) {
   return JSON.parse(jsonText);
 }
 
-function normalizeAnalysisResult(analysis) {
+function normalizeAnalysisResult(analysis, transcriptText = "") {
   const normalizedConversationType =
     analysis?.conversation_type === "hiring" || analysis?.conversation_type === "other"
       ? analysis.conversation_type
       : "service";
+  const inferredHiringDecision = inferHiringDecisionFromTranscript(transcriptText);
   const normalizedHiringStage = HIRING_CANDIDATE_STAGES.has(analysis?.hiring_candidate?.stage)
     ? analysis.hiring_candidate.stage
     : "contacted";
   const isHired =
-    Boolean(analysis?.hiring_candidate?.is_hired) || normalizedHiringStage === "onboarded";
+    Boolean(analysis?.hiring_candidate?.is_hired) ||
+    normalizedHiringStage === "onboarded" ||
+    inferredHiringDecision.isHired;
   const isHiringConversation =
     Boolean(analysis?.hiring_candidate?.is_hiring) || normalizedConversationType === "hiring";
 
@@ -448,7 +502,8 @@ function normalizeAnalysisResult(analysis) {
       candidateName: normalizeOptionalString(analysis?.hiring_candidate?.candidate_name),
       email: normalizeOptionalString(analysis?.hiring_candidate?.email),
       source: normalizeOptionalString(analysis?.hiring_candidate?.source),
-      stage: isHired ? "onboarded" : normalizedHiringStage,
+      stage: isHired ? "onboarded" : inferredHiringDecision.stage || normalizedHiringStage,
+      hiredCriteria: inferredHiringDecision.criteria,
       trade: normalizeOptionalString(analysis?.hiring_candidate?.trade),
       city: normalizeOptionalString(analysis?.hiring_candidate?.city),
       serviceArea: normalizeOptionalString(analysis?.hiring_candidate?.service_area),
@@ -476,7 +531,7 @@ function normalizeAnalysisResult(analysis) {
 export async function transcribeAndAnalyzeTwilioRecording(payload, twilioConfig) {
   const recording = await downloadTwilioRecording(payload, twilioConfig);
   const transcriptText = await transcribeRecordingAudio(recording);
-  const analysis = normalizeAnalysisResult(await analyzeTranscript(transcriptText));
+  const analysis = normalizeAnalysisResult(await analyzeTranscript(transcriptText), transcriptText);
 
   return {
     transcriptText,
@@ -495,7 +550,10 @@ export async function analyzeTranscriptText(transcriptText) {
     return null;
   }
 
-  const analysis = normalizeAnalysisResult(await analyzeTranscript(normalizedTranscript));
+  const analysis = normalizeAnalysisResult(
+    await analyzeTranscript(normalizedTranscript),
+    normalizedTranscript,
+  );
 
   return {
     transcriptText: normalizedTranscript,

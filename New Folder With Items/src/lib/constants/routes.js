@@ -85,6 +85,15 @@ export const ROUTES = [
     alert: "Roster status, scorecards, and payout visibility",
   },
   {
+    routeId: "new-hires-candidates",
+    path: "/dashboard/new-hires-candidates",
+    label: "New Hires Candidates",
+    icon: "✓",
+    group: "People",
+    eyebrow: "Recruiting CRM",
+    alert: "Recorded hiring calls and hired technician checks",
+  },
+  {
     routeId: "settings",
     path: "/dashboard/settings",
     label: "Settings",

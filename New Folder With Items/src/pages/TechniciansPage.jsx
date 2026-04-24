@@ -6,6 +6,7 @@ import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { getOperationsRepository } from "../lib/repositories";
+import { getLocalOperationsServerUrl } from "../lib/config/localOperationsServer";
 
 const TECHNICIAN_FEEDBACK_TONES = {
   emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -34,15 +35,6 @@ const MANUAL_CALL_OUTCOME_OPTIONS = [
 
 const TECHNICIAN_FIELD_CLASS =
   "mt-2 w-full rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500";
-
-function getLocalOperationsServerUrl(pathname) {
-  const hostname =
-    typeof window !== "undefined" && window.location?.hostname
-      ? window.location.hostname
-      : "127.0.0.1";
-
-  return new URL(pathname, `http://${hostname}:8787`).toString();
-}
 
 async function requestClickToCall(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/twilio/outbound/calls"), {

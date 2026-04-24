@@ -89,10 +89,11 @@ export function buildBrowserCallTwiml(config, payload) {
   }
 
   const statusCallbackUrl = buildWebhookUrl(config.webhookBaseUrl, "/api/twilio/calls/status");
-  const recordingStatusCallbackUrl = buildWebhookUrl(
+  const recordingParams = new URLSearchParams({ browserCallTo: to });
+  const recordingStatusCallbackUrl = `${buildWebhookUrl(
     config.webhookBaseUrl,
     "/api/twilio/recordings/status",
-  );
+  )}?${recordingParams.toString()}`;
   const statusEvents = BROWSER_CALL_STATUS_EVENTS.join(" ");
 
   return [

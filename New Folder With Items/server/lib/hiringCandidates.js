@@ -114,6 +114,8 @@ function pickCandidatePhone(targets, config) {
   );
 
   const orderedNumbers = [
+    targets.browserCallTo,
+    targets.browser_call_to,
     ...getPreferredCallNumbers(targets.communication),
     ...getPreferredCallNumbers(targets.unmatchedInbound),
     targets.communication?.to_number,
@@ -470,6 +472,8 @@ function buildCandidatePayload({ existingCandidate, intelligence, targets, paylo
       recordingSid: normalizeOptionalString(payload.RecordingSid),
       callSid: normalizeOptionalString(payload.CallSid),
       parentCallSid: normalizeOptionalString(payload.ParentCallSid),
+      browserCallTo: normalizeOptionalString(payload.browserCallTo),
+      hiredCriteria: hiringCandidate.hiredCriteria || [],
     },
     last_contact_at: intelligence?.transcribedAt || new Date().toISOString(),
   };

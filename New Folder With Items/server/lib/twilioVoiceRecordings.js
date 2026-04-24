@@ -313,6 +313,7 @@ export async function persistRecordingStatusCallback(client, payload) {
     const hiringResult = await upsertHiringCandidateFromCall(client, payload, intelligence, {
       communication: syncedTargets.communication || targets.communication,
       unmatchedInbound: syncedTargets.unmatchedInbound || targets.unmatchedInbound,
+      browserCallTo: payload.browserCallTo || null,
     });
 
     hiringCandidate = hiringResult.record || null;
