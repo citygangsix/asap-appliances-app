@@ -31,6 +31,7 @@ import {
   requestBrowserHangup,
   requestBrowserVoiceToken,
 } from "./lib/twilioBrowserCalling.js";
+import { listHiringCandidateRows } from "./lib/hiringCandidateDirectory.js";
 import { startTwilioRecordingRecovery } from "./lib/twilioRecordingRecovery.js";
 
 const SMS_WEBHOOK_PATH = "/api/twilio/sms";
@@ -44,6 +45,7 @@ const BROWSER_CALL_PATH = "/api/twilio/browser-call";
 const BROWSER_CALL_TWIML_PATH = "/api/twilio/browser-call/twiml";
 const BROWSER_HANGUP_PATH = "/api/twilio/hangup";
 const BROWSER_VOICE_TOKEN_PATH = "/api/twilio/voice-token";
+const HIRING_CANDIDATES_PATH = "/api/hiring-candidates";
 const THUMBTACK_LEAD_PATH = "/api/thumbtack/lead";
 const MANUAL_CALL_LOG_PATH = "/api/manual/calls/log";
 
@@ -104,6 +106,7 @@ function getLocalOperationsServerPort() {
 function respondJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     ...CORS_HEADERS,
+    "Cache-Control": "no-store",
     "Content-Type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(payload));
@@ -184,6 +187,7 @@ async function respondStaticFile(request, response, requestUrl) {
   const content = request.method === "HEAD" ? null : await fs.readFile(filepath);
 
   response.writeHead(200, {
+    "Cache-Control": "no-store",
     "Content-Type": STATIC_CONTENT_TYPES[extension] || "application/octet-stream",
   });
 
@@ -316,6 +320,16 @@ async function handleBrowserHangupRequest(request, response) {
 async function handleBrowserVoiceTokenRequest(request, response) {
   const result = await requestBrowserVoiceToken();
   respondJson(response, result.status || (result.ok ? 200 : 500), result);
+}
+
+async function handleHiringCandidatesRequest(request, response) {
+  const candidates = await listHiringCandidateRows(getServerSupabaseClient());
+  respondJson(response, 200, {
+    ok: true,
+    candidates,
+    fetchedAt: new Date().toISOString(),
+    message: "Live hiring candidates loaded from the server database.",
+  });
 }
 
 async function handleBrowserCallTwimlRequest(request, response, pathname) {
@@ -454,6 +468,11 @@ async function routeRequest(request, response) {
     return;
   }
 
+  if (request.method === "GET" && requestUrl.pathname === HIRING_CANDIDATES_PATH) {
+    await handleHiringCandidatesRequest(request, response);
+    return;
+  }
+
   if (request.method === "POST" && requestUrl.pathname === THUMBTACK_LEAD_PATH) {
     await handleThumbtackLeadWebhook(request, response);
     return;
@@ -527,6 +546,7 @@ server.listen(port, () => {
   console.log(`[twilio-webhooks] browser call TwiML route: ${BROWSER_CALL_TWIML_PATH}`);
   console.log(`[twilio-webhooks] browser voice token route: ${BROWSER_VOICE_TOKEN_PATH}`);
   console.log(`[twilio-webhooks] browser hangup route: ${BROWSER_HANGUP_PATH}`);
+  console.log(`[twilio-webhooks] hiring candidates route: ${HIRING_CANDIDATES_PATH}`);
   console.log(`[twilio-webhooks] thumbtack lead route: ${THUMBTACK_LEAD_PATH}`);
   console.log(`[twilio-webhooks] manual call log route: ${MANUAL_CALL_LOG_PATH}`);
   console.log("[twilio-webhooks] invoice sms route: /api/invoices/send-lumia");

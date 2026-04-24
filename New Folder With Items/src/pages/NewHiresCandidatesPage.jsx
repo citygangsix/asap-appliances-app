@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { Badge, Card, SecondaryButton } from "../components/ui";
 import { useAsyncValue } from "../hooks/useAsyncValue";
+import { mapHiringCandidateRowToDomain } from "../integrations/supabase/mappers/hiringCandidates";
+import { getLocalOperationsServerUrl } from "../lib/config/localOperationsServer";
 import { getOperationsRepository } from "../lib/repositories";
 import { formatStatusLabel } from "../lib/domain/jobs";
+
+const LIVE_REFRESH_INTERVAL_MS = 15000;
 
 function isCandidateHired(candidate) {
   return candidate.stage === "onboarded" || Boolean(candidate.promotedTechId);
@@ -23,19 +27,102 @@ function CandidateStatus({ candidate }) {
   return <Badge tone="indigo">{formatStatusLabel(candidate.stage)}</Badge>;
 }
 
+async function requestLiveHiringCandidates() {
+  const url = new URL(getLocalOperationsServerUrl("/api/hiring-candidates"));
+  url.searchParams.set("t", String(Date.now()));
+
+  const response = await fetch(url.toString(), {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+  const responseText = await response.text();
+  const responseJson = responseText ? JSON.parse(responseText) : null;
+
+  if (!response.ok || !responseJson?.ok) {
+    throw new Error(
+      responseJson?.message || `Live hiring candidates failed with status ${response.status}.`,
+    );
+  }
+
+  return {
+    candidates: (responseJson.candidates || []).map(mapHiringCandidateRowToDomain),
+    fetchedAt: responseJson.fetchedAt || new Date().toISOString(),
+  };
+}
+
 export function NewHiresCandidatesPage() {
   const repository = getOperationsRepository();
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [selectedCandidateId, setSelectedCandidateId] = useState(null);
+  const [liveCandidates, setLiveCandidates] = useState(null);
+  const [liveCandidatesError, setLiveCandidatesError] = useState(null);
+  const [isLiveCandidatesLoading, setIsLiveCandidatesLoading] = useState(true);
+  const [lastLiveCandidatesFetchAt, setLastLiveCandidatesFetchAt] = useState(null);
   const { data, error, isLoading } = useAsyncValue(
     () => repository.getTechniciansPageData(),
     [repository, refreshNonce],
   );
-  const candidates = data?.hiringCandidates || [];
+  const loadLiveCandidates = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setIsLiveCandidatesLoading(true);
+    }
+
+    try {
+      const result = await requestLiveHiringCandidates();
+      setLiveCandidates(result.candidates);
+      setLastLiveCandidatesFetchAt(result.fetchedAt);
+      setLiveCandidatesError(null);
+    } catch (liveError) {
+      setLiveCandidatesError(liveError);
+    } finally {
+      setIsLiveCandidatesLoading(false);
+    }
+  }, []);
+  const candidates = liveCandidates ?? data?.hiringCandidates ?? [];
   const selectedCandidate =
     candidates.find((candidate) => candidate.candidateId === selectedCandidateId) ||
     candidates[0] ||
     null;
+  const isPageLoading = isLoading && isLiveCandidatesLoading && !liveCandidates;
+  const pageError = liveCandidates ? null : liveCandidatesError || error;
+  const lastLiveSyncLabel = lastLiveCandidatesFetchAt
+    ? new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(new Date(lastLiveCandidatesFetchAt))
+    : null;
+
+  const handleRefresh = useCallback(() => {
+    repository.clearRuntimeCaches?.();
+    setRefreshNonce((current) => current + 1);
+    loadLiveCandidates();
+  }, [loadLiveCandidates, repository]);
+
+  useEffect(() => {
+    loadLiveCandidates();
+    const intervalId = window.setInterval(
+      () => loadLiveCandidates({ silent: true }),
+      LIVE_REFRESH_INTERVAL_MS,
+    );
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadLiveCandidates({ silent: true });
+      }
+    };
+
+    window.addEventListener("focus", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [loadLiveCandidates]);
 
   useEffect(() => {
     if (!selectedCandidateId && candidates[0]?.candidateId) {
@@ -55,16 +142,25 @@ export function NewHiresCandidatesPage() {
     <PageScaffold
       title="New Hires Candidates"
       subtitle="Recruiting calls that auto-populate from recorded hiring conversations."
-      actions={<SecondaryButton onClick={() => setRefreshNonce((current) => current + 1)}>Refresh candidates</SecondaryButton>}
+      actions={
+        <div className="flex flex-wrap items-center gap-3">
+          {lastLiveSyncLabel ? (
+            <span className="text-sm font-medium text-slate-500">Live sync {lastLiveSyncLabel}</span>
+          ) : null}
+          <SecondaryButton onClick={handleRefresh}>
+            {isLiveCandidatesLoading ? "Refreshing..." : "Refresh candidates"}
+          </SecondaryButton>
+        </div>
+      }
       tabs={[{ label: "New Hires Candidates", active: true }, { label: "Hired Technicians" }]}
       contentClassName="grid gap-6 p-4 sm:p-6 lg:grid-cols-[0.92fr_1.08fr] lg:p-8"
     >
-      {isLoading ? (
+      {isPageLoading ? (
         <PageStateNotice title="Loading candidates" message="Fetching recorded hiring calls and candidate records." />
-      ) : error || !data ? (
+      ) : pageError && candidates.length === 0 ? (
         <PageStateNotice
           title="Candidates unavailable"
-          message={error?.message || "Candidate data could not be loaded."}
+          message={pageError?.message || "Candidate data could not be loaded."}
         />
       ) : (
         <>
