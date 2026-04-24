@@ -10,6 +10,7 @@ const DEFAULT_RECOVERY_MAX_RECORDINGS = 20;
 const DEFAULT_FAILED_RETRY_MINUTES = 30;
 
 let activeRecoveryPromise = null;
+const scheduledRecoveryTimers = new Set();
 
 function readOptionalNumberEnv(key, fallback) {
   const value = Number(process.env[key]);
@@ -372,6 +373,59 @@ export async function recoverLatestTwilioRecordings(options = {}) {
   }
 }
 
+export function scheduleTwilioRecordingRecovery({
+  delaysMs = [15000, 60000, 180000],
+  reason = "scheduled",
+  logger = console,
+} = {}) {
+  if (!getRecoveryConfig().enabled) {
+    return {
+      scheduled: 0,
+      cancel: () => {},
+    };
+  }
+
+  const timers = [];
+
+  for (const delayMs of delaysMs) {
+    const timer = setTimeout(async () => {
+      scheduledRecoveryTimers.delete(timer);
+
+      try {
+        const result = await recoverLatestTwilioRecordings();
+        const recoveredCount = result.recovered?.length || 0;
+        const failedCount = result.failed?.length || 0;
+
+        if (recoveredCount || failedCount) {
+          logger.log("[twilio-recording-recovery][scheduled]", {
+            reason,
+            delayMs,
+            checked: result.checked,
+            recovered: recoveredCount,
+            failed: failedCount,
+          });
+        }
+      } catch (error) {
+        logger.error("[twilio-recording-recovery][scheduled]", error);
+      }
+    }, delayMs);
+
+    timer.unref?.();
+    scheduledRecoveryTimers.add(timer);
+    timers.push(timer);
+  }
+
+  return {
+    scheduled: timers.length,
+    cancel: () => {
+      timers.forEach((timer) => {
+        clearTimeout(timer);
+        scheduledRecoveryTimers.delete(timer);
+      });
+    },
+  };
+}
+
 export function startTwilioRecordingRecovery({ client, logger = console } = {}) {
   const recoveryConfig = getRecoveryConfig();
 
@@ -423,6 +477,10 @@ export function startTwilioRecordingRecovery({ client, logger = console } = {}) 
     stop: () => {
       clearTimeout(initialTimer);
       clearInterval(intervalTimer);
+      for (const timer of scheduledRecoveryTimers) {
+        clearTimeout(timer);
+      }
+      scheduledRecoveryTimers.clear();
     },
   };
 }

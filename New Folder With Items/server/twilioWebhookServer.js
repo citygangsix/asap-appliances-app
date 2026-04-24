@@ -31,6 +31,7 @@ import {
   requestBrowserHangup,
   requestBrowserVoiceToken,
 } from "./lib/twilioBrowserCalling.js";
+import { handleBrowserCallStatusCallback } from "./lib/twilioBrowserCallStatus.js";
 import { listHiringCandidateRows } from "./lib/hiringCandidateDirectory.js";
 import { startTwilioRecordingRecovery } from "./lib/twilioRecordingRecovery.js";
 
@@ -42,6 +43,7 @@ const CLICK_TO_CALL_PATH = "/api/twilio/outbound/calls";
 const CLICK_TO_CALL_BRIDGE_PATH = "/api/twilio/outbound/bridge";
 const CLICK_TO_CALL_STATUS_PATH = "/api/twilio/outbound/calls/status";
 const BROWSER_CALL_PATH = "/api/twilio/browser-call";
+const BROWSER_CALL_STATUS_PATH = "/api/twilio/browser-call/status";
 const BROWSER_CALL_TWIML_PATH = "/api/twilio/browser-call/twiml";
 const BROWSER_HANGUP_PATH = "/api/twilio/hangup";
 const BROWSER_VOICE_TOKEN_PATH = "/api/twilio/voice-token";
@@ -322,6 +324,19 @@ async function handleBrowserVoiceTokenRequest(request, response) {
   respondJson(response, result.status || (result.ok ? 200 : 500), result);
 }
 
+async function handleBrowserCallStatusWebhook(request, response) {
+  const validatedRequest = await validateTwilioWebhookRequest(request, response, {
+    requireMatchingTo: false,
+  });
+
+  if (!validatedRequest) {
+    return;
+  }
+
+  const result = await handleBrowserCallStatusCallback(validatedRequest.payload);
+  respondJson(response, result.status || 200, result);
+}
+
 async function handleHiringCandidatesRequest(request, response) {
   const candidates = await listHiringCandidateRows(getServerSupabaseClient());
   respondJson(response, 200, {
@@ -458,6 +473,11 @@ async function routeRequest(request, response) {
     return;
   }
 
+  if (request.method === "POST" && requestUrl.pathname === BROWSER_CALL_STATUS_PATH) {
+    await handleBrowserCallStatusWebhook(request, response);
+    return;
+  }
+
   if (request.method === "POST" && requestUrl.pathname === BROWSER_HANGUP_PATH) {
     await handleBrowserHangupRequest(request, response);
     return;
@@ -543,6 +563,7 @@ server.listen(port, () => {
   console.log(`[twilio-webhooks] click-to-call bridge route: ${CLICK_TO_CALL_BRIDGE_PATH}`);
   console.log(`[twilio-webhooks] click-to-call status route: ${CLICK_TO_CALL_STATUS_PATH}`);
   console.log(`[twilio-webhooks] browser call route: ${BROWSER_CALL_PATH}`);
+  console.log(`[twilio-webhooks] browser call status route: ${BROWSER_CALL_STATUS_PATH}`);
   console.log(`[twilio-webhooks] browser call TwiML route: ${BROWSER_CALL_TWIML_PATH}`);
   console.log(`[twilio-webhooks] browser voice token route: ${BROWSER_VOICE_TOKEN_PATH}`);
   console.log(`[twilio-webhooks] browser hangup route: ${BROWSER_HANGUP_PATH}`);

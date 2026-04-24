@@ -3,6 +3,7 @@ import { getTwilioServerConfig } from "./supabaseAdmin.js";
 
 const BROWSER_CALL_TOKEN_TTL_SECONDS = 3600;
 const BROWSER_CALL_STATUS_EVENTS = ["initiated", "ringing", "answered", "completed"];
+const BROWSER_CALL_STATUS_CALLBACK_PATH = "/api/twilio/browser-call/status";
 
 function normalizePhoneNumber(value) {
   const rawValue = String(value || "").trim();
@@ -88,7 +89,7 @@ export function buildBrowserCallTwiml(config, payload) {
     ].join("");
   }
 
-  const statusCallbackUrl = buildWebhookUrl(config.webhookBaseUrl, "/api/twilio/calls/status");
+  const statusCallbackUrl = buildWebhookUrl(config.webhookBaseUrl, BROWSER_CALL_STATUS_CALLBACK_PATH);
   const recordingParams = new URLSearchParams({ browserCallTo: to });
   const recordingStatusCallbackUrl = `${buildWebhookUrl(
     config.webhookBaseUrl,

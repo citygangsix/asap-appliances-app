@@ -472,6 +472,36 @@ async function main() {
     );
     console.log("[twilio-smoke] PASS signed call ignored safely");
 
+    const browserCallStatus = await postSignedForm({
+      authToken,
+      publicBaseUrl,
+      localBaseUrl,
+      pathname: "/api/twilio/browser-call/status",
+      params: {
+        AccountSid: accountSid,
+        CallSid: "CAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX09",
+        CallStatus: "completed",
+        Direction: "outbound-dial",
+        From: configuredPhoneNumber,
+        ParentCallSid: "CAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX08",
+        To: "+15551110004",
+      },
+    });
+
+    assert(
+      browserCallStatus.status === 200,
+      `Expected browser call status callback to return 200, received ${browserCallStatus.status}`,
+    );
+    assert(
+      browserCallStatus.json?.ok === true,
+      "Expected browser call status callback to be accepted.",
+    );
+    assert(
+      browserCallStatus.json?.recoveryTriggerStatus === true,
+      "Expected completed browser call status to be recognized as a recording recovery trigger.",
+    );
+    console.log("[twilio-smoke] PASS browser call status accepts recording recovery trigger");
+
     const recordingCallback = await postSignedForm({
       authToken,
       publicBaseUrl,
