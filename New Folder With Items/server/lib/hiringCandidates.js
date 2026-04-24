@@ -485,6 +485,7 @@ function buildCandidatePayload({ existingCandidate, intelligence, targets, paylo
     promoted_at: existingCandidate?.promoted_at || null,
     raw_analysis: {
       conversationType: intelligence?.conversationType || null,
+      classification: intelligence?.classification || null,
       language: intelligence?.language || null,
       hiringCandidate: hiringCandidate,
       recordingSid: normalizeOptionalString(payload.RecordingSid),

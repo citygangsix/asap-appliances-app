@@ -34,6 +34,27 @@ const HIRING_AVAILABILITY_TIME_PREFERENCES = new Set([
   "anytime",
 ]);
 
+const TECHNICIAN_RECRUITING_PATTERNS = [
+  { label: "resume/source", weight: 5, pattern: /\b(resume|indeed|zip\s*recruiter|ziprecruiter|applicant|candidate|applied|application)\b/iu },
+  { label: "job offer", weight: 5, pattern: /\b(offer\s+you\s+(some\s+)?work|technician\s+(position|role|job)|appliance\s+repair\s+(position|role|job)|looking\s+for\s+(technicians?|help|work))\b/iu },
+  { label: "experience screening", weight: 4, pattern: /\b(do\s+you\s+have\s+(any\s+)?experience|how\s+(many|much)\s+.*experience|years?\s+of\s+experience|worked\s+on\s+(washers?|dryers?|refrigerators?|fridges?|ovens?|stoves?|dishwashers?))\b/iu },
+  { label: "tech requirements", weight: 4, pattern: /\b(do\s+you\s+have\s+(a\s+)?(vehicle|car|truck|tools?|multimeter)|reliable\s+(vehicle|car|transportation)|own\s+tools?|epa\s+(universal|certified)|certifications?)\b/iu },
+  { label: "tech payout", weight: 4, pattern: /\b(we\s+pay|pay\s+you|payout|paid\s+daily|diagnostics?\s+(?:is|are|pay|pays?)\s*\$?\d+|\$\d+\s*(?:to|-)\s*\$?\d+\s+(?:for\s+)?(?:diagnostics?|installs?|installations?)|gas\s+(?:covered|paid|reimbursement))\b/iu },
+  { label: "availability to work", weight: 3, pattern: /\b(what(?:'s| is)\s+your\s+availability|when\s+are\s+you\s+available|available\s+(?:after|before|on|monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekends?|weekdays?))\b/iu },
+  { label: "field training", weight: 4, pattern: /\b(field\s+training|on[- ]?field\s+training|train(?:ing)?\s+you|get\s+you\s+trained|ride[- ]?along|trial\s+(day|job|route|call))\b/iu },
+  { label: "dispatching tech", weight: 3, pattern: /\b(send\s+you\s+(?:out|jobs?|work)|assign\s+you\s+(?:jobs?|work|calls?)|customers?\s+in\s+your\s+(?:area|city|town)|target\s+ads\s+around\s+(?:your|the)\s+home)\b/iu },
+  { label: "onboarding", weight: 5, pattern: /\b(onboard(?:ing)?|starter\s+packet|w-?9|direct\s+deposit|paperwork|welcome\s+(?:aboard|to\s+the\s+team)|you(?:'re| are)\s+hired)\b/iu },
+];
+
+const CUSTOMER_SERVICE_PATTERNS = [
+  { label: "customer appliance issue", weight: 5, pattern: /\b(my|our|the)\s+(washer|dryer|refrigerator|fridge|freezer|dishwasher|oven|stove|range|cooktop|microwave|ac|a\/c|air\s+conditioner)\b/iu },
+  { label: "broken/not working", weight: 4, pattern: /\b(not\s+working|stopped\s+working|won't\s+(?:start|turn|spin|drain|heat|cool)|is\s+broken|leaking|making\s+noise|not\s+cooling|not\s+heating|not\s+draining|error\s+code)\b/iu },
+  { label: "service appointment", weight: 4, pattern: /\b(schedule\s+(?:service|appointment|repair)|come\s+out|send\s+(?:someone|a\s+tech|the\s+technician)|service\s+call|appointment|eta|arrival|address)\b/iu },
+  { label: "customer payment", weight: 4, pattern: /\b(invoice|balance|refund|partial\s+refund|full\s+refund|diagnostic\s+(?:fee|charge|evaluation)|service\s+fee|labor\s+charge|payment|paid|charge\s+card|cash\s+app|zelle)\b/iu },
+  { label: "parts/warranty", weight: 3, pattern: /\b(part(?:s)?\s+(?:ordered|arrived|needed|warranty)|warranty|return\s+visit|install\s+the\s+part|replacement\s+part)\b/iu },
+  { label: "customer follow-up", weight: 3, pattern: /\b(customer|homeowner|tenant|landlord|property\s+manager|read\s+receipt|texted\s+back|called\s+about\s+(?:a|the)\s+repair)\b/iu },
+];
+
 const HIRED_DECISION_PATTERNS = [
   /\byou('re| are)\s+hired\b/iu,
   /\bwe('re| are)\s+hiring\s+you\b/iu,
@@ -42,6 +63,20 @@ const HIRED_DECISION_PATTERNS = [
   /\bstart(?:ing)?\s+(with\s+us|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week)\b/iu,
   /\b(send|sent|sending)\s+(you\s+)?(the\s+)?(onboarding|paperwork|documents|w-?9|direct\s+deposit)\b/iu,
   /\b(first|trial)\s+(job|day|route|call)\s+(is\s+)?(scheduled|set|booked)\b/iu,
+];
+
+const HIRING_OFFER_PROGRESS_PATTERNS = [
+  /\b(we|i)\s+(can|could|will|would)\s+(send|get)\s+you\s+(out|jobs?|work|trained|training)\b/iu,
+  /\b(we|i)\s+(can|could|will|would)\s+start\s+(you|with\s+you)\b/iu,
+  /\b(field\s+training|on[- ]?field\s+training|get\s+you\s+trained|train\s+you\s+up)\b/iu,
+  /\bassign(?:ing)?\s+(you\s+)?(jobs?|work|calls?)\b/iu,
+  /\b(first|extra)\s+(job|jobs|route|call)\s+after\s+work\b/iu,
+];
+
+const HIRING_ACCEPTANCE_PATTERNS = [
+  /\bi('m| am)\s+(all\s+game|100\s*%\s+game|up\s+for\s+it|interested|willing|ready)\b/iu,
+  /\b(absolutely|sounds\s+good|that\s+sounds\s+good|i\s+can\s+do\s+that|i(?:'ll| will)\s+stick\s+with\s+you|let'?s\s+do\s+it)\b/iu,
+  /\b(i\s+want\s+to\s+move\s+forward|looking\s+forward\s+to\s+it|i\s+would\s+like\s+to\s+work\s+with\s+you)\b/iu,
 ];
 
 const TRIAL_SCHEDULED_PATTERNS = [
@@ -84,6 +119,83 @@ function normalizeStringArray(values, allowedValues) {
   return normalized;
 }
 
+function scoreKeywordPatterns(transcript, patterns) {
+  const matches = [];
+  let score = 0;
+
+  for (const keyword of patterns) {
+    if (keyword.pattern.test(transcript)) {
+      score += keyword.weight;
+      matches.push(keyword.label);
+    }
+  }
+
+  return { score, matches };
+}
+
+export function classifyTranscriptAudienceForCrm(transcriptText) {
+  const transcript = normalizeOptionalString(transcriptText);
+
+  if (!transcript) {
+    return {
+      audience: "other",
+      conversationType: "other",
+      confidence: "low",
+      technicianScore: 0,
+      customerScore: 0,
+      technicianKeywords: [],
+      customerKeywords: [],
+    };
+  }
+
+  const technician = scoreKeywordPatterns(transcript, TECHNICIAN_RECRUITING_PATTERNS);
+  const customer = scoreKeywordPatterns(transcript, CUSTOMER_SERVICE_PATTERNS);
+  const hasStrongTechnicianSignal =
+    technician.score >= 8 ||
+    technician.matches.some((match) =>
+      ["resume/source", "job offer", "onboarding", "tech payout"].includes(match),
+    );
+  const hasStrongCustomerSignal =
+    customer.score >= 8 ||
+    customer.matches.some((match) =>
+      ["customer appliance issue", "broken/not working", "customer payment"].includes(match),
+    );
+
+  if (hasStrongTechnicianSignal && technician.score >= customer.score - 2) {
+    return {
+      audience: "technician",
+      conversationType: "hiring",
+      confidence: technician.score >= 10 ? "high" : "medium",
+      technicianScore: technician.score,
+      customerScore: customer.score,
+      technicianKeywords: technician.matches,
+      customerKeywords: customer.matches,
+    };
+  }
+
+  if (hasStrongCustomerSignal && customer.score > technician.score) {
+    return {
+      audience: "customer",
+      conversationType: "service",
+      confidence: customer.score >= 10 ? "high" : "medium",
+      technicianScore: technician.score,
+      customerScore: customer.score,
+      technicianKeywords: technician.matches,
+      customerKeywords: customer.matches,
+    };
+  }
+
+  return {
+    audience: "other",
+    conversationType: "other",
+    confidence: "low",
+    technicianScore: technician.score,
+    customerScore: customer.score,
+    technicianKeywords: technician.matches,
+    customerKeywords: customer.matches,
+  };
+}
+
 function buildOpenAiHeaders(apiKey, headers = {}) {
   return {
     Authorization: `Bearer ${apiKey}`,
@@ -111,6 +223,21 @@ function inferHiringDecisionFromTranscript(transcriptText) {
       isHired: true,
       stage: "onboarded",
       criteria,
+    };
+  }
+
+  const hiringOfferCriteria = HIRING_OFFER_PROGRESS_PATTERNS.filter((pattern) =>
+    pattern.test(transcript),
+  ).map((pattern) => pattern.source);
+  const hiringAcceptanceCriteria = HIRING_ACCEPTANCE_PATTERNS.filter((pattern) =>
+    pattern.test(transcript),
+  ).map((pattern) => pattern.source);
+
+  if (hiringOfferCriteria.length && hiringAcceptanceCriteria.length) {
+    return {
+      isHired: true,
+      stage: "onboarded",
+      criteria: [...hiringOfferCriteria, ...hiringAcceptanceCriteria],
     };
   }
 
@@ -293,7 +420,7 @@ async function analyzeTranscript(transcriptText) {
     body: JSON.stringify({
       model: analysisModel,
       instructions:
-        "You analyze business phone calls for an appliance company. Some calls are customer service calls, and some are hiring or recruiting calls. Return strict JSON only. Be concise, factual, and never invent details. If a section or hiring field is not mentioned, return an empty string. Mark is_hiring true only when the transcript clearly shows a recruiting, applicant, technician hiring, resume, payout, availability, or job-offer discussion. Detect the original spoken language. If the call is not fully English, keep the transcript as originally transcribed, but provide English summaries and translated key details.",
+        "You analyze business phone calls for an appliance company. Some calls are customer service calls, and some are hiring or recruiting calls. Return strict JSON only. Be concise, factual, and never invent details. If a section or hiring field is not mentioned, return an empty string. Mark is_hiring true only when the transcript clearly shows a recruiting, applicant, technician hiring, resume, payout-to-technician, availability-to-work, vehicle/tools, training, onboarding, or job-offer discussion. Treat customer/service calls as service when they mention a broken appliance, service appointment, address, diagnostic fee, invoice, refund, warranty, parts, payment, or a customer asking for repair help. Detect the original spoken language. If the call is not fully English, keep the transcript as originally transcribed, but provide English summaries and translated key details.",
       input: `Transcript:\n${transcriptText}`,
       text: {
         format: {
@@ -501,10 +628,26 @@ async function analyzeTranscript(transcriptText) {
 }
 
 function normalizeAnalysisResult(analysis, transcriptText = "") {
-  const normalizedConversationType =
+  const keywordClassification = classifyTranscriptAudienceForCrm(transcriptText);
+  const modelConversationType =
     analysis?.conversation_type === "hiring" || analysis?.conversation_type === "other"
       ? analysis.conversation_type
       : "service";
+  const modelSaysHiring =
+    Boolean(analysis?.hiring_candidate?.is_hiring) || modelConversationType === "hiring";
+  let normalizedConversationType = modelConversationType;
+
+  if (keywordClassification.audience === "technician" && keywordClassification.confidence !== "low") {
+    normalizedConversationType = "hiring";
+  } else if (
+    keywordClassification.audience === "customer" &&
+    (keywordClassification.confidence === "high" || keywordClassification.technicianScore === 0)
+  ) {
+    normalizedConversationType = "service";
+  } else if (modelSaysHiring && keywordClassification.audience !== "customer") {
+    normalizedConversationType = "hiring";
+  }
+
   const inferredHiringDecision = inferHiringDecisionFromTranscript(transcriptText);
   const normalizedHiringStage = HIRING_CANDIDATE_STAGES.has(analysis?.hiring_candidate?.stage)
     ? analysis.hiring_candidate.stage
@@ -513,13 +656,13 @@ function normalizeAnalysisResult(analysis, transcriptText = "") {
     Boolean(analysis?.hiring_candidate?.is_hired) ||
     normalizedHiringStage === "onboarded" ||
     inferredHiringDecision.isHired;
-  const isHiringConversation =
-    Boolean(analysis?.hiring_candidate?.is_hiring) || normalizedConversationType === "hiring";
+  const isHiringConversation = normalizedConversationType === "hiring";
 
   return {
     headline: normalizeOptionalString(analysis?.headline),
     highlights: normalizeOptionalString(analysis?.highlights),
     conversationType: normalizedConversationType,
+    classification: keywordClassification,
     language: {
       originalLanguage: normalizeOptionalString(analysis?.language?.original_language) || "English",
       containsNonEnglish: Boolean(analysis?.language?.contains_non_english),
@@ -577,6 +720,7 @@ export async function transcribeAndAnalyzeTwilioRecording(payload, twilioConfig)
     callHighlights: analysis.highlights,
     callSummarySections: analysis.sections,
     conversationType: analysis.conversationType,
+    classification: analysis.classification,
     language: analysis.language,
     hiringCandidate: analysis.hiringCandidate,
   };
@@ -600,6 +744,7 @@ export async function analyzeTranscriptText(transcriptText) {
     callHighlights: analysis.highlights,
     callSummarySections: analysis.sections,
     conversationType: analysis.conversationType,
+    classification: analysis.classification,
     language: analysis.language,
     hiringCandidate: analysis.hiringCandidate,
   };
