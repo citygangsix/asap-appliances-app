@@ -136,6 +136,26 @@ export function NewHiresCandidatesPage() {
                   </div>
                   <div className="rounded-2xl bg-slate-50 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Starter packet
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">
+                      {selectedCandidate.starterPacketSentAtLabel
+                        ? `Sent by Twilio ${selectedCandidate.starterPacketSentAtLabel}`
+                        : "Not sent yet."}
+                    </p>
+                    {selectedCandidate.starterPacketUrl ? (
+                      <a
+                        className="mt-2 inline-flex text-sm font-semibold text-indigo-600 hover:text-indigo-500"
+                        href={selectedCandidate.starterPacketUrl}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Open packet
+                      </a>
+                    ) : null}
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                       Source
                     </p>
                     <p className="mt-3 text-sm leading-6 text-slate-700">

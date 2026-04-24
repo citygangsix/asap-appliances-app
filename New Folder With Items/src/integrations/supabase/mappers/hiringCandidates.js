@@ -59,6 +59,21 @@ function normalizeLanguage(row) {
   };
 }
 
+function normalizeStarterPacket(row) {
+  const starterPacket =
+    row.raw_analysis && typeof row.raw_analysis === "object" && row.raw_analysis.starterPacket
+      ? row.raw_analysis.starterPacket
+      : null;
+
+  return {
+    sentAt: starterPacket?.sentAt || null,
+    sentAtLabel: formatTimeLabelFromIso(starterPacket?.sentAt, null),
+    packetUrl: starterPacket?.packetUrl || null,
+    providerMessageSid: starterPacket?.providerMessageSid || null,
+    status: starterPacket?.status || null,
+  };
+}
+
 /**
  * @param {HiringCandidateRow} row
  * @returns {HiringCandidate}
@@ -66,6 +81,7 @@ function normalizeLanguage(row) {
 export function mapHiringCandidateRowToDomain(row) {
   const manualOutreach = normalizeManualOutreach(row);
   const language = normalizeLanguage(row);
+  const starterPacket = normalizeStarterPacket(row);
 
   return {
     candidateId: row.candidate_id,
@@ -103,6 +119,11 @@ export function mapHiringCandidateRowToDomain(row) {
     containsNonEnglish: language.containsNonEnglish,
     englishTranslationNote: language.englishTranslationNote,
     englishKeyDetails: language.englishKeyDetails,
+    starterPacketSentAt: starterPacket.sentAt,
+    starterPacketSentAtLabel: starterPacket.sentAtLabel,
+    starterPacketUrl: starterPacket.packetUrl,
+    starterPacketProviderMessageSid: starterPacket.providerMessageSid,
+    starterPacketStatus: starterPacket.status,
   };
 }
 

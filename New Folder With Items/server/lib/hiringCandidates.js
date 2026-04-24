@@ -1,4 +1,5 @@
 import { getTwilioServerConfig } from "./supabaseAdmin.js";
+import { sendStarterPacketToHiredCandidate } from "./hiringStarterPacket.js";
 
 const HIRING_CANDIDATE_STAGES = new Set([
   "contacted",
@@ -390,7 +391,14 @@ async function linkCandidateToTechnician(client, candidateRecord, technicianReco
   }
 
   if (candidateRecord.promoted_tech_id === technicianRecord.tech_id && candidateRecord.promoted_at) {
-    return candidateRecord;
+    const starterPacketResult = await sendStarterPacketToHiredCandidate(
+      client,
+      getTwilioServerConfig(),
+      candidateRecord,
+      technicianRecord,
+    );
+
+    return starterPacketResult.candidate || candidateRecord;
   }
 
   const result = await client
@@ -407,7 +415,14 @@ async function linkCandidateToTechnician(client, candidateRecord, technicianReco
     throw new Error(`hiringCandidates.linkPromotedTechnician: ${result.error.message}`);
   }
 
-  return result.data;
+  const starterPacketResult = await sendStarterPacketToHiredCandidate(
+    client,
+    getTwilioServerConfig(),
+    result.data,
+    technicianRecord,
+  );
+
+  return starterPacketResult.candidate || result.data;
 }
 
 function buildCandidatePayload({ existingCandidate, intelligence, targets, payload, candidatePhone }) {
