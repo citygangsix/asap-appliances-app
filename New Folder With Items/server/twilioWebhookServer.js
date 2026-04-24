@@ -1,4 +1,6 @@
+import fs from "node:fs/promises";
 import http from "node:http";
+import path from "node:path";
 import { URL } from "node:url";
 import { getServerSupabaseClient, getTwilioServerConfig } from "./lib/supabaseAdmin.js";
 import {
@@ -49,6 +51,19 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-Twilio-Signature, X-Thumbtack-Secret, X-ASAP-Webhook-Secret",
+};
+
+const STATIC_DIST_DIR = path.resolve(process.cwd(), "dist");
+const STATIC_CONTENT_TYPES = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 function readRequestBody(request) {
@@ -133,6 +148,46 @@ function respondTwiml(response, twiml = buildEmptyTwiml(), statusCode = 200) {
 function respondNoContent(response, statusCode = 204) {
   response.writeHead(statusCode, CORS_HEADERS);
   response.end();
+}
+
+async function fileExists(filepath) {
+  try {
+    const stat = await fs.stat(filepath);
+    return stat.isFile();
+  } catch (error) {
+    return false;
+  }
+}
+
+async function respondStaticFile(request, response, requestUrl) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return false;
+  }
+
+  const decodedPathname = decodeURIComponent(requestUrl.pathname);
+  const safePathname = decodedPathname.replace(/^\/+/u, "");
+  const requestedPath = path.resolve(STATIC_DIST_DIR, safePathname);
+  const isSafeDistPath =
+    requestedPath === STATIC_DIST_DIR || requestedPath.startsWith(`${STATIC_DIST_DIR}${path.sep}`);
+  const hasExtension = Boolean(path.extname(requestedPath));
+  const filepath =
+    isSafeDistPath && hasExtension && (await fileExists(requestedPath))
+      ? requestedPath
+      : path.join(STATIC_DIST_DIR, "index.html");
+
+  if (!(await fileExists(filepath))) {
+    return false;
+  }
+
+  const extension = path.extname(filepath);
+  const content = request.method === "HEAD" ? null : await fs.readFile(filepath);
+
+  response.writeHead(200, {
+    "Content-Type": STATIC_CONTENT_TYPES[extension] || "application/octet-stream",
+  });
+
+  response.end(content);
+  return true;
 }
 
 function buildWebhookUrl(baseUrl, pathname) {
@@ -438,6 +493,10 @@ async function routeRequest(request, response) {
 
   if (request.method === "POST" && requestUrl.pathname === CLICK_TO_CALL_STATUS_PATH) {
     await handleClickToCallStatusWebhook(request, response, requestUrl.pathname);
+    return;
+  }
+
+  if (await respondStaticFile(request, response, requestUrl)) {
     return;
   }
 
