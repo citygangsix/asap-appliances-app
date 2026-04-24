@@ -188,7 +188,7 @@ export function PhonePage() {
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
                 inputMode="tel"
                 onChange={(event) => setAgentPhone(event.target.value)}
-                placeholder="Server default: 561-878-1674"
+                placeholder="Server default: 561-564-1545"
                 type="tel"
                 value={formattedAgentPhone}
               />

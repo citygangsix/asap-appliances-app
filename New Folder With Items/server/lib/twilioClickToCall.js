@@ -390,6 +390,40 @@ function resolveManagedBusinessPhoneNumber(config, requestedPhoneNumber) {
   };
 }
 
+function resolveClickToCallAgentPhone(config, requestedPhoneNumber) {
+  const configuredAgentPhone =
+    normalizePhoneNumber(toNullableString(config.clickToCallAgentNumber)) ||
+    toNullableString(config.clickToCallAgentNumber);
+  const requestedAgentPhone =
+    normalizePhoneNumber(toNullableString(requestedPhoneNumber)) || toNullableString(requestedPhoneNumber);
+  const managedPhoneNumbers =
+    Array.isArray(config.managedPhoneNumbers) && config.managedPhoneNumbers.length
+      ? config.managedPhoneNumbers
+      : [config.phoneNumber].filter(Boolean);
+  const normalizedManagedPhones = new Set(
+    managedPhoneNumbers.map((phoneNumber) => normalizePhoneNumber(phoneNumber)).filter(Boolean),
+  );
+
+  if (!requestedAgentPhone) {
+    return {
+      agentPhone: configuredAgentPhone,
+      ignoredRequestedAgentPhone: null,
+    };
+  }
+
+  if (normalizedManagedPhones.has(normalizePhoneNumber(requestedAgentPhone))) {
+    return {
+      agentPhone: requestedAgentPhone,
+      ignoredRequestedAgentPhone: null,
+    };
+  }
+
+  return {
+    agentPhone: configuredAgentPhone,
+    ignoredRequestedAgentPhone: requestedAgentPhone,
+  };
+}
+
 async function placeTwilioApiCall({
   accountSid,
   authToken,
@@ -586,9 +620,10 @@ export async function requestClickToCall(payload = {}) {
   const customerPhone = toNullableString(payload.customerPhone);
   const normalizedCustomerPhone = normalizePhoneNumber(customerPhone) || customerPhone;
   const customerName = toNullableString(payload.customerName) || "customer";
-  const requestedAgentPhone =
-    normalizePhoneNumber(toNullableString(payload.agentPhone)) || toNullableString(payload.agentPhone);
-  const agentPhone = requestedAgentPhone || toNullableString(config.clickToCallAgentNumber);
+  const { agentPhone, ignoredRequestedAgentPhone } = resolveClickToCallAgentPhone(
+    config,
+    payload.agentPhone,
+  );
   const dryRun = payload.dryRun === true;
   const triggerSource = resolveTriggerSource(payload);
   const isAutomated = isAutomatedTrigger(triggerSource, payload.manualRetry === true);
@@ -637,6 +672,7 @@ export async function requestClickToCall(payload = {}) {
       dryRun: true,
       preview: {
         agentPhone,
+        ignoredRequestedAgentPhone,
         businessPhoneNumber,
         customerPhone,
         customerName,
@@ -730,8 +766,9 @@ export async function requestClickToCall(payload = {}) {
       ok: false,
       status: 503,
       dryRun: false,
-      agentPhone,
-      customerPhone,
+    agentPhone,
+    ignoredRequestedAgentPhone,
+    customerPhone,
       message: `TWILIO_WEBHOOK_BASE_URL is not serving the webhook server. Checked ${webhookHealth.healthUrl}. ${webhookHealth.detail} Restart the tunnel, update TWILIO_WEBHOOK_BASE_URL, and restart the webhook server before using click-to-call.`,
     };
   }
@@ -800,6 +837,7 @@ export async function requestClickToCall(payload = {}) {
     dryRun: false,
     providerCallSid: twilioResponse?.sid || null,
     agentPhone,
+    ignoredRequestedAgentPhone,
     businessPhoneNumber,
     customerPhone,
     followUpPolicy,
