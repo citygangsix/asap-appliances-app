@@ -1,0 +1,66 @@
+name: Deploy ASAP CRM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: New Folder With Items
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: New Folder With Items/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_APP_DATA_SOURCE: supabase
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://gntijouqttihazdupoiu.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Xp5nmASlNf44ALxGAR-j2w_nUQjCBOB' }}
+          VITE_ASAP_AUTH_EMAIL: ${{ secrets.VITE_ASAP_AUTH_EMAIL || 'citygang6@gmail.com' }}
+          VITE_ASAP_AUTH_PASSWORD_SHA256: ${{ secrets.VITE_ASAP_AUTH_PASSWORD_SHA256 || '1e9eb03eadc92cb0df2ac4e1cdc4591f1b578e395afbad882ffbf1fb1a0f2f35' }}
+          VITE_LOCAL_OPERATIONS_SERVER_URL: ${{ secrets.VITE_LOCAL_OPERATIONS_SERVER_URL || 'https://retold-playback-cause.ngrok-free.dev' }}
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: New Folder With Items/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

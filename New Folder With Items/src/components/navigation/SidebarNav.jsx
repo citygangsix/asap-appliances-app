@@ -1,10 +1,16 @@
 import { NavLink } from "react-router-dom";
 import { navigationGroups } from "../../lib/constants/routes";
+import { logout } from "../../lib/auth/localAuth";
 
 /**
  * @param {{ mobileOpen: boolean, setMobileOpen: (value: boolean) => void }} props
  */
 export function SidebarNav({ mobileOpen, setMobileOpen }) {
+  function handleLogout() {
+    logout();
+    window.location.assign("/login");
+  }
+
   return (
     <>
       <div
@@ -66,9 +72,16 @@ export function SidebarNav({ mobileOpen, setMobileOpen }) {
         </nav>
 
         <div className="border-t border-[#2a2d36] px-7 py-4">
+          <button
+            className="mb-4 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left text-sm font-semibold text-slate-300 transition hover:bg-white/[0.08] hover:text-white"
+            onClick={handleLogout}
+            type="button"
+          >
+            Logout
+          </button>
           <div className="flex items-center gap-3 text-sm text-slate-400">
             <div className="h-3 w-3 rounded-full bg-orange-400" />
-            Mock data active
+            Protected dashboard
           </div>
         </div>
       </aside>

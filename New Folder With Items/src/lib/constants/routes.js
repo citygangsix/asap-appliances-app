@@ -5,7 +5,7 @@
 export const ROUTES = [
   {
     routeId: "home",
-    path: "/",
+    path: "/dashboard",
     label: "Home",
     icon: "◫",
     group: "Main",
@@ -14,7 +14,7 @@ export const ROUTES = [
   },
   {
     routeId: "jobs",
-    path: "/jobs",
+    path: "/dashboard/jobs",
     label: "Jobs",
     icon: "▣",
     group: "Main",
@@ -23,7 +23,7 @@ export const ROUTES = [
   },
   {
     routeId: "customers",
-    path: "/customers",
+    path: "/dashboard/customers",
     label: "Customers",
     icon: "◎",
     group: "Main",
@@ -32,7 +32,7 @@ export const ROUTES = [
   },
   {
     routeId: "dispatch",
-    path: "/dispatch",
+    path: "/dashboard/dispatch",
     label: "Dispatch",
     icon: "⇄",
     group: "Operations",
@@ -41,7 +41,7 @@ export const ROUTES = [
   },
   {
     routeId: "communications",
-    path: "/communications",
+    path: "/dashboard/communications",
     label: "Communications",
     icon: "✆",
     group: "Operations",
@@ -49,8 +49,17 @@ export const ROUTES = [
     alert: "Texts, calls, and extracted event review",
   },
   {
+    routeId: "phone",
+    path: "/dashboard/phone",
+    label: "Phone",
+    icon: "☎",
+    group: "Operations",
+    eyebrow: "Browser dialer",
+    alert: "Twilio Voice command center",
+  },
+  {
     routeId: "invoices",
-    path: "/invoices",
+    path: "/dashboard/invoices",
     label: "Invoices",
     icon: "$",
     group: "Operations",
@@ -59,7 +68,7 @@ export const ROUTES = [
   },
   {
     routeId: "revenue",
-    path: "/revenue",
+    path: "/dashboard/revenue",
     label: "Revenue",
     icon: "◔",
     group: "Operations",
@@ -68,7 +77,7 @@ export const ROUTES = [
   },
   {
     routeId: "technicians",
-    path: "/technicians",
+    path: "/dashboard/technicians",
     label: "Technicians",
     icon: "⚙",
     group: "People",
@@ -77,7 +86,7 @@ export const ROUTES = [
   },
   {
     routeId: "settings",
-    path: "/settings",
+    path: "/dashboard/settings",
     label: "Settings",
     icon: "⋯",
     group: "System",

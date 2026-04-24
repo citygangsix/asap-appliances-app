@@ -12,6 +12,15 @@
     />
   </head>
   <body class="bg-slate-100">
+    <script>
+      (function () {
+        var redirect = sessionStorage.getItem("asap-crm-spa-redirect");
+        if (!redirect) return;
+        sessionStorage.removeItem("asap-crm-spa-redirect");
+        var url = new URL(redirect);
+        history.replaceState(null, "", url.pathname + url.search + url.hash);
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="./src/main.jsx"></script>
   </body>

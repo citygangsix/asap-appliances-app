@@ -23,6 +23,12 @@ import {
 import { handleThumbtackLeadRequest } from "./lib/thumbtackLeadBridge.js";
 import { logManualCall } from "./lib/manualCallLogs.js";
 import { persistRecordingStatusCallback } from "./lib/twilioVoiceRecordings.js";
+import {
+  buildBrowserCallTwiml,
+  requestBrowserCall,
+  requestBrowserHangup,
+  requestBrowserVoiceToken,
+} from "./lib/twilioBrowserCalling.js";
 
 const SMS_WEBHOOK_PATH = "/api/twilio/sms";
 const VOICE_WEBHOOK_PATH = "/api/twilio/voice";
@@ -31,6 +37,10 @@ const RECORDING_STATUS_WEBHOOK_PATH = "/api/twilio/recordings/status";
 const CLICK_TO_CALL_PATH = "/api/twilio/outbound/calls";
 const CLICK_TO_CALL_BRIDGE_PATH = "/api/twilio/outbound/bridge";
 const CLICK_TO_CALL_STATUS_PATH = "/api/twilio/outbound/calls/status";
+const BROWSER_CALL_PATH = "/api/twilio/browser-call";
+const BROWSER_CALL_TWIML_PATH = "/api/twilio/browser-call/twiml";
+const BROWSER_HANGUP_PATH = "/api/twilio/hangup";
+const BROWSER_VOICE_TOKEN_PATH = "/api/twilio/voice-token";
 const THUMBTACK_LEAD_PATH = "/api/thumbtack/lead";
 const MANUAL_CALL_LOG_PATH = "/api/manual/calls/log";
 
@@ -235,6 +245,35 @@ async function handleClickToCallRequest(request, response) {
   respondJson(response, result.status || (result.ok ? 200 : 500), result);
 }
 
+async function handleBrowserCallRequest(request, response) {
+  const body = await readRequestBody(request);
+  const result = await requestBrowserCall(parseJsonBody(body));
+  respondJson(response, result.status || (result.ok ? 200 : 500), result);
+}
+
+async function handleBrowserHangupRequest(request, response) {
+  const body = await readRequestBody(request);
+  const result = await requestBrowserHangup(parseJsonBody(body));
+  respondJson(response, result.status || (result.ok ? 200 : 500), result);
+}
+
+async function handleBrowserVoiceTokenRequest(request, response) {
+  const result = await requestBrowserVoiceToken();
+  respondJson(response, result.status || (result.ok ? 200 : 500), result);
+}
+
+async function handleBrowserCallTwimlRequest(request, response, pathname) {
+  const validatedRequest = await validateTwilioWebhookRequest(request, response, {
+    requireMatchingTo: false,
+  });
+
+  if (!validatedRequest) {
+    return;
+  }
+
+  respondTwiml(response, buildBrowserCallTwiml(validatedRequest.config, validatedRequest.payload));
+}
+
 async function handleThumbtackLeadWebhook(request, response) {
   const body = await readRequestBody(request);
   const result = await handleThumbtackLeadRequest(parseJsonBody(body), request.headers);
@@ -339,6 +378,26 @@ async function routeRequest(request, response) {
     return;
   }
 
+  if (request.method === "POST" && requestUrl.pathname === BROWSER_CALL_PATH) {
+    await handleBrowserCallRequest(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === BROWSER_CALL_TWIML_PATH) {
+    await handleBrowserCallTwimlRequest(request, response, requestUrl.pathname);
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === BROWSER_HANGUP_PATH) {
+    await handleBrowserHangupRequest(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === BROWSER_VOICE_TOKEN_PATH) {
+    await handleBrowserVoiceTokenRequest(request, response);
+    return;
+  }
+
   if (request.method === "POST" && requestUrl.pathname === THUMBTACK_LEAD_PATH) {
     await handleThumbtackLeadWebhook(request, response);
     return;
@@ -403,6 +462,10 @@ server.listen(port, () => {
   console.log(`[twilio-webhooks] click-to-call route: ${CLICK_TO_CALL_PATH}`);
   console.log(`[twilio-webhooks] click-to-call bridge route: ${CLICK_TO_CALL_BRIDGE_PATH}`);
   console.log(`[twilio-webhooks] click-to-call status route: ${CLICK_TO_CALL_STATUS_PATH}`);
+  console.log(`[twilio-webhooks] browser call route: ${BROWSER_CALL_PATH}`);
+  console.log(`[twilio-webhooks] browser call TwiML route: ${BROWSER_CALL_TWIML_PATH}`);
+  console.log(`[twilio-webhooks] browser voice token route: ${BROWSER_VOICE_TOKEN_PATH}`);
+  console.log(`[twilio-webhooks] browser hangup route: ${BROWSER_HANGUP_PATH}`);
   console.log(`[twilio-webhooks] thumbtack lead route: ${THUMBTACK_LEAD_PATH}`);
   console.log(`[twilio-webhooks] manual call log route: ${MANUAL_CALL_LOG_PATH}`);
   console.log("[twilio-webhooks] invoice sms route: /api/invoices/send-lumia");
