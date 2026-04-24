@@ -28,7 +28,7 @@ export function LoginPage() {
       return;
     }
 
-    navigate(redirectTo.startsWith("/login") ? "/dashboard" : redirectTo, { replace: true });
+    navigate(redirectTo.startsWith("/dashboard/login") ? "/dashboard" : redirectTo, { replace: true });
   }
 
   return (

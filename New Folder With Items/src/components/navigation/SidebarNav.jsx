@@ -8,7 +8,7 @@ import { logout } from "../../lib/auth/localAuth";
 export function SidebarNav({ mobileOpen, setMobileOpen }) {
   function handleLogout() {
     logout();
-    window.location.assign("/login");
+    window.location.assign("/dashboard/login");
   }
 
   return (
