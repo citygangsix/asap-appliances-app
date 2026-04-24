@@ -95,14 +95,14 @@ async function requestClickToCall(payload) {
 
 export function PhonePage() {
   const [rawNumber, setRawNumber] = useState("");
-  const [agentPhone, setAgentPhone] = useState(AGENT_PHONE_PRESETS[0].phone);
+  const [agentPhone, setAgentPhone] = useState("");
   const [status, setStatus] = useState("Ready");
   const [message, setMessage] = useState("Enter a customer number and start the Twilio bridge.");
   const formattedNumber = useMemo(() => formatUsPhone(rawNumber), [rawNumber]);
   const formattedAgentPhone = useMemo(() => formatUsPhone(agentPhone), [agentPhone]);
   const e164Number = useMemo(() => toE164(rawNumber), [rawNumber]);
   const e164AgentPhone = useMemo(() => toE164(agentPhone), [agentPhone]);
-  const canCall = Boolean(e164Number && e164AgentPhone) && status !== "Calling";
+  const canCall = Boolean(e164Number) && status !== "Calling";
 
   function appendDigit(value) {
     if (value === "*" || value === "#") {
@@ -128,21 +128,27 @@ export function PhonePage() {
       return;
     }
 
+    const selectedAgentPhone = e164AgentPhone || null;
+
     setStatus("Calling");
-    setMessage(`Calling ${formattedAgentPhone} first. Answer it to connect ${formattedNumber}.`);
+    setMessage(
+      selectedAgentPhone
+        ? `Calling ${formatUsPhone(selectedAgentPhone)} first. Answer it to connect ${formattedNumber}.`
+        : `Calling the configured office phone first. Answer it to connect ${formattedNumber}.`,
+    );
 
     try {
       const result = await requestClickToCall({
         customerName: formattedNumber || e164Number,
         customerPhone: e164Number,
-        agentPhone: e164AgentPhone,
+        ...(selectedAgentPhone ? { agentPhone: selectedAgentPhone } : {}),
         triggerSource: "manual_phone_dialer",
       });
       setStatus("Sent");
       setMessage(
         result.message
           ? `${result.message} Customer sees ${result.businessPhoneNumber || "the Twilio number"}.`
-          : `Twilio is calling ${formattedAgentPhone}. Customer sees ${result.businessPhoneNumber || "the Twilio number"}.`,
+          : `Twilio is calling ${formatUsPhone(result.agentPhone || selectedAgentPhone || "") || "the configured phone"}. Customer sees ${result.businessPhoneNumber || "the Twilio number"}.`,
       );
     } catch (error) {
       setStatus("Failed");
@@ -182,7 +188,7 @@ export function PhonePage() {
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
                 inputMode="tel"
                 onChange={(event) => setAgentPhone(event.target.value)}
-                placeholder="(561) 564-1545"
+                placeholder="Server default: 561-878-1674"
                 type="tel"
                 value={formattedAgentPhone}
               />
@@ -280,7 +286,7 @@ export function PhonePage() {
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
               <p>
                 This screen posts to <span className="font-semibold text-white">POST /api/twilio/outbound/calls</span>,
-                then Twilio rings the selected phone before bridging the customer.
+                then Twilio rings the configured office phone, or the selected override, before bridging the customer.
               </p>
               <p>
                 The customer sees the configured Twilio business number, and the call can be recorded through the CRM callback path.
