@@ -93,6 +93,7 @@ The webhook server also exposes `POST /api/thumbtack/lead`, which takes a protec
 - Invoices now support real invoice creation and payment-status updates through the Supabase-backed repository path.
 - Live invoice creation now attempts a server-side Twilio SMS summary plus a short voice call to the assistant or office phone after the invoice row is created.
 - Dispatch now supports saving ETA text updates and then sending text or call notifications to the technician and customer from the same UI flow.
+- Dispatch now includes a map workspace for technician pins, incoming leads, route links, and gas mileage reimbursement estimates.
 - Dispatch workflow automation now supports one-hour customer heads-up scheduling, diagnosis invoice generation, paid-invoice confirmations, and a 10-minute final-work labor invoice workflow on the local server.
 - Thumbtack lead intake can now trigger the same Twilio agent-first bridge flow through `POST /api/thumbtack/lead`.
 - Communications review, approve/reject, and attach-to-job actions now use the real Supabase-backed repository path from the UI.
