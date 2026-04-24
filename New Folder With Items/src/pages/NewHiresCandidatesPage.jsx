@@ -55,6 +55,7 @@ async function requestLiveHiringCandidates() {
 export function NewHiresCandidatesPage() {
   const repository = getOperationsRepository();
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [activeTab, setActiveTab] = useState("all");
   const [selectedCandidateId, setSelectedCandidateId] = useState(null);
   const [liveCandidates, setLiveCandidates] = useState(null);
   const [liveCandidatesError, setLiveCandidatesError] = useState(null);
@@ -80,7 +81,9 @@ export function NewHiresCandidatesPage() {
       setIsLiveCandidatesLoading(false);
     }
   }, []);
-  const candidates = liveCandidates ?? data?.hiringCandidates ?? [];
+  const allCandidates = liveCandidates ?? data?.hiringCandidates ?? [];
+  const hiredCandidates = allCandidates.filter(isCandidateHired);
+  const candidates = activeTab === "hired" ? hiredCandidates : allCandidates;
   const selectedCandidate =
     candidates.find((candidate) => candidate.candidateId === selectedCandidateId) ||
     candidates[0] ||
@@ -152,7 +155,20 @@ export function NewHiresCandidatesPage() {
           </SecondaryButton>
         </div>
       }
-      tabs={[{ label: "New Hires Candidates", active: true }, { label: "Hired Technicians" }]}
+      tabs={[
+        {
+          id: "all",
+          label: `New Hires Candidates (${allCandidates.length})`,
+          active: activeTab === "all",
+          onClick: () => setActiveTab("all"),
+        },
+        {
+          id: "hired",
+          label: `Hired Technicians (${hiredCandidates.length})`,
+          active: activeTab === "hired",
+          onClick: () => setActiveTab("hired"),
+        },
+      ]}
       contentClassName="grid gap-6 p-4 sm:p-6 lg:grid-cols-[0.92fr_1.08fr] lg:p-8"
     >
       {isPageLoading ? (
@@ -168,8 +184,12 @@ export function NewHiresCandidatesPage() {
             {candidates.length === 0 ? (
               <Card className="p-6">
                 <PageStateNotice
-                  title="No hiring candidates yet"
-                  message="After a recorded hiring call is transcribed, new candidate records will land here."
+                  title={activeTab === "hired" ? "No hired technicians yet" : "No hiring candidates yet"}
+                  message={
+                    activeTab === "hired"
+                      ? "When a candidate is promoted to the technician roster, they will show here with a green check."
+                      : "After a recorded hiring call is transcribed, new candidate records will land here."
+                  }
                 />
               </Card>
             ) : (

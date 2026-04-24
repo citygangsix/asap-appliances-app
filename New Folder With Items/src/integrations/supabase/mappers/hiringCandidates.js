@@ -82,6 +82,7 @@ export function mapHiringCandidateRowToDomain(row) {
   const manualOutreach = normalizeManualOutreach(row);
   const language = normalizeLanguage(row);
   const starterPacket = normalizeStarterPacket(row);
+  const stage = row.promoted_tech_id && row.stage !== "rejected" ? "onboarded" : row.stage;
 
   return {
     candidateId: row.candidate_id,
@@ -89,7 +90,7 @@ export function mapHiringCandidateRowToDomain(row) {
     primaryPhone: row.primary_phone || null,
     email: row.email || null,
     source: row.source || null,
-    stage: row.stage,
+    stage,
     trade: row.trade || null,
     city: row.city || null,
     serviceArea: row.service_area || null,

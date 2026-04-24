@@ -45,6 +45,8 @@ export function PageTabs({ tabs }) {
                 ? "border-indigo-500 text-indigo-500"
                 : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
+            onClick={tab.onClick}
+            type="button"
           >
             {tab.label}
           </button>

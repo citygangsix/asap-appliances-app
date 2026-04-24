@@ -89,6 +89,18 @@ function normalizeCandidateStage(value) {
   return HIRING_CANDIDATE_STAGES.has(value) ? value : "contacted";
 }
 
+function resolveCandidateStage(hiringCandidate = {}, existingCandidate = null) {
+  if (
+    existingCandidate?.promoted_tech_id ||
+    existingCandidate?.stage === "onboarded" ||
+    hiringCandidate.isHired
+  ) {
+    return "onboarded";
+  }
+
+  return normalizeCandidateStage(hiringCandidate.stage || existingCandidate?.stage);
+}
+
 function getPreferredCallNumbers(target) {
   if (!target) {
     return [];
@@ -404,6 +416,7 @@ async function linkCandidateToTechnician(client, candidateRecord, technicianReco
   const result = await client
     .from("hiring_candidates")
     .update({
+      stage: "onboarded",
       promoted_tech_id: technicianRecord.tech_id,
       promoted_at: candidateRecord.promoted_at || new Date().toISOString(),
     })
@@ -445,7 +458,7 @@ function buildCandidatePayload({ existingCandidate, intelligence, targets, paylo
     primary_phone: candidatePhone || existingCandidate?.primary_phone || null,
     email: coalesceString(hiringCandidate.email, existingCandidate?.email),
     source: coalesceString(hiringCandidate.source, existingCandidate?.source, "Call transcript"),
-    stage: normalizeCandidateStage(hiringCandidate.stage || existingCandidate?.stage),
+    stage: resolveCandidateStage(hiringCandidate, existingCandidate),
     trade: coalesceString(hiringCandidate.trade, existingCandidate?.trade),
     city: coalesceString(hiringCandidate.city, existingCandidate?.city),
     service_area: coalesceString(hiringCandidate.serviceArea, existingCandidate?.service_area),
