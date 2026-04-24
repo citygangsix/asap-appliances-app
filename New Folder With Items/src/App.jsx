@@ -1,5 +1,4 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AppShell } from "./components/layout/AppShell";
 import { CommunicationsPage } from "./pages/CommunicationsPage";
 import { CustomersPage } from "./pages/CustomersPage";
@@ -51,23 +50,21 @@ function PublicNotFoundPage() {
 function App() {
   return (
     <Routes>
-      <Route path="/dashboard/login" element={<LoginPage />} />
+      <Route path="/dashboard/login" element={<Navigate replace to="/dashboard" />} />
 
-      <Route element={<ProtectedRoute />}>
-        <Route path="/dashboard" element={<AppShell />}>
-          <Route index element={<HomePage />} />
-          <Route path="jobs" element={<JobsPage />} />
-          <Route path="customers" element={<CustomersPage />} />
-          <Route path="dispatch" element={<DispatchPage />} />
-          <Route path="communications" element={<CommunicationsPage />} />
-          <Route path="phone" element={<PhonePage />} />
-          <Route path="invoices" element={<InvoicesPage />} />
-          <Route path="revenue" element={<RevenuePage />} />
-          <Route path="technicians" element={<TechniciansPage />} />
-          <Route path="new-hires-candidates" element={<NewHiresCandidatesPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate replace to="/dashboard" />} />
-        </Route>
+      <Route path="/dashboard" element={<AppShell />}>
+        <Route index element={<HomePage />} />
+        <Route path="jobs" element={<JobsPage />} />
+        <Route path="customers" element={<CustomersPage />} />
+        <Route path="dispatch" element={<DispatchPage />} />
+        <Route path="communications" element={<CommunicationsPage />} />
+        <Route path="phone" element={<PhonePage />} />
+        <Route path="invoices" element={<InvoicesPage />} />
+        <Route path="revenue" element={<RevenuePage />} />
+        <Route path="technicians" element={<TechniciansPage />} />
+        <Route path="new-hires-candidates" element={<NewHiresCandidatesPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="*" element={<Navigate replace to="/dashboard" />} />
       </Route>
 
       <Route path="/" element={<PublicWebsiteHome />} />
