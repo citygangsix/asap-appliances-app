@@ -99,8 +99,14 @@ export function mapHiringCandidateRowToDomain(row) {
     availabilitySummary: row.availability_summary || null,
     availabilityDays: row.availability_days || [],
     availabilityTimePreferences: row.availability_time_preferences || [],
+    currentJobStatus: row.current_job_status || null,
+    toolsStatus: row.tools_status || null,
+    vehicleStatus: row.vehicle_status || null,
+    toolsVehicleSummary: row.tools_vehicle_summary || null,
     payoutExpectationSummary: row.payout_expectation_summary || null,
     experienceSummary: row.experience_summary || null,
+    applianceExperienceSummary: row.appliance_experience_summary || null,
+    otherWorkExperienceSummary: row.other_work_experience_summary || null,
     nextStep: row.next_step || null,
     callHighlights: row.call_highlights || "",
     transcriptText: row.transcript_text || "",
@@ -148,12 +154,26 @@ export function mapHiringCandidatePatchToUpdate(patch) {
       patch.availabilitySummary === undefined ? undefined : toNullable(patch.availabilitySummary),
     availability_days: patch.availabilityDays,
     availability_time_preferences: patch.availabilityTimePreferences,
+    current_job_status:
+      patch.currentJobStatus === undefined ? undefined : toNullable(patch.currentJobStatus),
+    tools_status: patch.toolsStatus === undefined ? undefined : toNullable(patch.toolsStatus),
+    vehicle_status: patch.vehicleStatus === undefined ? undefined : toNullable(patch.vehicleStatus),
+    tools_vehicle_summary:
+      patch.toolsVehicleSummary === undefined ? undefined : toNullable(patch.toolsVehicleSummary),
     payout_expectation_summary:
       patch.payoutExpectationSummary === undefined
         ? undefined
         : toNullable(patch.payoutExpectationSummary),
     experience_summary:
       patch.experienceSummary === undefined ? undefined : toNullable(patch.experienceSummary),
+    appliance_experience_summary:
+      patch.applianceExperienceSummary === undefined
+        ? undefined
+        : toNullable(patch.applianceExperienceSummary),
+    other_work_experience_summary:
+      patch.otherWorkExperienceSummary === undefined
+        ? undefined
+        : toNullable(patch.otherWorkExperienceSummary),
     next_step: patch.nextStep === undefined ? undefined : toNullable(patch.nextStep),
     call_highlights: patch.callHighlights === undefined ? undefined : toNullable(patch.callHighlights),
     transcript_text: patch.transcriptText === undefined ? undefined : toNullable(patch.transcriptText),

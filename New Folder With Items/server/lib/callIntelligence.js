@@ -38,7 +38,9 @@ const TECHNICIAN_RECRUITING_PATTERNS = [
   { label: "resume/source", weight: 5, pattern: /\b(resume|indeed|zip\s*recruiter|ziprecruiter|applicant|candidate|applied|application)\b/iu },
   { label: "job offer", weight: 5, pattern: /\b(offer\s+you\s+(some\s+)?work|technician\s+(position|role|job)|appliance\s+repair\s+(position|role|job)|looking\s+for\s+(technicians?|help|work))\b/iu },
   { label: "experience screening", weight: 4, pattern: /\b(do\s+you\s+have\s+(any\s+)?experience|how\s+(many|much)\s+.*experience|years?\s+of\s+experience|worked\s+on\s+(washers?|dryers?|refrigerators?|fridges?|ovens?|stoves?|dishwashers?))\b/iu },
-  { label: "tech requirements", weight: 4, pattern: /\b(do\s+you\s+have\s+(a\s+)?(vehicle|car|truck|tools?|multimeter)|reliable\s+(vehicle|car|transportation)|own\s+tools?|epa\s+(universal|certified)|certifications?)\b/iu },
+  { label: "tech requirements", weight: 4, pattern: /\b(do\s+you\s+have\s+(a\s+)?(vehicle|car|truck|tools?|multimeter)|reliable\s+(vehicle|car|transportation)|own\s+tools?|tool\s+bag|meters?|epa\s+(universal|certified)|certifications?)\b/iu },
+  { label: "current job status", weight: 4, pattern: /\b(current(?:ly)?\s+(?:working|employed|with|doing)|full[- ]?time|part[- ]?time|side\s+(?:work|jobs?)|freelance|self[- ]?employed|contract(?:or|s)?|give\s+(?:notice|two\s+weeks)|after\s+(?:my\s+)?(?:job|work|shift)|before\s+(?:my\s+)?(?:job|work|shift))\b/iu },
+  { label: "tools and vehicle", weight: 4, pattern: /\b(my|own|have|got)\s+(?:a\s+)?(?:vehicle|car|truck|suv|van|tools?|tool\s+bag|meter|multimeter|gauges?)\b/iu },
   { label: "tech payout", weight: 4, pattern: /\b(we\s+pay|pay\s+you|payout|paid\s+daily|diagnostics?\s+(?:is|are|pay|pays?)\s*\$?\d+|\$\d+\s*(?:to|-)\s*\$?\d+\s+(?:for\s+)?(?:diagnostics?|installs?|installations?)|gas\s+(?:covered|paid|reimbursement))\b/iu },
   { label: "availability to work", weight: 3, pattern: /\b(what(?:'s| is)\s+your\s+availability|when\s+are\s+you\s+available|available\s+(?:after|before|on|monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekends?|weekdays?))\b/iu },
   { label: "field training", weight: 4, pattern: /\b(field\s+training|on[- ]?field\s+training|train(?:ing)?\s+you|get\s+you\s+trained|ride[- ]?along|trial\s+(day|job|route|call))\b/iu },
@@ -93,6 +95,16 @@ function readOptionalEnv(key) {
 
 function normalizeOptionalString(value) {
   return String(value || "").trim();
+}
+
+function normalizeYesNoUnclear(value) {
+  const normalized = normalizeOptionalString(value).toLowerCase();
+
+  if (normalized === "yes" || normalized === "no" || normalized === "unclear") {
+    return normalized;
+  }
+
+  return normalized ? "unclear" : "";
 }
 
 function normalizeOptionalIsoDate(value) {
@@ -420,7 +432,7 @@ async function analyzeTranscript(transcriptText) {
     body: JSON.stringify({
       model: analysisModel,
       instructions:
-        "You analyze business phone calls for an appliance company. Some calls are customer service calls, and some are hiring or recruiting calls. Return strict JSON only. Be concise, factual, and never invent details. If a section or hiring field is not mentioned, return an empty string. Mark is_hiring true only when the transcript clearly shows a recruiting, applicant, technician hiring, resume, payout-to-technician, availability-to-work, vehicle/tools, training, onboarding, or job-offer discussion. Treat customer/service calls as service when they mention a broken appliance, service appointment, address, diagnostic fee, invoice, refund, warranty, parts, payment, or a customer asking for repair help. Detect the original spoken language. If the call is not fully English, keep the transcript as originally transcribed, but provide English summaries and translated key details.",
+        "You analyze business phone calls for an appliance company. Some calls are customer service calls, and some are hiring or recruiting calls. Return strict JSON only. Be concise, factual, and never invent details. If a section or hiring field is not mentioned, return an empty string. Mark is_hiring true only when the transcript clearly shows a recruiting, applicant, technician hiring, resume, payout-to-technician, availability-to-work, current-job-status, vehicle/tools, training, onboarding, or job-offer discussion. Hiring key points include: availability to work, whether the candidate currently has a job or side work, whether they have tools, whether they have a reliable vehicle, whether they have appliance repair experience, and what other work experience they have. Treat customer/service calls as service when they mention a broken appliance, service appointment, address, diagnostic fee, invoice, refund, warranty, parts, payment, or a customer asking for repair help. Detect the original spoken language. If the call is not fully English, keep the transcript as originally transcribed, but provide English summaries and translated key details.",
       input: `Transcript:\n${transcriptText}`,
       text: {
         format: {
@@ -521,8 +533,14 @@ async function analyzeTranscript(transcriptText) {
                   "availability_summary",
                   "availability_days",
                   "availability_time_preferences",
+                  "current_job_status",
+                  "tools_status",
+                  "vehicle_status",
+                  "tools_vehicle_summary",
                   "payout_expectation_summary",
                   "experience_summary",
+                  "appliance_experience_summary",
+                  "other_work_experience_summary",
                   "next_step",
                 ],
                 properties: {
@@ -594,8 +612,40 @@ async function analyzeTranscript(transcriptText) {
                       ],
                     },
                   },
+                  current_job_status: {
+                    type: "string",
+                    description:
+                      "What the candidate said about current employment, side work, freelance work, notice needed, or working around an existing job. Leave blank if not discussed.",
+                  },
+                  tools_status: {
+                    type: "string",
+                    enum: ["yes", "no", "unclear"],
+                    description:
+                      "Use yes only if the candidate clearly has tools; no only if they clearly do not; otherwise unclear.",
+                  },
+                  vehicle_status: {
+                    type: "string",
+                    enum: ["yes", "no", "unclear"],
+                    description:
+                      "Use yes only if the candidate clearly has reliable transportation or a vehicle; no only if they clearly do not; otherwise unclear.",
+                  },
+                  tools_vehicle_summary: {
+                    type: "string",
+                    description:
+                      "Short summary of tools, vehicle, transportation, mileage, gas, and field-readiness details. Leave blank if not discussed.",
+                  },
                   payout_expectation_summary: { type: "string" },
                   experience_summary: { type: "string" },
+                  appliance_experience_summary: {
+                    type: "string",
+                    description:
+                      "Specific experience doing appliance repair work, including refrigeration, laundry, cooking, sealed systems, diagnostics, warranty, or out-of-warranty repairs.",
+                  },
+                  other_work_experience_summary: {
+                    type: "string",
+                    description:
+                      "Other work experience mentioned, such as AC/HVAC, electrical, installs, factory warranty networks, dispatching, sales, or unrelated trades.",
+                  },
                   next_step: { type: "string" },
                 },
               },
@@ -700,10 +750,22 @@ function normalizeAnalysisResult(analysis, transcriptText = "") {
         analysis?.hiring_candidate?.availability_time_preferences,
         HIRING_AVAILABILITY_TIME_PREFERENCES,
       ),
+      currentJobStatus: normalizeOptionalString(analysis?.hiring_candidate?.current_job_status),
+      toolsStatus: normalizeYesNoUnclear(analysis?.hiring_candidate?.tools_status),
+      vehicleStatus: normalizeYesNoUnclear(analysis?.hiring_candidate?.vehicle_status),
+      toolsVehicleSummary: normalizeOptionalString(
+        analysis?.hiring_candidate?.tools_vehicle_summary,
+      ),
       payoutExpectationSummary: normalizeOptionalString(
         analysis?.hiring_candidate?.payout_expectation_summary,
       ),
       experienceSummary: normalizeOptionalString(analysis?.hiring_candidate?.experience_summary),
+      applianceExperienceSummary: normalizeOptionalString(
+        analysis?.hiring_candidate?.appliance_experience_summary,
+      ),
+      otherWorkExperienceSummary: normalizeOptionalString(
+        analysis?.hiring_candidate?.other_work_experience_summary,
+      ),
       nextStep: normalizeOptionalString(analysis?.hiring_candidate?.next_step),
     },
   };

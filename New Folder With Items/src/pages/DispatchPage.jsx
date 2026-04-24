@@ -1,12 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DISPATCH_GROUPS } from "../lib/constants/status";
 import { formatStatusLabel, getJobsForDispatchGroup, getStatusTone } from "../lib/domain/jobs";
 import { Badge, Card, PrimaryButton, SecondaryButton } from "../components/ui";
+import { DispatchMapWorkspace } from "../components/dispatch/DispatchMapWorkspace";
 import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { getOperationsRepository } from "../lib/repositories";
 import { extractZipCode, findBestTechnicianForZip } from "../lib/domain/technicianCoverage";
+import {
+  buildDefaultVehicleProfile,
+  buildDispatchMapPoints,
+  buildDispatchRoutePlans,
+  buildLeadRecommendations,
+  calculateFuelReimbursement,
+  formatMiles,
+  formatMoney,
+  getAvailableRouteDates,
+  getTomorrowDateKey,
+} from "../lib/domain/dispatchRouting";
+import {
+  getLocalOperationsServerHeaders,
+  getLocalOperationsServerUrl,
+} from "../lib/config/localOperationsServer";
 
 const DISPATCH_ACTION_TONES = {
   emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -17,21 +33,12 @@ const DISPATCH_ACTION_TONES = {
 const ASSIGNMENT_FIELD_CLASS =
   "rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500";
 
-function getLocalOperationsServerUrl(pathname) {
-  const hostname =
-    typeof window !== "undefined" && window.location?.hostname
-      ? window.location.hostname
-      : "127.0.0.1";
-
-  return new URL(pathname, `http://${hostname}:8787`).toString();
-}
-
 async function requestDispatchEtaNotifications(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/workflows/dispatch"), {
     method: "POST",
-    headers: {
+    headers: getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify(payload),
   });
   const responseText = await response.text();
@@ -55,9 +62,9 @@ async function requestDispatchEtaNotifications(payload) {
 async function requestFinalWorkWorkflow(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/workflows/final-work"), {
     method: "POST",
-    headers: {
+    headers: getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify(payload),
   });
   const responseText = await response.text();
@@ -105,6 +112,17 @@ export function DispatchPage() {
   const [activeEtaJobId, setActiveEtaJobId] = useState(null);
   const [activeFinalWorkJobId, setActiveFinalWorkJobId] = useState(null);
   const [activeEscalationJobId, setActiveEscalationJobId] = useState(null);
+  const [selectedRouteDateKey, setSelectedRouteDateKey] = useState("all");
+  const [includeReturnToBase, setIncludeReturnToBase] = useState(true);
+  const [activeRouteTechId, setActiveRouteTechId] = useState("");
+  const [vehicleProfilesByTechId, setVehicleProfilesByTechId] = useState({});
+  const [routeShareFeedback, setRouteShareFeedback] = useState(null);
+  const [stagedRouteAssignment, setStagedRouteAssignment] = useState(null);
+  const [activeDispatchSection, setActiveDispatchSection] = useState("map");
+  const mapSectionRef = useRef(null);
+  const routeSectionRef = useRef(null);
+  const boardSectionRef = useRef(null);
+  const escalationSectionRef = useRef(null);
   const { data, error, isLoading } = useAsyncValue(() => repository.getDispatchPageData(), [repository, refreshNonce]);
 
   const refreshBoard = () => {
@@ -116,6 +134,59 @@ export function DispatchPage() {
   const technicians = data?.technicians || [];
   const unassignedJobs = data?.unassignedJobs || [];
   const attentionJobs = data?.attentionJobs || [];
+  const routeDateKey = selectedRouteDateKey === "all" ? null : selectedRouteDateKey;
+  const availableRouteDates = useMemo(() => getAvailableRouteDates(jobRecords), [jobRecords]);
+  const routeDateOptions = useMemo(() => {
+    const tomorrowDateKey = getTomorrowDateKey();
+    const optionMap = new Map([
+      ["all", "All active jobs"],
+      [tomorrowDateKey, `Tomorrow (${tomorrowDateKey})`],
+    ]);
+
+    availableRouteDates.forEach((dateKey) => {
+      if (!optionMap.has(dateKey)) {
+        optionMap.set(dateKey, dateKey);
+      }
+    });
+
+    return Array.from(optionMap.entries()).map(([value, label]) => ({ value, label }));
+  }, [availableRouteDates]);
+  const mapPoints = useMemo(
+    () => buildDispatchMapPoints({ jobs: jobRecords, technicians }),
+    [jobRecords, technicians],
+  );
+  const routePlans = useMemo(
+    () =>
+      buildDispatchRoutePlans({
+        jobs: jobRecords,
+        technicians,
+        routeDateKey,
+        includeReturnToBase,
+      }),
+    [jobRecords, technicians, routeDateKey, includeReturnToBase],
+  );
+  const leadRecommendations = useMemo(
+    () =>
+      buildLeadRecommendations({
+        jobs: jobRecords,
+        routePlans,
+        routeDateKey,
+        includeReturnToBase,
+      }),
+    [jobRecords, routePlans, routeDateKey, includeReturnToBase],
+  );
+  const activeRoutePlan =
+    routePlans.find((plan) => plan.techId === activeRouteTechId) ||
+    routePlans.find((plan) => plan.stopCount > 0) ||
+    routePlans[0] ||
+    null;
+  const activeVehicleProfile = activeRoutePlan
+    ? vehicleProfilesByTechId[activeRoutePlan.techId] || buildDefaultVehicleProfile(activeRoutePlan.technician)
+    : null;
+  const activeFuelMath =
+    activeRoutePlan && activeVehicleProfile
+      ? calculateFuelReimbursement(activeRoutePlan.totalMiles, activeVehicleProfile)
+      : null;
   const assignmentJobs = useMemo(() => {
     const orderedJobs = [...unassignedJobs, ...jobRecords];
     const seenJobIds = new Set();
@@ -165,6 +236,55 @@ export function DispatchPage() {
     setEscalationFeedback(null);
   };
 
+  const stageLeadAssignment = (jobId, techId) => {
+    setStagedRouteAssignment({ jobId, techId });
+    setSelectedAssignmentJobId(jobId);
+    setSelectedAssignmentTechId(techId);
+    setActiveRouteTechId(techId);
+    setAssignmentFeedback({
+      message: "Route recommendation staged. Review the assignment panel, then save when ready.",
+      tone: "emerald",
+    });
+  };
+
+  const updateActiveVehicleProfile = (field, value) => {
+    if (!activeRoutePlan) {
+      return;
+    }
+
+    setVehicleProfilesByTechId((current) => ({
+      ...current,
+      [activeRoutePlan.techId]: {
+        ...buildDefaultVehicleProfile(activeRoutePlan.technician),
+        ...(current[activeRoutePlan.techId] || {}),
+        [field]: field === "vehicleLabel" ? value : Number(value),
+      },
+    }));
+  };
+
+  const copyActiveRouteMessage = async () => {
+    if (!activeRoutePlan?.shareMessage) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(activeRoutePlan.shareMessage);
+      setRouteShareFeedback({ tone: "emerald", message: "Route message copied for dispatch." });
+    } catch (clipboardError) {
+      setRouteShareFeedback({
+        tone: "amber",
+        message: "Clipboard access was blocked. Use the map links or text route button instead.",
+      });
+    }
+  };
+
+  const jumpToDispatchSection = (section, ref) => {
+    setActiveDispatchSection(section);
+    window.requestAnimationFrame(() => {
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   const actions = (
     <>
       <SecondaryButton onClick={refreshBoard}>Refresh board</SecondaryButton>
@@ -185,9 +305,44 @@ export function DispatchPage() {
 
   useEffect(() => {
     setSelectedAssignmentTechId(
-      selectedAssignmentJob?.techId || recommendedAssignmentTech?.techId || "",
+      stagedRouteAssignment?.jobId === selectedAssignmentJob?.jobId
+        ? stagedRouteAssignment.techId
+        : selectedAssignmentJob?.techId || recommendedAssignmentTech?.techId || "",
     );
-  }, [selectedAssignmentJob?.jobId, selectedAssignmentJob?.techId, recommendedAssignmentTech?.techId]);
+  }, [
+    selectedAssignmentJob?.jobId,
+    selectedAssignmentJob?.techId,
+    recommendedAssignmentTech?.techId,
+    stagedRouteAssignment?.jobId,
+    stagedRouteAssignment?.techId,
+  ]);
+
+  useEffect(() => {
+    setVehicleProfilesByTechId((current) => {
+      const nextProfiles = { ...current };
+      let changed = false;
+
+      technicians.forEach((technician) => {
+        if (!nextProfiles[technician.techId]) {
+          nextProfiles[technician.techId] = buildDefaultVehicleProfile(technician);
+          changed = true;
+        }
+      });
+
+      return changed ? nextProfiles : current;
+    });
+  }, [technicians]);
+
+  useEffect(() => {
+    if (!routePlans.length) {
+      setActiveRouteTechId("");
+      return;
+    }
+
+    if (!activeRouteTechId || !routePlans.some((plan) => plan.techId === activeRouteTechId)) {
+      setActiveRouteTechId(routePlans.find((plan) => plan.stopCount > 0)?.techId || routePlans[0].techId);
+    }
+  }, [routePlans, activeRouteTechId]);
 
   useEffect(() => {
     if (!selectedAssignmentJob) {
@@ -282,6 +437,7 @@ export function DispatchPage() {
       });
 
       if (result.ok) {
+        setStagedRouteAssignment(null);
         refreshBoard();
       }
     } catch (assignmentError) {
@@ -502,11 +658,303 @@ export function DispatchPage() {
   return (
     <PageScaffold
       title="Dispatch"
-      subtitle="Track assignment pressure, ETA confidence, and which jobs are slipping before customers call in."
+      subtitle="Map workers, place incoming leads, build lowest-mileage routes, and prepare technician route links."
       actions={actions}
-      tabs={[{ label: "Live Board", active: true }, { label: "Escalations" }]}
-      contentClassName="grid gap-6 p-4 sm:p-6 lg:grid-cols-[1.2fr_0.8fr] lg:p-8"
+      tabs={[
+        {
+          label: "Map Workspace",
+          active: activeDispatchSection === "map",
+          onClick: () => jumpToDispatchSection("map", mapSectionRef),
+        },
+        {
+          label: "Route Builder",
+          active: activeDispatchSection === "routes",
+          onClick: () => jumpToDispatchSection("routes", routeSectionRef),
+        },
+        {
+          label: "Live Board",
+          active: activeDispatchSection === "board",
+          onClick: () => jumpToDispatchSection("board", boardSectionRef),
+        },
+        {
+          label: "Escalations",
+          active: activeDispatchSection === "escalations",
+          onClick: () => jumpToDispatchSection("escalations", escalationSectionRef),
+        },
+      ]}
+      contentClassName="space-y-6 p-4 sm:p-6 lg:p-8"
     >
+      <div ref={mapSectionRef} className="scroll-mt-6">
+        <DispatchMapWorkspace
+          activeRouteTechId={activeRouteTechId}
+          jobs={jobRecords}
+          leadRecommendations={leadRecommendations}
+          mapPoints={mapPoints}
+          onSelectJob={(jobId) => setSelectedAssignmentJobId(jobId)}
+          onSelectRouteTechnician={(techId) => setActiveRouteTechId(techId)}
+          onSelectTechnician={(techId) => {
+            setSelectedAssignmentTechId(techId);
+            setActiveRouteTechId(techId);
+          }}
+          onStageLead={stageLeadAssignment}
+          routePlans={routePlans}
+          selectedJobId={selectedAssignmentJob?.jobId || null}
+          selectedTechId={activeRouteTechId || selectedAssignmentTechId}
+          technicians={technicians}
+        />
+      </div>
+
+      <div ref={routeSectionRef} className="grid scroll-mt-6 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <Card className="p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="section-title">Route builder</p>
+              <h2 className="mt-2 text-lg font-semibold text-slate-950">Lowest-mileage daily routes</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                Routes are ordered by estimated driving miles, then turned into Google Maps, Apple Maps, and text-message links for the technician.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[420px]">
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                Route day
+                <select
+                  value={selectedRouteDateKey}
+                  onChange={(event) => setSelectedRouteDateKey(event.target.value)}
+                  className={ASSIGNMENT_FIELD_CLASS}
+                >
+                  {routeDateOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex items-center gap-3 rounded-xl border border-[#dce2ec] bg-white px-4 py-3 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={includeReturnToBase}
+                  onChange={(event) => setIncludeReturnToBase(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
+                />
+                Include return drive
+              </label>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+            {routePlans.map((plan) => (
+              <button
+                key={plan.techId}
+                type="button"
+                onClick={() => setActiveRouteTechId(plan.techId)}
+                className={`rounded-2xl border p-4 text-left transition hover:border-indigo-300 ${
+                  activeRoutePlan?.techId === plan.techId
+                    ? "border-indigo-300 bg-indigo-50/70"
+                    : "border-[#dce2ec] bg-white"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-950">{plan.technicianName}</p>
+                    <p className="mt-1 text-sm text-slate-500">{plan.stopCount} route stops</p>
+                  </div>
+                  <Badge tone={plan.stopCount ? "indigo" : "slate"}>{formatMiles(plan.totalMiles)}</Badge>
+                </div>
+                <div className="mt-4 space-y-2">
+                  {plan.stops.slice(0, 3).map((stop, index) => (
+                    <p key={stop.id} className="text-sm text-slate-600">
+                      {index + 1}. {stop.customerName} · {stop.scheduledStartLabel}
+                    </p>
+                  ))}
+                  {plan.stops.length > 3 ? (
+                    <p className="text-sm font-medium text-indigo-700">+{plan.stops.length - 3} more stops</p>
+                  ) : null}
+                  {plan.stops.length === 0 ? (
+                    <p className="text-sm text-slate-500">No scheduled stops for this route day.</p>
+                  ) : null}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {activeRoutePlan ? (
+            <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{activeRoutePlan.technicianName}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {formatMiles(activeRoutePlan.totalMiles)} total · {activeRoutePlan.stopCount} stops
+                    </p>
+                  </div>
+                  <Badge tone={getStatusTone(activeRoutePlan.technician.statusToday)}>
+                    {formatStatusLabel(activeRoutePlan.technician.statusToday)}
+                  </Badge>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {activeRoutePlan.legs.length === 0 ? (
+                    <p className="text-sm text-slate-500">Assign jobs or pick another route day to generate a route.</p>
+                  ) : (
+                    activeRoutePlan.legs.map((leg, index) => (
+                      <div key={`${leg.to.label}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {index + 1}. {leg.to.customerName || leg.to.label}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {leg.from.label} to {leg.to.address || leg.to.label}
+                        </p>
+                        <p className="mt-2 text-sm text-indigo-700">{formatMiles(leg.miles)}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#dce2ec] bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Route links</p>
+                {routeShareFeedback ? (
+                  <div className={`mt-3 rounded-xl border px-3 py-2 text-sm ${DISPATCH_ACTION_TONES[routeShareFeedback.tone]}`}>
+                    {routeShareFeedback.message}
+                  </div>
+                ) : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {activeRoutePlan.mapsLinks.googleMapsUrl ? (
+                    <a
+                      className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
+                      href={activeRoutePlan.mapsLinks.googleMapsUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Google Maps
+                    </a>
+                  ) : null}
+                  {activeRoutePlan.mapsLinks.appleMapsUrl ? (
+                    <a
+                      className="rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      href={activeRoutePlan.mapsLinks.appleMapsUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Apple Maps
+                    </a>
+                  ) : null}
+                  {activeRoutePlan.smsUrl ? (
+                    <a
+                      className="rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      href={activeRoutePlan.smsUrl}
+                    >
+                      Text tech
+                    </a>
+                  ) : null}
+                  <SecondaryButton className="rounded-xl py-2" onClick={copyActiveRouteMessage}>
+                    Copy route
+                  </SecondaryButton>
+                </div>
+
+                <textarea
+                  readOnly
+                  rows={8}
+                  value={activeRoutePlan.shareMessage || "No route is available yet."}
+                  className="mt-4 w-full resize-y rounded-xl border border-[#dce2ec] bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-600 outline-none"
+                />
+              </div>
+            </div>
+          ) : null}
+        </Card>
+
+        <Card className="p-6">
+          <p className="section-title">Gas reimbursement</p>
+          <h2 className="mt-2 text-lg font-semibold text-slate-950">Vehicle fuel profile</h2>
+
+          {!activeRoutePlan || !activeFuelMath || !activeVehicleProfile ? (
+            <div className="mt-6">
+              <PageStateNotice
+                title="No active route"
+                message="Select a technician route before calculating fuel reimbursement."
+              />
+            </div>
+          ) : (
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="font-semibold text-slate-900">{activeRoutePlan.technicianName}</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {formatMiles(activeFuelMath.miles)} · {activeFuelMath.gallonsUsed.toFixed(2)} gallons · {activeFuelMath.tankPercentUsed.toFixed(0)}% tank
+                </p>
+              </div>
+
+              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                Vehicle
+                <input
+                  value={activeVehicleProfile.vehicleLabel}
+                  onChange={(event) => updateActiveVehicleProfile("vehicleLabel", event.target.value)}
+                  className={ASSIGNMENT_FIELD_CLASS}
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                  MPG
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.1"
+                    value={activeVehicleProfile.milesPerGallon}
+                    onChange={(event) => updateActiveVehicleProfile("milesPerGallon", event.target.value)}
+                    className={ASSIGNMENT_FIELD_CLASS}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                  Tank gallons
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.1"
+                    value={activeVehicleProfile.tankGallons}
+                    onChange={(event) => updateActiveVehicleProfile("tankGallons", event.target.value)}
+                    className={ASSIGNMENT_FIELD_CLASS}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                  Fuel price
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={activeVehicleProfile.fuelPricePerGallon}
+                    onChange={(event) => updateActiveVehicleProfile("fuelPricePerGallon", event.target.value)}
+                    className={ASSIGNMENT_FIELD_CLASS}
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-indigo-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-500">Per mile</p>
+                  <p className="mt-2 text-2xl font-semibold text-indigo-700">
+                    {formatMoney(activeFuelMath.costPerMile)}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-emerald-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Pay gas</p>
+                  <p className="mt-2 text-2xl font-semibold text-emerald-700">
+                    {formatMoney(activeFuelMath.reimbursementAmount)}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-sm leading-6 text-slate-500">
+                Estimated range: {formatMiles(activeFuelMath.estimatedTankRangeMiles)} per tank. Live GPS mileage and persisted vehicle records can plug into this same calculator when those fields are added to Supabase.
+              </p>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div ref={boardSectionRef} className="grid scroll-mt-6 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
       <Card className="p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -556,102 +1004,104 @@ export function DispatchPage() {
       </Card>
 
       <div className="space-y-6">
-        <Card className="p-6">
-          <p className="section-title">Escalation queue</p>
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Escalate dispatch risks</h2>
-            <Badge tone="rose">{attentionJobs.length} in queue</Badge>
-          </div>
-
-          {escalationFeedback ? (
-            <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${DISPATCH_ACTION_TONES[escalationFeedback.tone]}`}>
-              {escalationFeedback.message}
+        <div ref={escalationSectionRef} className="scroll-mt-6">
+          <Card className="p-6">
+            <p className="section-title">Escalation queue</p>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">Escalate dispatch risks</h2>
+              <Badge tone="rose">{attentionJobs.length} in queue</Badge>
             </div>
-          ) : null}
 
-          {!selectedEscalationJob ? (
-            <div className="mt-6">
-              <PageStateNotice
-                title="No dispatch jobs to escalate"
-                message="Once the live board has jobs, escalation can be triggered here."
-              />
-            </div>
-          ) : (
-            <div className="mt-6 space-y-4">
-              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-                Job
-                <select
-                  value={selectedEscalationJob.jobId}
-                  onChange={(event) => setSelectedEscalationJobId(event.target.value)}
-                  className={ASSIGNMENT_FIELD_CLASS}
-                >
-                  {escalationJobs.map((job) => (
-                    <option key={job.jobId} value={job.jobId}>
-                      {job.customer?.name || "Unknown customer"} · {job.jobId} · {formatStatusLabel(job.dispatchStatus)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
-                <div className="flex flex-wrap items-center gap-3">
-                  <Badge tone={getStatusTone(selectedEscalationJob.dispatchStatus)}>
-                    {formatStatusLabel(selectedEscalationJob.dispatchStatus)}
-                  </Badge>
-                  <Badge tone={getStatusTone(selectedEscalationJob.priority)}>
-                    {formatStatusLabel(selectedEscalationJob.priority)}
-                  </Badge>
-                </div>
-                <p className="mt-3 font-medium text-slate-800">
-                  {selectedEscalationJob.customer?.name || "Unknown customer"}
-                </p>
-                <p className="mt-1">{selectedEscalationJob.jobId}</p>
-                <p className="mt-2">
-                  ETA: {selectedEscalationJob.etaLabel} · {selectedEscalationJob.latenessLabel}
-                </p>
-                <p className="mt-2">{selectedEscalationJob.issueSummary}</p>
+            {escalationFeedback ? (
+              <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${DISPATCH_ACTION_TONES[escalationFeedback.tone]}`}>
+                {escalationFeedback.message}
               </div>
+            ) : null}
 
-              {isSelectedEscalationAlreadyOpen ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                  This job is already escalated. The current UI blocks duplicate escalation writes to avoid extra timeline noise.
+            {!selectedEscalationJob ? (
+              <div className="mt-6">
+                <PageStateNotice
+                  title="No dispatch jobs to escalate"
+                  message="Once the live board has jobs, escalation can be triggered here."
+                />
+              </div>
+            ) : (
+              <div className="mt-6 space-y-4">
+                <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                  Job
+                  <select
+                    value={selectedEscalationJob.jobId}
+                    onChange={(event) => setSelectedEscalationJobId(event.target.value)}
+                    className={ASSIGNMENT_FIELD_CLASS}
+                  >
+                    {escalationJobs.map((job) => (
+                      <option key={job.jobId} value={job.jobId}>
+                        {job.customer?.name || "Unknown customer"} · {job.jobId} · {formatStatusLabel(job.dispatchStatus)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Badge tone={getStatusTone(selectedEscalationJob.dispatchStatus)}>
+                      {formatStatusLabel(selectedEscalationJob.dispatchStatus)}
+                    </Badge>
+                    <Badge tone={getStatusTone(selectedEscalationJob.priority)}>
+                      {formatStatusLabel(selectedEscalationJob.priority)}
+                    </Badge>
+                  </div>
+                  <p className="mt-3 font-medium text-slate-800">
+                    {selectedEscalationJob.customer?.name || "Unknown customer"}
+                  </p>
+                  <p className="mt-1">{selectedEscalationJob.jobId}</p>
+                  <p className="mt-2">
+                    ETA: {selectedEscalationJob.etaLabel} · {selectedEscalationJob.latenessLabel}
+                  </p>
+                  <p className="mt-2">{selectedEscalationJob.issueSummary}</p>
                 </div>
-              ) : null}
 
-              <label className="flex items-center gap-3 rounded-2xl border border-[#dce2ec] bg-white px-4 py-3 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={escalationCustomerUpdated}
-                  onChange={(event) => setEscalationCustomerUpdated(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
-                />
-                Customer updated
-              </label>
+                {isSelectedEscalationAlreadyOpen ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                    This job is already escalated. The current UI blocks duplicate escalation writes to avoid extra timeline noise.
+                  </div>
+                ) : null}
 
-              <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-                Escalation notes
-                <textarea
-                  value={escalationNotes}
-                  onChange={(event) => setEscalationNotes(event.target.value)}
-                  rows={4}
-                  placeholder="Optional office note for why this dispatch job is being escalated."
-                  className={`${ASSIGNMENT_FIELD_CLASS} resize-y`}
-                />
-              </label>
+                <label className="flex items-center gap-3 rounded-2xl border border-[#dce2ec] bg-white px-4 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={escalationCustomerUpdated}
+                    onChange={(event) => setEscalationCustomerUpdated(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-500 focus:ring-indigo-500"
+                  />
+                  Customer updated
+                </label>
 
-              <PrimaryButton
-                onClick={runEscalation}
-                disabled={
-                  !selectedEscalationJob ||
-                  isSelectedEscalationAlreadyOpen ||
-                  activeEscalationJobId === selectedEscalationJob.jobId
-                }
-              >
-                {activeEscalationJobId === selectedEscalationJob.jobId ? "Saving..." : "Escalate job"}
-              </PrimaryButton>
-            </div>
-          )}
-        </Card>
+                <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                  Escalation notes
+                  <textarea
+                    value={escalationNotes}
+                    onChange={(event) => setEscalationNotes(event.target.value)}
+                    rows={4}
+                    placeholder="Optional office note for why this dispatch job is being escalated."
+                    className={`${ASSIGNMENT_FIELD_CLASS} resize-y`}
+                  />
+                </label>
+
+                <PrimaryButton
+                  onClick={runEscalation}
+                  disabled={
+                    !selectedEscalationJob ||
+                    isSelectedEscalationAlreadyOpen ||
+                    activeEscalationJobId === selectedEscalationJob.jobId
+                  }
+                >
+                  {activeEscalationJobId === selectedEscalationJob.jobId ? "Saving..." : "Escalate job"}
+                </PrimaryButton>
+              </div>
+            )}
+          </Card>
+        </div>
 
         <Card className="p-6">
           <p className="section-title">Technician assignment</p>
@@ -972,20 +1422,7 @@ export function DispatchPage() {
           )}
         </Card>
 
-        <Card className="p-6">
-          <p className="section-title">Simple map</p>
-          <h2 className="mt-2 text-lg font-semibold">Coverage placeholder</h2>
-          <div className="mt-6 rounded-[28px] bg-[#202430] p-6 text-white">
-            <div className="grid h-64 place-items-center rounded-[22px] border border-dashed border-white/20 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_34%)]">
-              <div className="text-center">
-                <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Map preview</p>
-                <p className="mt-3 max-w-xs text-sm leading-6 text-slate-300">
-                  Future map view for route clustering, ETA confidence, and territory balancing.
-                </p>
-              </div>
-            </div>
-          </div>
-        </Card>
+      </div>
       </div>
     </PageScaffold>
   );

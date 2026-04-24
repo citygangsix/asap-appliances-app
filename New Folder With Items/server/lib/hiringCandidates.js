@@ -480,6 +480,16 @@ function buildCandidatePayload({ existingCandidate, intelligence, targets, paylo
       ),
       existingCandidate?.availability_time_preferences,
     ),
+    current_job_status: coalesceString(
+      hiringCandidate.currentJobStatus,
+      existingCandidate?.current_job_status,
+    ),
+    tools_status: coalesceString(hiringCandidate.toolsStatus, existingCandidate?.tools_status),
+    vehicle_status: coalesceString(hiringCandidate.vehicleStatus, existingCandidate?.vehicle_status),
+    tools_vehicle_summary: coalesceString(
+      hiringCandidate.toolsVehicleSummary,
+      existingCandidate?.tools_vehicle_summary,
+    ),
     payout_expectation_summary: coalesceString(
       hiringCandidate.payoutExpectationSummary,
       existingCandidate?.payout_expectation_summary,
@@ -487,6 +497,14 @@ function buildCandidatePayload({ existingCandidate, intelligence, targets, paylo
     experience_summary: coalesceString(
       hiringCandidate.experienceSummary,
       existingCandidate?.experience_summary,
+    ),
+    appliance_experience_summary: coalesceString(
+      hiringCandidate.applianceExperienceSummary,
+      existingCandidate?.appliance_experience_summary,
+    ),
+    other_work_experience_summary: coalesceString(
+      hiringCandidate.otherWorkExperienceSummary,
+      existingCandidate?.other_work_experience_summary,
     ),
     next_step: coalesceString(hiringCandidate.nextStep, existingCandidate?.next_step),
     call_highlights: coalesceString(intelligence?.callHighlights, existingCandidate?.call_highlights),
@@ -652,6 +670,16 @@ export async function upsertHiringCandidateFromManualLog(client, payload = {}, i
       ),
       existingCandidate?.availability_time_preferences,
     ),
+    current_job_status: coalesceString(
+      hiringCandidate.currentJobStatus,
+      existingCandidate?.current_job_status,
+    ),
+    tools_status: coalesceString(hiringCandidate.toolsStatus, existingCandidate?.tools_status),
+    vehicle_status: coalesceString(hiringCandidate.vehicleStatus, existingCandidate?.vehicle_status),
+    tools_vehicle_summary: coalesceString(
+      hiringCandidate.toolsVehicleSummary,
+      existingCandidate?.tools_vehicle_summary,
+    ),
     payout_expectation_summary: coalesceString(
       hiringCandidate.payoutExpectationSummary,
       existingCandidate?.payout_expectation_summary,
@@ -659,6 +687,14 @@ export async function upsertHiringCandidateFromManualLog(client, payload = {}, i
     experience_summary: coalesceString(
       hiringCandidate.experienceSummary,
       existingCandidate?.experience_summary,
+    ),
+    appliance_experience_summary: coalesceString(
+      hiringCandidate.applianceExperienceSummary,
+      existingCandidate?.appliance_experience_summary,
+    ),
+    other_work_experience_summary: coalesceString(
+      hiringCandidate.otherWorkExperienceSummary,
+      existingCandidate?.other_work_experience_summary,
     ),
     next_step: nextStep,
     call_highlights: coalesceString(

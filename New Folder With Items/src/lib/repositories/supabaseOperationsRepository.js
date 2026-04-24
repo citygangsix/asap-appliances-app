@@ -4,6 +4,10 @@ import {
   isSupabaseConfigured,
 } from "../../integrations/supabase/client";
 import {
+  getLocalOperationsServerHeaders,
+  getLocalOperationsServerUrl,
+} from "../config/localOperationsServer";
+import {
   clearSupabaseReadModelsCache,
 } from "../../integrations/supabase/readModels";
 import {
@@ -385,21 +389,12 @@ function createSupabaseMutationFailure(operation, plan, payload, error) {
   };
 }
 
-function getLocalOperationsServerUrl(pathname) {
-  const hostname =
-    typeof window !== "undefined" && window.location?.hostname
-      ? window.location.hostname
-      : "127.0.0.1";
-
-  return new URL(pathname, `http://${hostname}:8787`).toString();
-}
-
 async function requestLumiaInvoiceSms(invoiceRecord) {
   const response = await fetch(getLocalOperationsServerUrl("/api/invoices/send-lumia"), {
     method: "POST",
-    headers: {
+    headers: getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify({
       invoice: {
         invoiceId: invoiceRecord.invoiceId,

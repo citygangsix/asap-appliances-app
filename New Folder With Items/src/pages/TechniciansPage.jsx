@@ -6,7 +6,10 @@ import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { getOperationsRepository } from "../lib/repositories";
-import { getLocalOperationsServerUrl } from "../lib/config/localOperationsServer";
+import {
+  getLocalOperationsServerHeaders,
+  getLocalOperationsServerUrl,
+} from "../lib/config/localOperationsServer";
 
 const TECHNICIAN_FEEDBACK_TONES = {
   emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -39,9 +42,9 @@ const TECHNICIAN_FIELD_CLASS =
 async function requestClickToCall(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/twilio/outbound/calls"), {
     method: "POST",
-    headers: {
+    headers: getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify(payload),
   });
   const responseText = await response.text();
@@ -82,9 +85,9 @@ function formatManualOutreachOutcome(value) {
 async function requestManualCallLog(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/manual/calls/log"), {
     method: "POST",
-    headers: {
+    headers: getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify(payload),
   });
   const responseText = await response.text();
@@ -583,6 +586,28 @@ export function TechniciansPage() {
                 ) : null}
               </div>
               <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Current job</p>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  {selectedCandidate.currentJobStatus || "Not captured yet."}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Tools / vehicle</p>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  {[
+                    selectedCandidate.toolsStatus ? `Tools: ${selectedCandidate.toolsStatus}` : null,
+                    selectedCandidate.vehicleStatus ? `Vehicle: ${selectedCandidate.vehicleStatus}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "Not captured yet."}
+                </p>
+                {selectedCandidate.toolsVehicleSummary ? (
+                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                    {selectedCandidate.toolsVehicleSummary}
+                  </p>
+                ) : null}
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Location</p>
                 <p className="mt-3 text-sm leading-6 text-slate-700">
                   {[selectedCandidate.city, selectedCandidate.serviceArea].filter(Boolean).join(" · ") ||
@@ -594,6 +619,22 @@ export function TechniciansPage() {
                 <p className="mt-3 text-sm leading-6 text-slate-700">
                   {selectedCandidate.payoutExpectationSummary || "Not captured yet."}
                 </p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Work experience</p>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  {selectedCandidate.experienceSummary || "Not captured yet."}
+                </p>
+                {selectedCandidate.applianceExperienceSummary ? (
+                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                    Appliance: {selectedCandidate.applianceExperienceSummary}
+                  </p>
+                ) : null}
+                {selectedCandidate.otherWorkExperienceSummary ? (
+                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                    Other: {selectedCandidate.otherWorkExperienceSummary}
+                  </p>
+                ) : null}
               </div>
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Next step</p>

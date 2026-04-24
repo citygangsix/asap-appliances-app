@@ -6,6 +6,10 @@ import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { getOperationsRepository } from "../lib/repositories";
+import {
+  getLocalOperationsServerHeaders,
+  getLocalOperationsServerUrl,
+} from "../lib/config/localOperationsServer";
 
 const INVOICES_PAGE_SCAFFOLD = {
   title: "Invoices",
@@ -22,22 +26,13 @@ const INVOICE_ACTION_TONES = {
   rose: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
-function getLocalOperationsServerUrl(pathname) {
-  const hostname =
-    typeof window !== "undefined" && window.location?.hostname
-      ? window.location.hostname
-      : "127.0.0.1";
-
-  return new URL(pathname, `http://${hostname}:8787`).toString();
-}
-
 async function postOperationsJson(pathname, payload, options = {}) {
   const { allowErrorResponse = false } = options;
   const response = await fetch(getLocalOperationsServerUrl(pathname), {
     method: "POST",
-    headers: {
+    headers: getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify(payload),
   });
   const responseText = await response.text();

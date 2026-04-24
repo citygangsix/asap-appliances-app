@@ -7,6 +7,10 @@ import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { getOperationsRepository } from "../lib/repositories";
+import {
+  getLocalOperationsServerHeaders,
+  getLocalOperationsServerUrl,
+} from "../lib/config/localOperationsServer";
 
 const CUSTOMERS_PAGE_SCAFFOLD = {
   title: "Customers",
@@ -99,21 +103,12 @@ function buildActionsWithRefresh(onRefresh = undefined, onToggleAdd = undefined,
   );
 }
 
-function getLocalOperationsServerUrl(pathname) {
-  const hostname =
-    typeof window !== "undefined" && window.location?.hostname
-      ? window.location.hostname
-      : "127.0.0.1";
-
-  return new URL(pathname, `http://${hostname}:8787`).toString();
-}
-
 async function requestClickToCall(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/twilio/outbound/calls"), {
     method: "POST",
-    headers: {
+    headers: getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify(payload),
   });
   const responseText = await response.text();
@@ -141,9 +136,9 @@ async function requestClickToCall(payload) {
 async function requestManualCallLog(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/manual/calls/log"), {
     method: "POST",
-    headers: {
+    headers: getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
-    },
+    }),
     body: JSON.stringify(payload),
   });
   const responseText = await response.text();

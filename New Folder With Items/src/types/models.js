@@ -104,8 +104,14 @@
  * @property {string|null} availabilitySummary
  * @property {string[]} [availabilityDays]
  * @property {string[]} [availabilityTimePreferences]
+ * @property {string|null} [currentJobStatus]
+ * @property {string|null} [toolsStatus]
+ * @property {string|null} [vehicleStatus]
+ * @property {string|null} [toolsVehicleSummary]
  * @property {string|null} payoutExpectationSummary
  * @property {string|null} experienceSummary
+ * @property {string|null} [applianceExperienceSummary]
+ * @property {string|null} [otherWorkExperienceSummary]
  * @property {string|null} nextStep
  * @property {string} callHighlights
  * @property {string} transcriptText

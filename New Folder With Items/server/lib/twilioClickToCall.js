@@ -650,10 +650,11 @@ export async function requestClickToCall(payload = {}) {
     customerPhone,
   });
   const customerProfile = customerLookup.customer;
+  const resolvedCustomerId = toNullableString(payload.customerId) || customerProfile?.customer_id || null;
 
   if (isCustomerOptedOut(customerProfile)) {
     await createOutboundContactAttempt(client, {
-      customerId: customerProfile?.customer_id || toNullableString(payload.customerId),
+      customerId: resolvedCustomerId,
       communicationId: null,
       triggerSource,
       isAutomated,
@@ -694,7 +695,7 @@ export async function requestClickToCall(payload = {}) {
 
     if (activeCooldownUntil) {
       await createOutboundContactAttempt(client, {
-        customerId: customerProfile?.customer_id || toNullableString(payload.customerId),
+        customerId: resolvedCustomerId,
         communicationId: null,
         triggerSource,
         isAutomated: true,
@@ -745,6 +746,7 @@ export async function requestClickToCall(payload = {}) {
       config,
       {
         ...payload,
+        customerId: resolvedCustomerId,
         businessPhoneNumber,
       },
       twilioResponse?.sid || null,
@@ -771,7 +773,7 @@ export async function requestClickToCall(payload = {}) {
 
   try {
     await createOutboundContactAttempt(client, {
-      customerId: customerProfile?.customer_id || toNullableString(payload.customerId),
+      customerId: resolvedCustomerId,
       communicationId: communicationRecord?.communication_id || null,
       triggerSource,
       isAutomated,

@@ -4,7 +4,10 @@ import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { Badge, Card, SecondaryButton } from "../components/ui";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { mapHiringCandidateRowToDomain } from "../integrations/supabase/mappers/hiringCandidates";
-import { getLocalOperationsServerUrl } from "../lib/config/localOperationsServer";
+import {
+  getLocalOperationsServerHeaders,
+  getLocalOperationsServerUrl,
+} from "../lib/config/localOperationsServer";
 import { getOperationsRepository } from "../lib/repositories";
 import { formatStatusLabel } from "../lib/domain/jobs";
 
@@ -33,9 +36,9 @@ async function requestLiveHiringCandidates() {
 
   const response = await fetch(url.toString(), {
     cache: "no-store",
-    headers: {
+    headers: getLocalOperationsServerHeaders({
       Accept: "application/json",
-    },
+    }),
   });
   const responseText = await response.text();
   const responseJson = responseText ? JSON.parse(responseText) : null;
@@ -294,11 +297,49 @@ export function NewHiresCandidatesPage() {
                   </div>
                   <div className="rounded-2xl bg-slate-50 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Current job status
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">
+                      {selectedCandidate.currentJobStatus || "Not captured"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Tools / vehicle
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">
+                      {[
+                        selectedCandidate.toolsStatus ? `Tools: ${selectedCandidate.toolsStatus}` : null,
+                        selectedCandidate.vehicleStatus
+                          ? `Vehicle: ${selectedCandidate.vehicleStatus}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "Not captured"}
+                    </p>
+                    {selectedCandidate.toolsVehicleSummary ? (
+                      <p className="mt-3 text-sm leading-6 text-slate-500">
+                        {selectedCandidate.toolsVehicleSummary}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                       Experience
                     </p>
                     <p className="mt-3 text-sm leading-6 text-slate-700">
                       {selectedCandidate.experienceSummary || "Not captured"}
                     </p>
+                    {selectedCandidate.applianceExperienceSummary ? (
+                      <p className="mt-3 text-sm leading-6 text-slate-500">
+                        Appliance: {selectedCandidate.applianceExperienceSummary}
+                      </p>
+                    ) : null}
+                    {selectedCandidate.otherWorkExperienceSummary ? (
+                      <p className="mt-3 text-sm leading-6 text-slate-500">
+                        Other: {selectedCandidate.otherWorkExperienceSummary}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="rounded-2xl bg-slate-50 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">

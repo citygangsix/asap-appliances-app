@@ -77,8 +77,14 @@
  * @property {string|null} availability_summary
  * @property {string[]} availability_days
  * @property {string[]} availability_time_preferences
+ * @property {string|null} current_job_status
+ * @property {string|null} tools_status
+ * @property {string|null} vehicle_status
+ * @property {string|null} tools_vehicle_summary
  * @property {string|null} payout_expectation_summary
  * @property {string|null} experience_summary
+ * @property {string|null} appliance_experience_summary
+ * @property {string|null} other_work_experience_summary
  * @property {string|null} next_step
  * @property {string|null} call_highlights
  * @property {string|null} transcript_text
