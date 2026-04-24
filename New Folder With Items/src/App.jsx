@@ -14,6 +14,40 @@ import { RevenuePage } from "./pages/RevenuePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TechniciansPage } from "./pages/TechniciansPage";
 
+function PublicWebsiteHome() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#f5f7fb] px-6 text-[#151821]">
+      <section className="w-full max-w-3xl">
+        <p className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-600">
+          ASAP AC & Appliance Repair
+        </p>
+        <h1 className="mt-4 text-4xl font-semibold tracking-normal sm:text-6xl">
+          Service website connected.
+        </h1>
+        <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
+          The public site is live on ASAPACBoss.com.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+function PublicNotFoundPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#f5f7fb] px-6 text-[#151821]">
+      <section className="w-full max-w-xl">
+        <p className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-600">
+          ASAP AC & Appliance Repair
+        </p>
+        <h1 className="mt-4 text-4xl font-semibold tracking-normal">Page not found.</h1>
+        <p className="mt-4 text-base leading-7 text-slate-600">
+          Check the address and try again.
+        </p>
+      </section>
+    </main>
+  );
+}
+
 function App() {
   return (
     <Routes>
@@ -32,21 +66,12 @@ function App() {
           <Route path="technicians" element={<TechniciansPage />} />
           <Route path="new-hires-candidates" element={<NewHiresCandidatesPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="*" element={<Navigate replace to="/dashboard" />} />
         </Route>
       </Route>
 
-      <Route path="/" element={<Navigate replace to="/dashboard" />} />
-      <Route path="/jobs" element={<Navigate replace to="/dashboard/jobs" />} />
-      <Route path="/customers" element={<Navigate replace to="/dashboard/customers" />} />
-      <Route path="/dispatch" element={<Navigate replace to="/dashboard/dispatch" />} />
-      <Route path="/communications" element={<Navigate replace to="/dashboard/communications" />} />
-      <Route path="/phone" element={<Navigate replace to="/dashboard/phone" />} />
-      <Route path="/invoices" element={<Navigate replace to="/dashboard/invoices" />} />
-      <Route path="/revenue" element={<Navigate replace to="/dashboard/revenue" />} />
-      <Route path="/technicians" element={<Navigate replace to="/dashboard/technicians" />} />
-      <Route path="/new-hires-candidates" element={<Navigate replace to="/dashboard/new-hires-candidates" />} />
-      <Route path="/settings" element={<Navigate replace to="/dashboard/settings" />} />
-      <Route path="*" element={<Navigate replace to="/dashboard" />} />
+      <Route path="/" element={<PublicWebsiteHome />} />
+      <Route path="*" element={<PublicNotFoundPage />} />
     </Routes>
   );
 }
