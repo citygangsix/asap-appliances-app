@@ -293,7 +293,7 @@ async function analyzeTranscript(transcriptText) {
     body: JSON.stringify({
       model: analysisModel,
       instructions:
-        "You analyze business phone calls for an appliance company. Some calls are customer service calls, and some are hiring or recruiting calls. Return strict JSON only. Be concise, factual, and never invent details. If a section or hiring field is not mentioned, return an empty string. Mark is_hiring true only when the transcript clearly shows a recruiting, applicant, technician hiring, resume, payout, availability, or job-offer discussion.",
+        "You analyze business phone calls for an appliance company. Some calls are customer service calls, and some are hiring or recruiting calls. Return strict JSON only. Be concise, factual, and never invent details. If a section or hiring field is not mentioned, return an empty string. Mark is_hiring true only when the transcript clearly shows a recruiting, applicant, technician hiring, resume, payout, availability, or job-offer discussion. Detect the original spoken language. If the call is not fully English, keep the transcript as originally transcribed, but provide English summaries and translated key details.",
       input: `Transcript:\n${transcriptText}`,
       text: {
         format: {
@@ -307,6 +307,7 @@ async function analyzeTranscript(transcriptText) {
               "headline",
               "highlights",
               "conversation_type",
+              "language",
               "sections",
               "hiring_candidate",
             ],
@@ -324,6 +325,37 @@ async function analyzeTranscript(transcriptText) {
                 enum: ["service", "hiring", "other"],
                 description:
                   "Classify the overall conversation. Use hiring for recruiting or technician hiring calls.",
+              },
+              language: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "original_language",
+                  "contains_non_english",
+                  "english_translation_note",
+                  "english_key_details",
+                ],
+                properties: {
+                  original_language: {
+                    type: "string",
+                    description:
+                      "The main original spoken language, for example English, Spanish, Haitian Creole, Portuguese, or Mixed English/Spanish.",
+                  },
+                  contains_non_english: {
+                    type: "boolean",
+                    description: "True when any meaningful portion of the call is not English.",
+                  },
+                  english_translation_note: {
+                    type: "string",
+                    description:
+                      "One sentence saying whether the conversation was originally in another language and translated/summarized in English.",
+                  },
+                  english_key_details: {
+                    type: "string",
+                    description:
+                      "Important non-English parts translated into English. Leave blank if the call was already English.",
+                  },
+                },
               },
               sections: {
                 type: "object",
@@ -488,6 +520,12 @@ function normalizeAnalysisResult(analysis, transcriptText = "") {
     headline: normalizeOptionalString(analysis?.headline),
     highlights: normalizeOptionalString(analysis?.highlights),
     conversationType: normalizedConversationType,
+    language: {
+      originalLanguage: normalizeOptionalString(analysis?.language?.original_language) || "English",
+      containsNonEnglish: Boolean(analysis?.language?.contains_non_english),
+      englishTranslationNote: normalizeOptionalString(analysis?.language?.english_translation_note),
+      englishKeyDetails: normalizeOptionalString(analysis?.language?.english_key_details),
+    },
     sections: {
       customer_need: normalizeOptionalString(analysis?.sections?.customer_need),
       appliance_or_system: normalizeOptionalString(analysis?.sections?.appliance_or_system),
@@ -539,6 +577,7 @@ export async function transcribeAndAnalyzeTwilioRecording(payload, twilioConfig)
     callHighlights: analysis.highlights,
     callSummarySections: analysis.sections,
     conversationType: analysis.conversationType,
+    language: analysis.language,
     hiringCandidate: analysis.hiringCandidate,
   };
 }
@@ -561,6 +600,7 @@ export async function analyzeTranscriptText(transcriptText) {
     callHighlights: analysis.highlights,
     callSummarySections: analysis.sections,
     conversationType: analysis.conversationType,
+    language: analysis.language,
     hiringCandidate: analysis.hiringCandidate,
   };
 }

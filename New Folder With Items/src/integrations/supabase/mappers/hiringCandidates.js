@@ -45,12 +45,27 @@ function normalizeManualOutreach(row) {
   };
 }
 
+function normalizeLanguage(row) {
+  const language =
+    row.raw_analysis && typeof row.raw_analysis === "object" && row.raw_analysis.language
+      ? row.raw_analysis.language
+      : null;
+
+  return {
+    originalLanguage: language?.originalLanguage || language?.original_language || "English",
+    containsNonEnglish: Boolean(language?.containsNonEnglish || language?.contains_non_english),
+    englishTranslationNote: language?.englishTranslationNote || language?.english_translation_note || null,
+    englishKeyDetails: language?.englishKeyDetails || language?.english_key_details || null,
+  };
+}
+
 /**
  * @param {HiringCandidateRow} row
  * @returns {HiringCandidate}
  */
 export function mapHiringCandidateRowToDomain(row) {
   const manualOutreach = normalizeManualOutreach(row);
+  const language = normalizeLanguage(row);
 
   return {
     candidateId: row.candidate_id,
@@ -84,6 +99,10 @@ export function mapHiringCandidateRowToDomain(row) {
     manualOutreachLastOutcome: manualOutreach.lastOutcome,
     manualOutreachLastAgentPhone: manualOutreach.lastAgentPhone,
     manualOutreachLastOccurredAtLabel: manualOutreach.lastOccurredAtLabel,
+    originalLanguage: language.originalLanguage,
+    containsNonEnglish: language.containsNonEnglish,
+    englishTranslationNote: language.englishTranslationNote,
+    englishKeyDetails: language.englishKeyDetails,
   };
 }
 

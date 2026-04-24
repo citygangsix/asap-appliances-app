@@ -412,6 +412,7 @@ async function linkCandidateToTechnician(client, candidateRecord, technicianReco
 
 function buildCandidatePayload({ existingCandidate, intelligence, targets, payload, candidatePhone }) {
   const hiringCandidate = intelligence?.hiringCandidate || {};
+  const candidateName = coalesceString(hiringCandidate.candidateName, existingCandidate?.name);
   const providerCallSid =
     normalizeOptionalString(payload.CallSid) ||
     normalizeOptionalString(payload.ParentCallSid) ||
@@ -420,8 +421,9 @@ function buildCandidatePayload({ existingCandidate, intelligence, targets, paylo
   return {
     name:
       coalesceString(
-        hiringCandidate.candidateName,
-        existingCandidate?.name,
+        candidateName && !["mike", "michael"].includes(candidateName.toLowerCase())
+          ? candidateName
+          : null,
         candidatePhone,
         "Hiring candidate",
       ) || "Hiring candidate",
@@ -468,6 +470,7 @@ function buildCandidatePayload({ existingCandidate, intelligence, targets, paylo
     promoted_at: existingCandidate?.promoted_at || null,
     raw_analysis: {
       conversationType: intelligence?.conversationType || null,
+      language: intelligence?.language || null,
       hiringCandidate: hiringCandidate,
       recordingSid: normalizeOptionalString(payload.RecordingSid),
       callSid: normalizeOptionalString(payload.CallSid),

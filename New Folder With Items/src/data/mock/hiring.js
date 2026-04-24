@@ -3,6 +3,36 @@
 /** @type {HiringCandidate[]} */
 export const hiringCandidates = [
   {
+    candidateId: "cand-giovanni-3055026950",
+    name: "Giovanni",
+    primaryPhone: "+13055026950",
+    email: null,
+    source: "Indeed",
+    stage: "contacted",
+    trade: "Appliance repair",
+    city: "Miami",
+    serviceArea: "Fort Myers, Miami",
+    availabilitySummary: "Needs to give notice at his current job before starting.",
+    availabilityDays: [],
+    availabilityTimePreferences: [],
+    payoutExpectationSummary: "Daily pay for work completed.",
+    experienceSummary: "15 to 17 years of experience in appliance repair.",
+    nextStep: "Awaiting Giovanni's text response regarding availability.",
+    callHighlights:
+      "Mike contacted Giovanni from Indeed about appliance repair work. The conversation was primarily in Spanish, and Giovanni said he has 15 to 17 years of appliance repair experience.",
+    transcriptText:
+      "Original call included Spanish. Giovanni said he has approximately 15 to 17 years of experience in the electronic and mechanical side of appliance repair and needs to give notice before starting.",
+    linkedCommunicationId: null,
+    providerCallSid: "CA33bc3af7d2f4d125e3f6cf4789b4223a",
+    promotedTechId: null,
+    lastContactLabel: "12:50 PM",
+    originalLanguage: "Mixed English/Spanish",
+    containsNonEnglish: true,
+    englishTranslationNote: "This conversation was originally partly in Spanish and has been summarized in English.",
+    englishKeyDetails:
+      "Giovanni confirmed 15 to 17 years of experience in appliance repair and said he needs to give notice at his current job before starting.",
+  },
+  {
     candidateId: "cand-joseph-6158704760",
     name: "Joseph",
     primaryPhone: "+16158704760",

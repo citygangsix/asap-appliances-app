@@ -142,6 +142,20 @@ export function NewHiresCandidatesPage() {
                       {selectedCandidate.source || "Not captured"}
                     </p>
                   </div>
+                  <div className="rounded-2xl bg-slate-50 p-4 md:col-span-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Language / translation
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">
+                      Original language: {selectedCandidate.originalLanguage || "English"}
+                      {selectedCandidate.containsNonEnglish ? " · Translated and summarized in English" : ""}
+                    </p>
+                    {selectedCandidate.englishTranslationNote || selectedCandidate.englishKeyDetails ? (
+                      <p className="mt-3 text-sm leading-6 text-slate-500">
+                        {selectedCandidate.englishTranslationNote || selectedCandidate.englishKeyDetails}
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="rounded-2xl bg-slate-50 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                       Experience
