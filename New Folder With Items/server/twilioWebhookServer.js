@@ -31,6 +31,7 @@ import {
   requestBrowserHangup,
   requestBrowserVoiceToken,
 } from "./lib/twilioBrowserCalling.js";
+import { startTwilioRecordingRecovery } from "./lib/twilioRecordingRecovery.js";
 
 const SMS_WEBHOOK_PATH = "/api/twilio/sms";
 const VOICE_WEBHOOK_PATH = "/api/twilio/voice";
@@ -511,6 +512,7 @@ const server = http.createServer((request, response) => {
 });
 
 const port = getLocalOperationsServerPort();
+let recordingRecovery = null;
 
 server.listen(port, () => {
   console.log(`[twilio-webhooks] listening on http://127.0.0.1:${port}`);
@@ -533,4 +535,15 @@ server.listen(port, () => {
   console.log("[twilio-webhooks] workflow invoice route: /api/workflows/generate-invoice");
   console.log("[twilio-webhooks] workflow paid route: /api/workflows/invoice-paid");
   console.log("[twilio-webhooks] workflow final-work route: /api/workflows/final-work");
+  recordingRecovery = startTwilioRecordingRecovery();
 });
+
+function shutdown() {
+  recordingRecovery?.stop?.();
+  server.close(() => {
+    process.exit(0);
+  });
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

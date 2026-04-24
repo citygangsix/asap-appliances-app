@@ -125,6 +125,10 @@ async function waitForHealthyServer(localBaseUrl, server, timeoutMs) {
 function startWebhookServer(appRoot) {
   const child = spawn(process.execPath, ["server/twilioWebhookServer.js"], {
     cwd: appRoot,
+    env: {
+      ...process.env,
+      TWILIO_RECORDING_RECOVERY_ENABLED: "false",
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
