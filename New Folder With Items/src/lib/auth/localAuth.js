@@ -1,5 +1,5 @@
 const SESSION_STORAGE_KEY = "asap_crm_temp_session";
-const DEFAULT_PASSWORD_HASH = "1e9eb03eadc92cb0df2ac4e1cdc4591f1b578e395afbad882ffbf1fb1a0f2f35";
+const DEFAULT_PASSWORD_HASH = "e7cf3ef4f17c3999a94f2c6f612e8a888e5b1026878e4e19398b23bd38ec221a";
 
 function getAllowedEmail() {
   return (import.meta.env.VITE_ASAP_AUTH_EMAIL || "").trim().toLowerCase();
