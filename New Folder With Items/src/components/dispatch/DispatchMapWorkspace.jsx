@@ -6,6 +6,7 @@ import { formatMiles } from "../../lib/domain/dispatchRouting";
 const TILE_SIZE = 256;
 const MIN_ZOOM = 4;
 const MAX_ZOOM = 14;
+const WHEEL_ZOOM_THRESHOLD = 180;
 const ROUTE_COLORS = ["#4f46e5", "#0f766e", "#dc2626", "#b45309", "#2563eb", "#7c3aed"];
 
 function clamp(value, min, max) {
@@ -150,6 +151,10 @@ function buildTileGrid(mapView, size) {
   return tiles;
 }
 
+function isMapControlTarget(target) {
+  return target instanceof Element && Boolean(target.closest("[data-map-control]"));
+}
+
 function Marker({ point, mapView, size, selected, onSelect }) {
   const position = getPointScreenPosition(point.coordinate, mapView, size);
   const isTechnician = point.type === "technician";
@@ -252,12 +257,15 @@ export function DispatchMapWorkspace({
 }) {
   const mapRef = useRef(null);
   const dragRef = useRef(null);
+  const wheelDeltaRef = useRef(0);
+  const wheelResetTimeoutRef = useRef(null);
   const size = useElementSize(mapRef);
   const mapKey = useMemo(
     () => mapPoints.map((point) => `${point.id}:${point.coordinate.lat}:${point.coordinate.lng}`).join("|"),
     [mapPoints],
   );
   const [mapView, setMapView] = useState(() => getInitialMapView(mapPoints));
+  const [mapInteractionEnabled, setMapInteractionEnabled] = useState(false);
   const activeRoutePlan =
     routePlans.find((plan) => plan.techId === activeRouteTechId) ||
     routePlans.find((plan) => plan.stopCount > 0) ||
@@ -272,21 +280,85 @@ export function DispatchMapWorkspace({
     setMapView(getInitialMapView(mapPoints));
   }, [mapKey, mapPoints]);
 
+  useEffect(() => {
+    function handleDocumentPointerDown(event) {
+      if (!mapRef.current?.contains(event.target)) {
+        setMapInteractionEnabled(false);
+        dragRef.current = null;
+      }
+    }
+
+    function handleDocumentKeyDown(event) {
+      if (event.key === "Escape") {
+        setMapInteractionEnabled(false);
+        dragRef.current = null;
+      }
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown);
+    document.addEventListener("keydown", handleDocumentKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleDocumentPointerDown);
+      document.removeEventListener("keydown", handleDocumentKeyDown);
+      if (wheelResetTimeoutRef.current) {
+        window.clearTimeout(wheelResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
   function fitMapToPins() {
     setMapView(getInitialMapView(mapPoints));
   }
 
-  function handleWheel(event) {
-    event.preventDefault();
+  function zoomMap(delta) {
     setMapView((current) => ({
       ...current,
-      zoom: clamp(current.zoom + (event.deltaY > 0 ? -1 : 1), MIN_ZOOM, MAX_ZOOM),
+      zoom: clamp(current.zoom + delta, MIN_ZOOM, MAX_ZOOM),
     }));
   }
 
+  function handleWheel(event) {
+    const shouldZoom = mapInteractionEnabled || event.metaKey || event.ctrlKey;
+
+    if (!shouldZoom) {
+      return;
+    }
+
+    event.preventDefault();
+    wheelDeltaRef.current += event.deltaY;
+
+    if (Math.abs(wheelDeltaRef.current) >= WHEEL_ZOOM_THRESHOLD) {
+      zoomMap(wheelDeltaRef.current > 0 ? -1 : 1);
+      wheelDeltaRef.current = 0;
+    }
+
+    if (wheelResetTimeoutRef.current) {
+      window.clearTimeout(wheelResetTimeoutRef.current);
+    }
+
+    wheelResetTimeoutRef.current = window.setTimeout(() => {
+      wheelDeltaRef.current = 0;
+    }, 220);
+  }
+
   function handlePointerDown(event) {
+    if (isMapControlTarget(event.target)) {
+      return;
+    }
+
     if (event.button !== 0) {
       return;
+    }
+
+    mapRef.current?.focus();
+
+    if (!mapInteractionEnabled) {
+      if (event.pointerType !== "mouse") {
+        return;
+      }
+
+      setMapInteractionEnabled(true);
     }
 
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -299,6 +371,10 @@ export function DispatchMapWorkspace({
   }
 
   function handlePointerMove(event) {
+    if (!mapInteractionEnabled) {
+      return;
+    }
+
     if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) {
       return;
     }
@@ -358,7 +434,10 @@ export function DispatchMapWorkspace({
       <div className="grid lg:grid-cols-[minmax(0,1fr)_380px]">
         <div
           ref={mapRef}
-          className="relative h-[560px] overflow-hidden bg-[#dbe7ee] touch-none"
+          className={`relative h-[560px] overflow-hidden bg-[#dbe7ee] outline-none ${
+            mapInteractionEnabled ? "touch-none ring-2 ring-indigo-300" : "touch-pan-y"
+          }`}
+          tabIndex={0}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -400,13 +479,14 @@ export function DispatchMapWorkspace({
             />
           ))}
 
-          <div className="absolute left-4 top-4 z-30 flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+          <div
+            className="absolute left-4 top-4 z-30 flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+            data-map-control
+          >
             <button
               type="button"
               className="grid h-10 w-10 place-items-center text-lg font-semibold text-slate-700 hover:bg-slate-50"
-              onClick={() =>
-                setMapView((current) => ({ ...current, zoom: clamp(current.zoom + 1, MIN_ZOOM, MAX_ZOOM) }))
-              }
+              onClick={() => zoomMap(1)}
               title="Zoom in"
             >
               +
@@ -414,9 +494,7 @@ export function DispatchMapWorkspace({
             <button
               type="button"
               className="grid h-10 w-10 place-items-center border-l border-slate-200 text-lg font-semibold text-slate-700 hover:bg-slate-50"
-              onClick={() =>
-                setMapView((current) => ({ ...current, zoom: clamp(current.zoom - 1, MIN_ZOOM, MAX_ZOOM) }))
-              }
+              onClick={() => zoomMap(-1)}
               title="Zoom out"
             >
               -
@@ -436,8 +514,25 @@ export function DispatchMapWorkspace({
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Leads</span>
           </div>
 
+          <button
+            type="button"
+            className={`absolute right-4 top-4 z-30 max-w-[min(260px,calc(100%-130px))] rounded-xl border px-3 py-2 text-left text-xs font-semibold shadow-lg transition ${
+              mapInteractionEnabled
+                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                : "border-slate-200 bg-white/95 text-slate-600 hover:bg-slate-50"
+            }`}
+            data-map-control
+            onClick={() => {
+              setMapInteractionEnabled((enabled) => !enabled);
+              mapRef.current?.focus();
+            }}
+          >
+            {mapInteractionEnabled ? "Map zoom on - Esc to exit" : "Click map or hold Cmd/Ctrl + scroll to zoom"}
+          </button>
+
           <a
             className="absolute bottom-4 right-4 z-30 rounded-lg bg-white/95 px-2 py-1 text-[11px] font-medium text-slate-500 shadow"
+            data-map-control
             href="https://www.openstreetmap.org/copyright"
             rel="noreferrer"
             target="_blank"
