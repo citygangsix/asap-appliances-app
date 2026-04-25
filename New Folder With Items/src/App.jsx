@@ -6,7 +6,6 @@ import { DispatchPage } from "./pages/DispatchPage";
 import { HomePage } from "./pages/HomePage";
 import { InvoicesPage } from "./pages/InvoicesPage";
 import { JobsPage } from "./pages/JobsPage";
-import { LoginPage } from "./pages/LoginPage";
 import { NewHiresCandidatesPage } from "./pages/NewHiresCandidatesPage";
 import { PhonePage } from "./pages/PhonePage";
 import { RevenuePage } from "./pages/RevenuePage";
