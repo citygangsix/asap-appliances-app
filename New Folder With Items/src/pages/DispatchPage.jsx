@@ -305,7 +305,7 @@ export function DispatchPage() {
 
   useEffect(() => {
     setSelectedAssignmentTechId(
-      stagedRouteAssignment?.jobId === selectedAssignmentJob?.jobId
+      stagedRouteAssignment && stagedRouteAssignment.jobId === selectedAssignmentJob?.jobId
         ? stagedRouteAssignment.techId
         : selectedAssignmentJob?.techId || recommendedAssignmentTech?.techId || "",
     );
