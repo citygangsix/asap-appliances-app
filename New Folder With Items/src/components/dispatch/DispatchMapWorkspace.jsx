@@ -307,6 +307,20 @@ export function DispatchMapWorkspace({
     };
   }, []);
 
+  useEffect(() => {
+    const node = mapRef.current;
+
+    if (!node) {
+      return undefined;
+    }
+
+    node.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      node.removeEventListener("wheel", handleWheel);
+    };
+  }, [mapInteractionEnabled]);
+
   function fitMapToPins() {
     setMapView(getInitialMapView(mapPoints));
   }
@@ -442,7 +456,6 @@ export function DispatchMapWorkspace({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          onWheel={handleWheel}
         >
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.08)_1px,transparent_1px),linear-gradient(rgba(15,23,42,0.08)_1px,transparent_1px)] bg-[size:64px_64px]" />
           {visibleTiles.map((tile) => (
