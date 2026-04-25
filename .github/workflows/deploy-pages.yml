@@ -39,7 +39,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_APP_DATA_SOURCE: supabase
+          VITE_APP_DATA_SOURCE: mock
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://gntijouqttihazdupoiu.supabase.co' }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Xp5nmASlNf44ALxGAR-j2w_nUQjCBOB' }}
           VITE_ASAP_AUTH_EMAIL: CityGang6SIX@gmail.com

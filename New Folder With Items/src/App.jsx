@@ -66,7 +66,7 @@ function App() {
         <Route path="*" element={<Navigate replace to="/dashboard" />} />
       </Route>
 
-      <Route path="/" element={<PublicWebsiteHome />} />
+      <Route path="/" element={<Navigate replace to="/dashboard/dispatch" />} />
       <Route path="*" element={<PublicNotFoundPage />} />
     </Routes>
   );

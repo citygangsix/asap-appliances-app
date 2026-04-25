@@ -21,7 +21,15 @@
         history.replaceState(null, "", url.pathname + url.search + url.hash);
       })();
     </script>
-    <div id="root"></div>
+    <div id="root">
+      <main style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #eef1f6; color: #151821; font-family: Inter, Arial, sans-serif; padding: 24px;">
+        <section style="max-width: 560px;">
+          <p style="margin: 0 0 16px; font-size: 13px; font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase; color: #4f46e5;">ASAP Operations</p>
+          <h1 style="margin: 0; font-size: 36px; line-height: 1.1;">Opening dispatch dashboard...</h1>
+          <p style="margin: 16px 0 0; color: #64748b; font-size: 16px; line-height: 1.6;">Loading the map, workers, leads, and route planner.</p>
+        </section>
+      </main>
+    </div>
     <script type="module" src="./src/main.jsx"></script>
   </body>
 </html>
