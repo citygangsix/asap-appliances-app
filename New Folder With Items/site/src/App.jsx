@@ -4,47 +4,6 @@ const phoneHref = "tel:5615641545";
 const phoneLabel = "561-564-1545";
 
 const modes = {
-  ac: {
-    id: "ac",
-    label: "AC",
-    accentName: "Thermal Red",
-    themeColor: "#8c1d20",
-    eyebrow: "South Florida AC repair and replacement",
-    headline: "Fast air conditioning service with a premium modern edge.",
-    blurb:
-      "When cooling fails, ASAP AC and Appliance keeps the next step simple: call, explain the issue, and get same-day urgency for diagnostics, repairs, and replacement guidance.",
-    badge: "Same-day AC response",
-    primaryStat: "No cool",
-    primaryLabel: "diagnostics and repair",
-    secondaryStat: "Airflow",
-    secondaryLabel: "thermostat and drain line support",
-    heroCards: [
-      {
-        title: "Cooling Repair",
-        text: "Service for no-cool calls, frozen coils, weak airflow, noisy systems, and short cycling.",
-      },
-      {
-        title: "Maintenance",
-        text: "Routine tune-ups that help keep systems cleaner, more efficient, and more dependable.",
-      },
-      {
-        title: "Replacement Planning",
-        text: "Clear recommendations when older equipment is costing too much to keep alive.",
-      },
-    ],
-    checklist: [
-      "Residential AC diagnostics",
-      "Air handler and condenser issues",
-      "Thermostat, airflow, and drain line problems",
-      "Fast scheduling for urgent cooling calls",
-    ],
-    spotlightTitle: "AC service built for urgency",
-    spotlightText:
-      "The red theme leans into emergency cooling calls and keeps the phone number front and center across the page.",
-    heroImage: "/ac-repair-hero.jpg",
-    heroImageAlt: "Technician working on an outdoor air conditioning condenser.",
-    heroImageLabel: "AC repair focus",
-  },
   appliances: {
     id: "appliances",
     label: "Appliances",
@@ -53,7 +12,7 @@ const modes = {
     eyebrow: "South Florida appliance repair",
     headline: "Major appliance repair with a clean, confident booking experience.",
     blurb:
-      "From kitchen breakdowns to laundry room failures, ASAP AC and Appliance makes it easy to call quickly and get same-day support for the machines your home relies on.",
+      "From kitchen breakdowns to laundry room failures, ASAP Appliance Repair makes it easy to call quickly and get same-day support for the machines your home relies on.",
     badge: "Same-day appliance response",
     primaryStat: "Kitchen",
     primaryLabel: "refrigerator, oven, and dishwasher service",
@@ -91,17 +50,17 @@ const modes = {
 const trustPoints = [
   "Premium dark modern landing page",
   "One-tap call-first layout",
-  "AC and appliance service in one experience",
+  "Major appliance repair in one simple experience",
 ];
 
 const processSteps = [
   {
     title: "Call now",
-    text: "Tap any phone CTA and connect directly with ASAP AC and Appliance at 561-564-1545.",
+    text: "Tap any phone CTA and connect directly with ASAP Appliance Repair at 561-564-1545.",
   },
   {
     title: "Share the problem",
-    text: "Explain whether the issue is AC or appliances so the right service path is prioritized immediately.",
+    text: "Explain the appliance issue so the right service path is prioritized immediately.",
   },
   {
     title: "Get same-day service",
@@ -121,7 +80,7 @@ const serviceAreas = [
 const testimonials = [
   {
     quote:
-      "Fast response, clear communication, and a much smoother service experience than we expected when the AC stopped working.",
+      "Fast response, clear communication, and a much smoother service experience than we expected when the refrigerator stopped working.",
     name: "South Florida homeowner",
   },
   {
@@ -137,14 +96,12 @@ const testimonials = [
 ];
 
 function App() {
-  const [mode, setMode] = useState("ac");
+  const [mode, setMode] = useState("appliances");
   const currentMode = modes[mode];
 
   useEffect(() => {
     document.title =
-      mode === "ac"
-        ? "ASAP AC and Appliance | AC Service"
-        : "ASAP AC and Appliance | Appliance Repair";
+      "ASAP Appliance Repair | Appliance Service";
 
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) {
@@ -160,9 +117,9 @@ function App() {
 
       <header className="topbar">
         <div className="brand-lockup">
-          <div className="brand-mark">{mode === "ac" ? "AC" : "AP"}</div>
+          <div className="brand-mark">{"AP"}</div>
           <div>
-            <p className="brand-name">ASAP AC and Appliance</p>
+            <p className="brand-name">ASAP Appliance Repair</p>
             <p className="brand-subtitle">asapacboss.com</p>
           </div>
         </div>
@@ -276,8 +233,7 @@ function App() {
             <h2>Built for quick calls, not distractions.</h2>
             <p>
               The landing page keeps the dark premium look, the phone number stays
-              visible, and the AC or Appliances toggle changes the theme instantly so
-              the experience feels tailored without adding friction.
+              visible, and the appliance repair focus stays clear so the experience feels tailored without adding friction.
             </p>
           </article>
 
@@ -306,9 +262,8 @@ function App() {
             <p className="section-label">Service area</p>
             <h2>Serving homes across South Florida.</h2>
             <p>
-              ASAP AC and Appliance is positioned for same-day calls throughout the
-              South Florida area, with fast phone-first scheduling for AC and major
-              appliance service needs.
+              ASAP Appliance Repair is positioned for same-day calls throughout the
+              South Florida area, with fast phone-first scheduling for major appliance service needs.
             </p>
 
             <div className="service-area-chips" aria-label="South Florida service areas">
@@ -345,7 +300,7 @@ function App() {
             <p className="section-label">Same-day callout</p>
             <h2>Call for same day service</h2>
             <p>
-              ASAP AC and Appliance keeps urgent AC and appliance help one tap away
+              ASAP Appliance Repair keeps urgent appliance help one tap away
               for homeowners who need service now.
             </p>
           </div>
@@ -358,9 +313,9 @@ function App() {
         <section className="final-cta-section">
           <div className="final-cta-panel">
             <p className="section-label">Ready to call</p>
-            <h2>AC problem or appliance breakdown, call now and keep it moving.</h2>
+            <h2>Appliance breakdown, call now and keep it moving.</h2>
             <p>
-              ASAP AC and Appliance keeps the next step simple with a premium,
+              ASAP Appliance Repair keeps the next step simple with a premium,
               straightforward landing page built to turn visits into live calls.
             </p>
 
