@@ -7,6 +7,18 @@ const siteDist = path.join(repoRoot, "dist-site");
 const dashboardDist = path.join(repoRoot, "dist-dashboard");
 const pagesDist = path.join(repoRoot, "dist-pages");
 const dashboardPagesDist = path.join(pagesDist, "dashboard");
+const dashboardDirectRoutes = [
+  "jobs",
+  "customers",
+  "dispatch",
+  "communications",
+  "phone",
+  "invoices",
+  "revenue",
+  "technicians",
+  "new-hires-candidates",
+  "settings",
+];
 
 const dashboardSpaFallback = `<!doctype html>
 <html lang="en">
@@ -60,3 +72,9 @@ await writeFile(path.join(pagesDist, "CNAME"), "ASAPACBoss.com\n");
 await writeFile(path.join(pagesDist, ".nojekyll"), "");
 await writeFile(path.join(pagesDist, "404.html"), rootFallback);
 await writeFile(path.join(dashboardPagesDist, "404.html"), dashboardSpaFallback);
+
+for (const route of dashboardDirectRoutes) {
+  const routeDist = path.join(dashboardPagesDist, route);
+  await mkdir(routeDist, { recursive: true });
+  await cp(path.join(dashboardPagesDist, "index.html"), path.join(routeDist, "index.html"));
+}
