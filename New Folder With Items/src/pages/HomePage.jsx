@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getOperationsRepository } from "../lib/repositories";
 import { formatStatusLabel, getStatusTone } from "../lib/domain/jobs";
 import { Badge, Card, PrimaryButton, SecondaryButton, StatCard } from "../components/ui";
@@ -8,6 +9,7 @@ import { useAsyncValue } from "../hooks/useAsyncValue";
 
 export function HomePage() {
   const repository = getOperationsRepository();
+  const navigate = useNavigate();
   const [refreshNonce, setRefreshNonce] = useState(0);
   const { data, error, isLoading } = useAsyncValue(() => repository.getHomePageData(), [repository, refreshNonce]);
 
@@ -19,7 +21,7 @@ export function HomePage() {
   const actions = (
     <>
       <SecondaryButton onClick={refreshDashboard}>Refresh dashboard</SecondaryButton>
-      <PrimaryButton>Open urgent queue</PrimaryButton>
+      <PrimaryButton onClick={() => navigate("/dashboard/dispatch")}>Open urgent queue</PrimaryButton>
     </>
   );
 

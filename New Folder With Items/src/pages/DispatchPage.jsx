@@ -981,6 +981,7 @@ export function DispatchPage() {
                     <button
                       key={job.jobId}
                       onClick={() => setSelectedAssignmentJobId(job.jobId)}
+                      type="button"
                       className={`w-full rounded-2xl border bg-white p-3 text-left transition hover:border-slate-400 ${
                         selectedAssignmentJob?.jobId === job.jobId
                           ? "border-indigo-300 bg-indigo-50/70"

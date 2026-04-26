@@ -561,7 +561,11 @@ export function InvoicesPage() {
                       }`}
                     >
                       <td className="px-5 py-4">
-                        <button className="text-left" onClick={() => setSelectedInvoiceId(invoice.invoiceId)}>
+                        <button
+                          className="text-left"
+                          onClick={() => setSelectedInvoiceId(invoice.invoiceId)}
+                          type="button"
+                        >
                           <p className="font-semibold text-slate-900">{invoice.invoiceId}</p>
                           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
                             {formatStatusLabel(invoice.invoiceType)}

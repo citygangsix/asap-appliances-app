@@ -37,20 +37,29 @@ export function PageTabs({ tabs }) {
   return (
     <div className="border-b border-[#d8ddea] bg-white px-5 sm:px-8">
       <div className="flex gap-8 overflow-x-auto">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id || tab.label}
-            className={`border-b-[3px] pb-4 pt-5 text-[17px] font-semibold whitespace-nowrap transition ${
-              tab.active
-                ? "border-indigo-500 text-indigo-500"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
-            onClick={tab.onClick}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const hasAction = typeof tab.onClick === "function";
+
+          return (
+            <button
+              key={tab.id || tab.label}
+              aria-current={tab.active ? "page" : undefined}
+              aria-disabled={!hasAction}
+              className={`border-b-[3px] pb-4 pt-5 text-[17px] font-semibold whitespace-nowrap transition ${
+                tab.active
+                  ? "border-indigo-500 text-indigo-500"
+                  : hasAction
+                    ? "border-transparent text-slate-500 hover:text-slate-700"
+                    : "cursor-default border-transparent text-slate-400"
+              }`}
+              disabled={!hasAction}
+              onClick={hasAction ? tab.onClick : undefined}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -89,10 +98,11 @@ export function Badge({ tone = "slate", children }) {
 /**
  * @param {{ children: import("react").ReactNode, className?: string } & import("react").ButtonHTMLAttributes<HTMLButtonElement>} props
  */
-export function PrimaryButton({ children, className = "", ...props }) {
+export function PrimaryButton({ children, className = "", type = "button", ...props }) {
   return (
     <button
       {...props}
+      type={type}
       className={`rounded-2xl bg-indigo-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-600 ${className}`}
     >
       {children}
@@ -103,10 +113,11 @@ export function PrimaryButton({ children, className = "", ...props }) {
 /**
  * @param {{ children: import("react").ReactNode, className?: string } & import("react").ButtonHTMLAttributes<HTMLButtonElement>} props
  */
-export function SecondaryButton({ children, className = "", ...props }) {
+export function SecondaryButton({ children, className = "", type = "button", ...props }) {
   return (
     <button
       {...props}
+      type={type}
       className={`rounded-2xl border border-[#cfd6e2] bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 ${className}`}
     >
       {children}

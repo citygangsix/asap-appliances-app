@@ -461,6 +461,7 @@
  * @property {string} label
  * @property {boolean} [active]
  * @property {string} [id]
+ * @property {() => void} [onClick]
  */
 
 /**

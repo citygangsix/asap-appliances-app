@@ -6,6 +6,16 @@ import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { getOperationsRepository } from "../lib/repositories";
+import { downloadTextFile } from "../lib/download";
+
+function escapeCsvCell(value) {
+  const text = String(value ?? "");
+  return /[",\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function toCsvRow(values) {
+  return values.map(escapeCsvCell).join(",");
+}
 
 export function RevenuePage() {
   const repository = getOperationsRepository();
@@ -17,10 +27,37 @@ export function RevenuePage() {
     setRefreshNonce((current) => current + 1);
   };
 
+  const exportRevenueSummary = () => {
+    if (!data) {
+      return;
+    }
+
+    const { payoutRecords, pendingBalance, revenueCards } = data;
+    const rows = [
+      ["Section", "Label", "Value", "Detail"],
+      ...revenueCards.map((card) => ["Revenue KPI", card.label, card.value, card.detail]),
+      ["Cash posture", "Pending balance", formatCurrency(pendingBalance), "Open balance to collect"],
+      ...payoutRecords.map((batch) => [
+        "Technician payout",
+        batch.technician?.name || batch.payoutId,
+        formatCurrency(batch.amount),
+        formatStatusLabel(batch.status),
+      ]),
+    ];
+
+    downloadTextFile(
+      "asap-revenue-summary.csv",
+      `${rows.map(toCsvRow).join("\n")}\n`,
+      "text/csv;charset=utf-8",
+    );
+  };
+
   const actions = (
     <>
       <SecondaryButton onClick={refreshRevenue}>Refresh revenue</SecondaryButton>
-      <PrimaryButton>Export summary</PrimaryButton>
+      <PrimaryButton onClick={exportRevenueSummary} disabled={!data}>
+        Export summary
+      </PrimaryButton>
     </>
   );
 

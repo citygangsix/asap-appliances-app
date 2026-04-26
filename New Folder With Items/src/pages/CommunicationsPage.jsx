@@ -467,6 +467,7 @@ export function CommunicationsPage() {
                 <button
                   key={item.unmatchedCommunicationId}
                   onClick={() => setSelectedUnmatchedCommunicationId(item.unmatchedCommunicationId)}
+                  type="button"
                   className={`w-full rounded-2xl border p-4 text-left transition ${
                     selectedUnmatchedInbound?.unmatchedCommunicationId === item.unmatchedCommunicationId
                       ? "border-amber-300 bg-amber-50/70"
@@ -625,6 +626,7 @@ export function CommunicationsPage() {
               <button
                 key={item.communicationId}
                 onClick={() => setSelectedCommunicationId(item.communicationId)}
+                type="button"
                 className={`w-full rounded-2xl border p-4 text-left transition ${
                   selectedCommunication?.communicationId === item.communicationId
                     ? "border-indigo-300 bg-indigo-50/70"
@@ -759,6 +761,7 @@ export function CommunicationsPage() {
                 <button
                   onClick={runApprove}
                   disabled={activeActionKey === `approve:${selectedCommunication.communicationId}`}
+                  type="button"
                   className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white"
                 >
                   {activeActionKey === `approve:${selectedCommunication.communicationId}` ? "Saving..." : "Approve"}
@@ -766,6 +769,7 @@ export function CommunicationsPage() {
                 <button
                   onClick={runReject}
                   disabled={activeActionKey === `reject:${selectedCommunication.communicationId}`}
+                  type="button"
                   className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600"
                 >
                   {activeActionKey === `reject:${selectedCommunication.communicationId}` ? "Saving..." : "Reject"}
@@ -773,6 +777,7 @@ export function CommunicationsPage() {
                 <button
                   onClick={runReviewUnresolved}
                   disabled={activeActionKey === `review:${selectedCommunication.communicationId}`}
+                  type="button"
                   className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600"
                 >
                   {activeActionKey === `review:${selectedCommunication.communicationId}` ? "Saving..." : "Mark reviewed"}

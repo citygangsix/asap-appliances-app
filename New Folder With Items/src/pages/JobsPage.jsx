@@ -30,6 +30,32 @@ const JOB_ACTION_TONES = {
 const ASSIGNMENT_FIELD_CLASS =
   "rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500";
 
+const JOB_FIELD_CLASS =
+  "mt-2 w-full rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500";
+
+function formatDatetimeLocal(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function createEmptyJobDraft() {
+  const scheduledAt = new Date();
+  scheduledAt.setHours(scheduledAt.getHours() + 2, 0, 0, 0);
+
+  return {
+    customerId: "",
+    applianceLabel: "",
+    applianceBrand: "",
+    issueSummary: "",
+    serviceAddress: "",
+    scheduledStartAt: formatDatetimeLocal(scheduledAt),
+    techId: "",
+    priority: "normal",
+    internalNotes: "",
+  };
+}
+
 function getQuickActionUpdate(job, action) {
   const eventAt = new Date().toISOString();
 
@@ -103,6 +129,8 @@ export function JobsPage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [activeActionKey, setActiveActionKey] = useState(null);
   const [actionFeedback, setActionFeedback] = useState(null);
+  const [isCreatingJob, setIsCreatingJob] = useState(false);
+  const [newJobDraft, setNewJobDraft] = useState(createEmptyJobDraft);
   const [selectedAssignmentTechId, setSelectedAssignmentTechId] = useState("");
   const [filters, setFilters] = useState({
     search: "",
@@ -117,9 +145,11 @@ export function JobsPage() {
     [repository, refreshNonce],
   );
   const jobRecords = data?.jobRecords || [];
+  const customerQuery = useAsyncValue(() => repository.customers.list(), [repository, refreshNonce]);
 
   const filterOptions = useMemo(() => getJobFilterOptions(jobRecords), [jobRecords]);
   const filteredJobs = useMemo(() => filterJobs(jobRecords, filters), [filters, jobRecords]);
+  const customerOptions = customerQuery.data || [];
   const selectedListJob =
     filteredJobs.find((job) => job.jobId === selectedJobId) ||
     jobRecords.find((job) => job.jobId === selectedJobId) ||
@@ -159,13 +189,111 @@ export function JobsPage() {
     setSelectedAssignmentTechId(selectedJob?.techId || "");
   }, [selectedJob?.jobId, selectedJob?.techId]);
 
+  useEffect(() => {
+    if (!isCreatingJob || newJobDraft.customerId || !customerOptions[0]?.customerId) {
+      return;
+    }
+
+    setNewJobDraft((current) => ({
+      ...current,
+      customerId: current.customerId || customerOptions[0].customerId,
+    }));
+  }, [customerOptions, isCreatingJob, newJobDraft.customerId]);
+
   const updateFilter = (key, value) => {
     setFilters((current) => ({ ...current, [key]: value }));
+  };
+
+  const updateNewJobDraft = (key, value) => {
+    setNewJobDraft((current) => ({ ...current, [key]: value }));
   };
 
   const refreshJobs = () => {
     repository.clearRuntimeCaches?.();
     setRefreshNonce((current) => current + 1);
+  };
+
+  const toggleCreateJobForm = () => {
+    setActionFeedback(null);
+    setIsCreatingJob((current) => {
+      if (current) {
+        setNewJobDraft(createEmptyJobDraft());
+      }
+
+      return !current;
+    });
+  };
+
+  const runCreateJob = async () => {
+    const requiredFields = [
+      ["customer", newJobDraft.customerId],
+      ["appliance", newJobDraft.applianceLabel],
+      ["issue summary", newJobDraft.issueSummary],
+      ["service address", newJobDraft.serviceAddress],
+      ["scheduled time", newJobDraft.scheduledStartAt],
+    ];
+    const missingField = requiredFields.find(([, value]) => !String(value || "").trim());
+
+    if (missingField) {
+      setActionFeedback({
+        message: `Add the ${missingField[0]} before creating the job.`,
+        tone: "amber",
+      });
+      return;
+    }
+
+    const scheduledAt = new Date(newJobDraft.scheduledStartAt);
+
+    if (Number.isNaN(scheduledAt.getTime())) {
+      setActionFeedback({
+        message: "Choose a valid scheduled time before creating the job.",
+        tone: "amber",
+      });
+      return;
+    }
+
+    const actionKey = "job:create";
+    setActiveActionKey(actionKey);
+
+    try {
+      const result = await repository.jobs.create({
+        customerId: newJobDraft.customerId,
+        applianceLabel: newJobDraft.applianceLabel.trim(),
+        applianceBrand: newJobDraft.applianceBrand.trim(),
+        issueSummary: newJobDraft.issueSummary.trim(),
+        serviceAddress: newJobDraft.serviceAddress.trim(),
+        scheduledStartAt: scheduledAt.toISOString(),
+        techId: newJobDraft.techId || null,
+        priority: newJobDraft.priority,
+        internalNotes: newJobDraft.internalNotes.trim() || null,
+      });
+
+      setActionFeedback({
+        message: result.message,
+        tone:
+          result.source === "mock"
+            ? "amber"
+            : result.ok
+              ? "emerald"
+              : "rose",
+      });
+
+      if (result.ok) {
+        setIsCreatingJob(false);
+        setNewJobDraft(createEmptyJobDraft());
+        if (result.record?.jobId) {
+          setSelectedJobId(result.record.jobId);
+        }
+        refreshJobs();
+      }
+    } catch (error) {
+      setActionFeedback({
+        message: error.message,
+        tone: "rose",
+      });
+    } finally {
+      setActiveActionKey(null);
+    }
   };
 
   const runAssignment = async (jobId) => {
@@ -252,7 +380,7 @@ export function JobsPage() {
   const actions = (
     <>
       <SecondaryButton onClick={refreshJobs}>Refresh jobs</SecondaryButton>
-      <PrimaryButton>+ New Job</PrimaryButton>
+      <PrimaryButton onClick={toggleCreateJobForm}>{isCreatingJob ? "Close new job" : "+ New Job"}</PrimaryButton>
     </>
   );
 
@@ -286,6 +414,143 @@ export function JobsPage() {
         <div className={`rounded-2xl border px-4 py-3 text-sm ${JOB_ACTION_TONES[actionFeedback.tone]}`}>
           {actionFeedback.message}
         </div>
+      ) : null}
+
+      {isCreatingJob ? (
+        <Card className="p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="section-title">New job</p>
+              <h2 className="mt-2 text-lg font-semibold text-slate-900">Create service job</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                The job will save through the active repository and land back in the operations queue.
+              </p>
+            </div>
+            <SecondaryButton onClick={toggleCreateJobForm}>Cancel</SecondaryButton>
+          </div>
+
+          {customerQuery.error ? (
+            <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              {customerQuery.error.message}
+            </div>
+          ) : null}
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <label className="text-sm font-medium text-slate-600">
+              Customer
+              <select
+                value={newJobDraft.customerId}
+                onChange={(event) => updateNewJobDraft("customerId", event.target.value)}
+                disabled={customerQuery.isLoading}
+                className={JOB_FIELD_CLASS}
+              >
+                {customerOptions.length === 0 ? <option value="">No customers available</option> : null}
+                {customerOptions.map((customer) => (
+                  <option key={customer.customerId} value={customer.customerId}>
+                    {customer.name} · {customer.primaryPhone || "No phone"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-medium text-slate-600">
+              Appliance
+              <input
+                value={newJobDraft.applianceLabel}
+                onChange={(event) => updateNewJobDraft("applianceLabel", event.target.value)}
+                placeholder="Refrigerator, AC condenser, washer"
+                className={JOB_FIELD_CLASS}
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-600">
+              Brand
+              <input
+                value={newJobDraft.applianceBrand}
+                onChange={(event) => updateNewJobDraft("applianceBrand", event.target.value)}
+                placeholder="LG, Carrier, Whirlpool"
+                className={JOB_FIELD_CLASS}
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-600 xl:col-span-2">
+              Issue summary
+              <input
+                value={newJobDraft.issueSummary}
+                onChange={(event) => updateNewJobDraft("issueSummary", event.target.value)}
+                placeholder="No cool, not draining, compressor noise"
+                className={JOB_FIELD_CLASS}
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-600">
+              Scheduled time
+              <input
+                type="datetime-local"
+                value={newJobDraft.scheduledStartAt}
+                onChange={(event) => updateNewJobDraft("scheduledStartAt", event.target.value)}
+                className={JOB_FIELD_CLASS}
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-600 xl:col-span-2">
+              Service address
+              <input
+                value={newJobDraft.serviceAddress}
+                onChange={(event) => updateNewJobDraft("serviceAddress", event.target.value)}
+                placeholder="Street, city, ZIP"
+                className={JOB_FIELD_CLASS}
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-600">
+              Technician
+              <select
+                value={newJobDraft.techId}
+                onChange={(event) => updateNewJobDraft("techId", event.target.value)}
+                disabled={techniciansQuery.isLoading}
+                className={JOB_FIELD_CLASS}
+              >
+                <option value="">Auto-assign or leave unassigned</option>
+                {technicians.map((technician) => (
+                  <option key={technician.techId} value={technician.techId}>
+                    {technician.name} · {technician.serviceArea}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-medium text-slate-600">
+              Priority
+              <select
+                value={newJobDraft.priority}
+                onChange={(event) => updateNewJobDraft("priority", event.target.value)}
+                className={JOB_FIELD_CLASS}
+              >
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="escalated">Escalated</option>
+              </select>
+            </label>
+            <label className="text-sm font-medium text-slate-600 md:col-span-2 xl:col-span-3">
+              Internal notes
+              <textarea
+                value={newJobDraft.internalNotes}
+                onChange={(event) => updateNewJobDraft("internalNotes", event.target.value)}
+                rows={3}
+                placeholder="Gate code, parking, warranty context, or office note"
+                className={`${JOB_FIELD_CLASS} resize-none`}
+              />
+            </label>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <PrimaryButton
+              onClick={runCreateJob}
+              disabled={
+                activeActionKey === "job:create" ||
+                customerQuery.isLoading ||
+                techniciansQuery.isLoading ||
+                customerOptions.length === 0
+              }
+            >
+              {activeActionKey === "job:create" ? "Creating job..." : "Create job"}
+            </PrimaryButton>
+          </div>
+        </Card>
       ) : null}
 
       <Card className="p-5">
@@ -350,7 +615,11 @@ export function JobsPage() {
                     }`}
                   >
                     <td className="px-5 py-4">
-                      <button className="text-left" onClick={() => setSelectedJobId(job.jobId)}>
+                      <button
+                        className="text-left"
+                        onClick={() => setSelectedJobId(job.jobId)}
+                        type="button"
+                      >
                         <p className="font-semibold text-slate-900">{job.customer?.name}</p>
                         <p className="mt-1 text-slate-500">{job.applianceLabel}</p>
                         <p className="mt-1 text-slate-500">{job.issueSummary}</p>
@@ -383,6 +652,7 @@ export function JobsPage() {
                             key={`${job.jobId}-${action}`}
                             onClick={() => runQuickAction(job, action)}
                             disabled={activeActionKey === `${job.jobId}:${action}`}
+                            type="button"
                             className="rounded-full border border-[#d6dce7] bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
                           >
                             {activeActionKey === `${job.jobId}:${action}` ? "Saving..." : action}

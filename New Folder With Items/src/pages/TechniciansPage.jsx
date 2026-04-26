@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatCurrency, formatPercent } from "../lib/domain/finance";
 import { formatStatusLabel, getStatusTone } from "../lib/domain/jobs";
 import { Badge, Card, PrimaryButton, SecondaryButton } from "../components/ui";
@@ -102,6 +102,8 @@ async function requestManualCallLog(payload) {
 
 export function TechniciansPage() {
   const repository = getOperationsRepository();
+  const manualCallSectionRef = useRef(null);
+  const candidateNameInputRef = useRef(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [activeActionKey, setActiveActionKey] = useState(null);
   const [actionFeedback, setActionFeedback] = useState(null);
@@ -125,6 +127,15 @@ export function TechniciansPage() {
   const refreshRoster = () => {
     repository.clearRuntimeCaches?.();
     setRefreshNonce((current) => current + 1);
+  };
+
+  const focusTechnicianIntake = () => {
+    setActionFeedback({
+      message: "Add technician starts here. Enter a recruiting call note or use a captured hiring candidate below.",
+      tone: "amber",
+    });
+    manualCallSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => candidateNameInputRef.current?.focus(), 250);
   };
 
   const runCandidateClickToCall = async (agentPhone) => {
@@ -223,7 +234,9 @@ export function TechniciansPage() {
   const actions = (
     <>
       <SecondaryButton onClick={refreshRoster}>Refresh roster</SecondaryButton>
-      <PrimaryButton>Add technician</PrimaryButton>
+      <PrimaryButton onClick={focusTechnicianIntake} disabled={isLoading || Boolean(error) || !data}>
+        Add technician
+      </PrimaryButton>
     </>
   );
 
@@ -367,6 +380,7 @@ export function TechniciansPage() {
       </div>
 
       <div className="space-y-6">
+        <div ref={manualCallSectionRef} />
         <Card className="p-6">
           <p className="section-title">Off-system Call Fallback</p>
           <h2 className="mt-2 text-lg font-semibold">Manual recruiting call log</h2>
@@ -386,6 +400,7 @@ export function TechniciansPage() {
             <label className="text-sm font-medium text-slate-600">
               Candidate name
               <input
+                ref={candidateNameInputRef}
                 value={manualHiringCallDraft.candidateName}
                 onChange={(event) =>
                   setManualHiringCallDraft((current) => ({
@@ -502,6 +517,7 @@ export function TechniciansPage() {
                 <button
                   key={candidate.candidateId}
                   onClick={() => setSelectedCandidateId(candidate.candidateId)}
+                  type="button"
                   className={`w-full rounded-2xl border p-4 text-left transition ${
                     selectedCandidate?.candidateId === candidate.candidateId
                       ? "border-indigo-300 bg-indigo-50/70"

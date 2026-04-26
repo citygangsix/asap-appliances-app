@@ -569,6 +569,7 @@ export function CustomersPage() {
             <button
               key={customer.customerId}
               onClick={() => setSelectedCustomerId(customer.customerId)}
+              type="button"
               className={`grid w-full gap-3 px-6 py-5 text-left transition md:grid-cols-[1.1fr_0.8fr_0.6fr_0.6fr] ${
                 selectedCustomerSummary.customerId === customer.customerId
                   ? "bg-indigo-50/70"
@@ -779,6 +780,7 @@ export function CustomersPage() {
                       <button
                         key={communication.communicationId}
                         onClick={() => setSelectedCustomerCallId(communication.communicationId)}
+                        type="button"
                         className={`rounded-2xl border px-4 py-3 text-left transition ${
                           selectedCustomerCall?.communicationId === communication.communicationId
                             ? "border-indigo-300 bg-indigo-50/70"

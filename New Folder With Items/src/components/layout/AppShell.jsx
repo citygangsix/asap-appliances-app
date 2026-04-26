@@ -21,6 +21,7 @@ export function AppShell() {
           <button
             onClick={() => setMobileOpen(true)}
             className="rounded-xl border border-[#cfd6e2] bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+            type="button"
           >
             Menu
           </button>
