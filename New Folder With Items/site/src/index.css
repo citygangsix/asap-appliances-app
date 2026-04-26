@@ -122,7 +122,8 @@ button {
 .service-area-section,
 .reviews-section,
 .same-day-panel,
-.final-cta-section {
+.final-cta-section,
+.site-footer {
   position: relative;
   z-index: 1;
 }
@@ -673,6 +674,16 @@ button {
 
 .final-cta-section {
   margin-bottom: 32px;
+}
+
+.site-footer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 18px 0 4px;
+  color: rgba(246, 247, 251, 0.58);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  text-align: center;
 }
 
 .final-cta-panel p {

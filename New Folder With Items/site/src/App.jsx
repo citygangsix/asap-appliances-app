@@ -209,6 +209,10 @@ function App() {
           </div>
         </section>
       </main>
+
+      <footer className="site-footer">
+        ASAP Appliance is a trade name of CASE-LESS INDUSTRIES LLC.
+      </footer>
     </div>
   );
 }
