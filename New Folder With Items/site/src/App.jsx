@@ -1,71 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 const phoneHref = "tel:5615641545";
 const phoneLabel = "561-564-1545";
 
-const modes = {
-  appliances: {
-    id: "appliances",
-    label: "Appliances",
-    accentName: "Electric Blue",
-    themeColor: "#1d4ed8",
-    eyebrow: "South Florida appliance repair",
-    headline: "Major appliance repair with a clean, confident booking experience.",
-    blurb:
-      "From kitchen breakdowns to laundry room failures, ASAP Appliance Repair makes it easy to call quickly and get same-day support for the machines your home relies on.",
-    badge: "Same-day appliance response",
-    primaryStat: "Kitchen",
-    primaryLabel: "refrigerator, oven, and dishwasher service",
-    secondaryStat: "Laundry",
-    secondaryLabel: "washer and dryer troubleshooting",
-    heroCards: [
-      {
-        title: "Kitchen Appliances",
-        text: "Support for refrigerators, freezers, ovens, cooktops, microwaves, and dishwashers.",
-      },
-      {
-        title: "Laundry Repair",
-        text: "Washer and dryer service for leaks, noise, spin failures, heat loss, and draining issues.",
-      },
-      {
-        title: "Clear Next Steps",
-        text: "Simple repair-versus-replace guidance so you can make a quick decision without guesswork.",
-      },
-    ],
-    checklist: [
-      "Refrigerator and freezer repairs",
-      "Washer and dryer troubleshooting",
-      "Oven, range, and cooktop service",
-      "Dishwasher and disposal issues",
-    ],
-    spotlightTitle: "Appliance mode stays calm and clear",
-    spotlightText:
-      "The blue theme keeps the same premium layout while shifting the page toward kitchen and laundry repair needs.",
-    heroImage: "/appliance-repair-handshake.jpg",
-    heroImageAlt: "Appliance technician shaking hands with a customer in a kitchen.",
-    heroImageLabel: "Appliance repair focus",
-  },
-};
-
-const trustPoints = [
-  "Premium dark modern landing page",
-  "One-tap call-first layout",
-  "Major appliance repair in one simple experience",
-];
-
-const processSteps = [
-  {
-    title: "Call now",
-    text: "Tap any phone CTA and connect directly with ASAP Appliance Repair at 561-564-1545.",
-  },
-  {
-    title: "Share the problem",
-    text: "Explain the appliance issue so the right service path is prioritized immediately.",
-  },
-  {
-    title: "Get same-day service",
-    text: "The page is designed to move visitors from landing to live phone calls without friction.",
-  },
+const services = [
+  "Washer repair",
+  "Dryer repair",
+  "Refrigerator repair",
+  "Oven repair",
+  "Stove repair",
+  "Dishwasher repair",
 ];
 
 const serviceAreas = [
@@ -77,65 +21,35 @@ const serviceAreas = [
   "Wellington",
 ];
 
-const testimonials = [
-  {
-    quote:
-      "Fast response, clear communication, and a much smoother service experience than we expected when the refrigerator stopped working.",
-    name: "South Florida homeowner",
-  },
-  {
-    quote:
-      "We called about an appliance issue and got a same-day visit lined up quickly without back-and-forth or confusion.",
-    name: "Local customer",
-  },
-  {
-    quote:
-      "The process felt premium and simple from the first phone call. Exactly what you want when something breaks at home.",
-    name: "Verified client review",
-  },
+const trustPoints = [
+  "Appliance-only repair service",
+  "Same-day scheduling when available",
+  "Call-first booking at 561-564-1545",
 ];
 
 function App() {
-  const [mode, setMode] = useState("appliances");
-  const currentMode = modes[mode];
-
   useEffect(() => {
-    document.title =
-      "ASAP Appliance Repair | Appliance Service";
+    document.title = "ASAP Appliance | Appliance Repair Service";
 
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) {
-      themeMeta.setAttribute("content", currentMode.themeColor);
+      themeMeta.setAttribute("content", "#1d4ed8");
     }
-  }, [currentMode.themeColor, mode]);
+  }, []);
 
   return (
-    <div className={`site-shell theme-${mode}`}>
+    <div className="site-shell theme-appliances">
       <div className="background-grid" aria-hidden="true" />
       <div className="ambient ambient-one" aria-hidden="true" />
       <div className="ambient ambient-two" aria-hidden="true" />
 
       <header className="topbar">
         <div className="brand-lockup">
-          <div className="brand-mark">{"AP"}</div>
+          <div className="brand-mark">AP</div>
           <div>
-            <p className="brand-name">ASAP Appliance Repair</p>
+            <p className="brand-name">ASAP Appliance</p>
             <p className="brand-subtitle">asapacboss.com</p>
           </div>
-        </div>
-
-        <div className="toggle-cluster" role="tablist" aria-label="Service mode">
-          {Object.values(modes).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={item.id === mode ? "toggle-pill active" : "toggle-pill"}
-              onClick={() => setMode(item.id)}
-              aria-pressed={item.id === mode}
-            >
-              {item.label}
-            </button>
-          ))}
         </div>
 
         <a className="call-button" href={phoneHref}>
@@ -148,24 +62,27 @@ function App() {
           <div className="hero-scene" aria-hidden="true">
             <div
               className="hero-scene-image"
-              style={{ backgroundImage: `url(${currentMode.heroImage})` }}
+              style={{ backgroundImage: "url(/appliance-repair-handshake.jpg)" }}
             />
           </div>
 
           <div className="hero-copy">
-            <p className="eyebrow">{currentMode.eyebrow}</p>
-            <h1>{currentMode.headline}</h1>
-            <p className="hero-text">{currentMode.blurb}</p>
+            <p className="eyebrow">South Florida appliance repair</p>
+            <h1>Appliance Repair Service</h1>
+            <p className="hero-text">
+              ASAP Appliance helps homeowners schedule repair service for major
+              household appliances with a simple phone-first booking experience.
+            </p>
 
             <div className="toggle-card">
               <div className="toggle-header">
-                <span>Service Focus</span>
-                <span className="accent-label">{currentMode.accentName}</span>
+                <span>DBA / Google Profile Name</span>
+                <span className="accent-label">ASAP Appliance</span>
               </div>
 
               <ul className="checklist">
-                {currentMode.checklist.map((item) => (
-                  <li key={item}>{item}</li>
+                {services.map((service) => (
+                  <li key={service}>{service}</li>
                 ))}
               </ul>
             </div>
@@ -174,8 +91,8 @@ function App() {
               <a className="primary-cta" href={phoneHref}>
                 Call {phoneLabel}
               </a>
-              <a className="secondary-cta" href="#same-day-service">
-                Same day service
+              <a className="secondary-cta" href="#services">
+                View services
               </a>
             </div>
           </div>
@@ -184,31 +101,31 @@ function App() {
             <div className="hero-image-shell">
               <img
                 className="hero-image"
-                src={currentMode.heroImage}
-                alt={currentMode.heroImageAlt}
+                src="/appliance-repair-handshake.jpg"
+                alt="Appliance repair technician greeting a customer in a kitchen."
               />
               <div className="hero-image-overlay" />
-              <div className="hero-image-label">{currentMode.heroImageLabel}</div>
+              <div className="hero-image-label">Appliance repair service</div>
             </div>
 
-            <div className="badge">{currentMode.badge}</div>
+            <div className="badge">Appliance-only service page</div>
 
             <div className="stat-grid">
               <article className="stat-card">
-                <strong>{currentMode.primaryStat}</strong>
-                <span>{currentMode.primaryLabel}</span>
+                <strong>Kitchen</strong>
+                <span>refrigerator, oven, stove, and dishwasher repair</span>
               </article>
               <article className="stat-card">
-                <strong>{currentMode.secondaryStat}</strong>
-                <span>{currentMode.secondaryLabel}</span>
+                <strong>Laundry</strong>
+                <span>washer and dryer troubleshooting</span>
               </article>
             </div>
 
-            <div className="service-cards">
-              {currentMode.heroCards.map((card) => (
-                <article key={card.title} className="service-card">
-                  <h2>{card.title}</h2>
-                  <p>{card.text}</p>
+            <div className="service-cards" id="services">
+              {services.map((service) => (
+                <article key={service} className="service-card">
+                  <h2>{service}</h2>
+                  <p>Call ASAP Appliance to request service and share what is not working.</p>
                 </article>
               ))}
             </div>
@@ -229,32 +146,22 @@ function App() {
 
         <section className="content-grid">
           <article className="content-panel">
-            <p className="section-label">Why this page works</p>
-            <h2>Built for quick calls, not distractions.</h2>
+            <p className="section-label">Business profile</p>
+            <h2>ASAP Appliance</h2>
             <p>
-              The landing page keeps the dark premium look, the phone number stays
-              visible, and the appliance repair focus stays clear so the experience feels tailored without adding friction.
+              This website is set up for appliance repair service under the name
+              ASAP Appliance, with clear service categories and a direct phone number.
             </p>
           </article>
 
           <article className="content-panel">
-            <p className="section-label">Current mode</p>
-            <h2>{currentMode.spotlightTitle}</h2>
-            <p>{currentMode.spotlightText}</p>
+            <p className="section-label">Services listed</p>
+            <h2>Major household appliance repair.</h2>
+            <p>
+              Washer, dryer, refrigerator, oven, stove, and dishwasher repair are
+              the only services presented on this public website.
+            </p>
           </article>
-        </section>
-
-        <section className="process-section">
-          <p className="section-label">Simple flow</p>
-          <div className="process-grid">
-            {processSteps.map((step, index) => (
-              <article key={step.title} className="process-card">
-                <span className="step-number">0{index + 1}</span>
-                <h2>{step.title}</h2>
-                <p>{step.text}</p>
-              </article>
-            ))}
-          </div>
         </section>
 
         <section className="service-area-section">
@@ -262,8 +169,8 @@ function App() {
             <p className="section-label">Service area</p>
             <h2>Serving homes across South Florida.</h2>
             <p>
-              ASAP Appliance Repair is positioned for same-day calls throughout the
-              South Florida area, with fast phone-first scheduling for major appliance service needs.
+              Call ASAP Appliance for appliance repair scheduling in the local
+              South Florida service area.
             </p>
 
             <div className="service-area-chips" aria-label="South Florida service areas">
@@ -276,33 +183,11 @@ function App() {
           </article>
         </section>
 
-        <section className="reviews-section">
-          <div className="reviews-heading">
-            <p className="section-label">Reviews</p>
-            <h2>Trusted for fast service and a clean experience.</h2>
-          </div>
-
-          <div className="reviews-grid">
-            {testimonials.map((testimonial) => (
-              <article key={testimonial.quote} className="review-card">
-                <span className="review-stars" aria-hidden="true">
-                  5.0
-                </span>
-                <p className="review-quote">“{testimonial.quote}”</p>
-                <p className="review-name">{testimonial.name}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
         <section className="same-day-panel" id="same-day-service">
           <div>
-            <p className="section-label">Same-day callout</p>
-            <h2>Call for same day service</h2>
-            <p>
-              ASAP Appliance Repair keeps urgent appliance help one tap away
-              for homeowners who need service now.
-            </p>
+            <p className="section-label">Call to schedule</p>
+            <h2>Appliance repair help is one tap away.</h2>
+            <p>Call the business line and explain which appliance needs service.</p>
           </div>
 
           <a className="bottom-call-button" href={phoneHref}>
@@ -312,19 +197,13 @@ function App() {
 
         <section className="final-cta-section">
           <div className="final-cta-panel">
-            <p className="section-label">Ready to call</p>
-            <h2>Appliance breakdown, call now and keep it moving.</h2>
-            <p>
-              ASAP Appliance Repair keeps the next step simple with a premium,
-              straightforward landing page built to turn visits into live calls.
-            </p>
+            <p className="section-label">Legal</p>
+            <h2>CASE-LESS INDUSTRIES LLC DBA ASAP Appliance</h2>
+            <p>Public website for appliance repair service requests at asapacboss.com.</p>
 
             <div className="hero-actions">
               <a className="primary-cta" href={phoneHref}>
                 Call {phoneLabel}
-              </a>
-              <a className="secondary-cta" href="#same-day-service">
-                Same day service
               </a>
             </div>
           </div>
