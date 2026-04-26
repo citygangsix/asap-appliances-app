@@ -16,20 +16,20 @@ export function AppShell() {
     <div className="min-h-screen bg-[#eef1f6] md:flex">
       <SidebarNav mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
 
-      <main className="min-h-screen flex-1 bg-[#eef1f6]">
-        <div className="flex items-center justify-between border-b border-[#d8ddea] bg-white px-4 py-4 md:hidden">
+      <main className="min-h-screen min-w-0 flex-1 bg-[#eef1f6]">
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[#d8ddea] bg-white px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:hidden">
           <button
             onClick={() => setMobileOpen(true)}
-            className="rounded-xl border border-[#cfd6e2] bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+            className="rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700"
             type="button"
           >
             Menu
           </button>
-          <div className="text-right">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+          <div className="min-w-0 flex-1 text-right">
+            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
               {routeMeta.eyebrow}
             </p>
-            <p className="mt-1 text-sm text-slate-500">{routeMeta.alert}</p>
+            <p className="mt-1 truncate text-sm text-slate-500">{routeMeta.alert}</p>
           </div>
         </div>
 

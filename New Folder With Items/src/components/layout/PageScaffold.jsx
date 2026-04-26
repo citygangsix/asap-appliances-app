@@ -28,10 +28,10 @@ export function PageScaffold({
   contentClassName = "space-y-6 p-4 sm:p-6 lg:p-8",
 }) {
   return (
-    <div className="space-y-0">
+    <div className="min-w-0 space-y-0">
       <PageHeader title={title} subtitle={subtitle} action={actions} />
       {tabs.length > 0 ? <PageTabs tabs={tabs} /> : null}
-      <div className={contentClassName}>{children}</div>
+      <div className={`min-w-0 ${contentClassName}`}>{children}</div>
     </div>
   );
 }

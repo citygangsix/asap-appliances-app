@@ -822,7 +822,7 @@ export function DispatchPage() {
                 <div className="mt-4 flex flex-wrap gap-2">
                   {activeRoutePlan.mapsLinks.googleMapsUrl ? (
                     <a
-                      className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
+                      className="inline-flex min-h-11 items-center rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
                       href={activeRoutePlan.mapsLinks.googleMapsUrl}
                       rel="noreferrer"
                       target="_blank"
@@ -832,7 +832,7 @@ export function DispatchPage() {
                   ) : null}
                   {activeRoutePlan.mapsLinks.appleMapsUrl ? (
                     <a
-                      className="rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      className="inline-flex min-h-11 items-center rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                       href={activeRoutePlan.mapsLinks.appleMapsUrl}
                       rel="noreferrer"
                       target="_blank"
@@ -842,7 +842,7 @@ export function DispatchPage() {
                   ) : null}
                   {activeRoutePlan.smsUrl ? (
                     <a
-                      className="rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      className="inline-flex min-h-11 items-center rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                       href={activeRoutePlan.smsUrl}
                     >
                       Text tech

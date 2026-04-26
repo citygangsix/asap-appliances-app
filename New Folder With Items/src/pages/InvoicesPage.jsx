@@ -541,7 +541,40 @@ export function InvoicesPage() {
               <p className="section-title">Invoices</p>
               <h2 className="mt-2 text-lg font-semibold">Collections queue</h2>
             </div>
-            <div className="overflow-x-auto">
+            <div className="divide-y divide-[#edf0f5] md:hidden">
+              {invoiceRecords.map((invoice) => (
+                <button
+                  key={invoice.invoiceId}
+                  className={`w-full p-4 text-left transition ${
+                    selectedInvoice?.invoiceId === invoice.invoiceId
+                      ? "bg-indigo-50/70"
+                      : "bg-white hover:bg-slate-50"
+                  }`}
+                  onClick={() => setSelectedInvoiceId(invoice.invoiceId)}
+                  type="button"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900">{invoice.invoiceId}</p>
+                      <p className="mt-1 text-sm text-slate-500">{invoice.customer?.name}</p>
+                    </div>
+                    <Badge tone={getStatusTone(invoice.paymentStatus)}>
+                      {formatStatusLabel(invoice.paymentStatus)}
+                    </Badge>
+                  </div>
+                  <div className="mt-4 grid gap-2 text-sm text-slate-600">
+                    <p>Total {formatCurrency(invoice.totalAmount)}</p>
+                    <p>Balance {formatCurrency(invoice.outstandingBalance)}</p>
+                    <p>{formatStatusLabel(invoice.invoiceType)}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      {invoice.jobId}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-400">
                   <tr>

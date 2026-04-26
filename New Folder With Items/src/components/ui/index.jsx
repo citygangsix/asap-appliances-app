@@ -12,15 +12,15 @@
  */
 export function PageHeader({ section = "CRM", title, subtitle, action }) {
   return (
-    <div className="border-b border-[#d8ddea] bg-white px-5 py-5 sm:px-8">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-[15px] text-slate-400">
+    <div className="border-b border-[#d8ddea] bg-white px-4 py-5 sm:px-8">
+      <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <p className="break-words text-sm text-slate-400 sm:text-[15px]">
             {section} / <span className="font-semibold text-slate-900">{title}</span>
           </p>
-          {subtitle ? <p className="mt-2 text-sm text-slate-500">{subtitle}</p> : null}
+          {subtitle ? <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-500">{subtitle}</p> : null}
         </div>
-        {action ? <div className="flex flex-wrap gap-3">{action}</div> : null}
+        {action ? <div className="flex w-full flex-wrap gap-3 sm:w-auto md:justify-end">{action}</div> : null}
       </div>
     </div>
   );
@@ -35,8 +35,8 @@ export function PageTabs({ tabs }) {
   }
 
   return (
-    <div className="border-b border-[#d8ddea] bg-white px-5 sm:px-8">
-      <div className="flex gap-8 overflow-x-auto">
+    <div className="border-b border-[#d8ddea] bg-white px-4 sm:px-8">
+      <div className="-mx-4 flex gap-4 overflow-x-auto px-4 sm:mx-0 sm:gap-8 sm:px-0">
         {tabs.map((tab) => {
           const hasAction = typeof tab.onClick === "function";
 
@@ -45,7 +45,7 @@ export function PageTabs({ tabs }) {
               key={tab.id || tab.label}
               aria-current={tab.active ? "page" : undefined}
               aria-disabled={!hasAction}
-              className={`border-b-[3px] pb-4 pt-5 text-[17px] font-semibold whitespace-nowrap transition ${
+              className={`min-h-11 border-b-[3px] pb-3 pt-4 text-base font-semibold whitespace-nowrap transition sm:text-[17px] ${
                 tab.active
                   ? "border-indigo-500 text-indigo-500"
                   : hasAction
@@ -103,7 +103,7 @@ export function PrimaryButton({ children, className = "", type = "button", ...pr
     <button
       {...props}
       type={type}
-      className={`rounded-2xl bg-indigo-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-600 ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center rounded-2xl bg-indigo-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
     >
       {children}
     </button>
@@ -118,7 +118,7 @@ export function SecondaryButton({ children, className = "", type = "button", ...
     <button
       {...props}
       type={type}
-      className={`rounded-2xl border border-[#cfd6e2] bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center rounded-2xl border border-[#cfd6e2] bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
     >
       {children}
     </button>
@@ -148,7 +148,7 @@ export function StatCard({ label, value, detail }) {
  */
 export function FilterSelect({ label, value, onChange, options }) {
   return (
-    <label className="flex min-w-[150px] flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+    <label className="flex min-w-[150px] flex-1 flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400 sm:flex-none">
       {label}
       <select
         value={value}

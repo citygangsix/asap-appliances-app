@@ -195,7 +195,7 @@ function Marker({ point, mapView, size, selected, onSelect }) {
       type="button"
       onClick={onSelect}
       data-testid={`dispatch-marker-${point.type}-${point.id}`}
-      className={`absolute z-20 -translate-x-1/2 -translate-y-full rounded-full border-2 px-2.5 py-1 text-xs font-semibold shadow-lg transition hover:scale-[1.03] ${
+      className={`absolute z-20 min-h-11 -translate-x-1/2 -translate-y-full rounded-full border-2 px-3 py-2 text-xs font-semibold shadow-lg transition hover:scale-[1.03] ${
         selected ? "ring-4 ring-amber-300" : ""
       } ${markerClass}`}
       style={{ left: position.x, top: position.y }}
@@ -311,7 +311,7 @@ function MarkerDetailCard({
         <div className="mt-4 flex flex-wrap gap-2">
           {routePlan?.mapsLinks.googleMapsUrl ? (
             <a
-              className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-600"
+              className="inline-flex min-h-11 items-center rounded-xl bg-indigo-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-600"
               href={routePlan.mapsLinks.googleMapsUrl}
               rel="noreferrer"
               target="_blank"
@@ -321,7 +321,7 @@ function MarkerDetailCard({
           ) : null}
           {routePlan?.mapsLinks.appleMapsUrl ? (
             <a
-              className="rounded-xl border border-[#cfd6e2] px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+              className="inline-flex min-h-11 items-center rounded-xl border border-[#cfd6e2] px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               href={routePlan.mapsLinks.appleMapsUrl}
               rel="noreferrer"
               target="_blank"
@@ -331,7 +331,7 @@ function MarkerDetailCard({
           ) : null}
           {routePlan?.smsUrl ? (
             <a
-              className="rounded-xl border border-[#cfd6e2] px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+              className="inline-flex min-h-11 items-center rounded-xl border border-[#cfd6e2] px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               href={routePlan.smsUrl}
             >
               Text route
@@ -709,7 +709,7 @@ export function DispatchMapWorkspace({
                 <button
                   key={label}
                   type="button"
-                  className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                  className={`rounded-xl border px-3 py-2.5 text-xs font-semibold transition ${
                     enabled
                       ? "border-indigo-200 bg-white text-indigo-700 shadow-sm"
                       : "border-slate-200 bg-transparent text-slate-500 hover:bg-white"
@@ -760,7 +760,7 @@ export function DispatchMapWorkspace({
       <div className="grid lg:grid-cols-[minmax(0,1fr)_380px]">
         <div
           ref={mapRef}
-          className={`relative h-[560px] overflow-hidden bg-[#dbe7ee] outline-none ${
+          className={`relative h-[420px] max-w-full overflow-hidden bg-[#dbe7ee] outline-none [contain:layout_paint] sm:h-[520px] lg:h-[560px] ${
             mapInteractionEnabled ? "touch-none ring-2 ring-indigo-300" : "touch-pan-y"
           }`}
           tabIndex={0}
@@ -817,7 +817,7 @@ export function DispatchMapWorkspace({
           >
             <button
               type="button"
-              className="grid h-10 w-10 place-items-center text-lg font-semibold text-slate-700 hover:bg-slate-50"
+              className="grid h-11 w-11 place-items-center text-lg font-semibold text-slate-700 hover:bg-slate-50"
               onClick={() => zoomMap(1)}
               title="Zoom in"
             >
@@ -825,7 +825,7 @@ export function DispatchMapWorkspace({
             </button>
             <button
               type="button"
-              className="grid h-10 w-10 place-items-center border-l border-slate-200 text-lg font-semibold text-slate-700 hover:bg-slate-50"
+              className="grid h-11 w-11 place-items-center border-l border-slate-200 text-lg font-semibold text-slate-700 hover:bg-slate-50"
               onClick={() => zoomMap(-1)}
               title="Zoom out"
             >
@@ -848,7 +848,7 @@ export function DispatchMapWorkspace({
 
           <button
             type="button"
-            className={`absolute right-4 top-4 z-30 max-w-[min(260px,calc(100%-130px))] rounded-xl border px-3 py-2 text-left text-xs font-semibold shadow-lg transition ${
+            className={`absolute right-4 top-4 z-30 max-w-[min(180px,calc(100%-146px))] rounded-xl border px-3 py-2 text-left text-xs font-semibold shadow-lg transition sm:max-w-[260px] ${
               mapInteractionEnabled
                 ? "border-indigo-200 bg-indigo-50 text-indigo-700"
                 : "border-slate-200 bg-white/95 text-slate-600 hover:bg-slate-50"
@@ -859,11 +859,11 @@ export function DispatchMapWorkspace({
               mapRef.current?.focus();
             }}
           >
-            {mapInteractionEnabled ? "Map zoom on - Esc to exit" : "Click map or hold Cmd/Ctrl + scroll to zoom"}
+            {mapInteractionEnabled ? "Pan map on - Esc" : "Tap to pan map"}
           </button>
 
           <a
-            className="absolute bottom-4 right-4 z-30 rounded-lg bg-white/95 px-2 py-1 text-[11px] font-medium text-slate-500 shadow"
+            className="absolute bottom-4 right-4 z-30 inline-flex min-h-8 items-center rounded-lg bg-white/95 px-2 py-1 text-[11px] font-medium text-slate-500 shadow"
             data-map-control
             href="https://www.openstreetmap.org/copyright"
             rel="noreferrer"
@@ -952,7 +952,7 @@ export function DispatchMapWorkspace({
               <div className="mt-4 flex flex-wrap gap-2">
                 {activeRoutePlan.mapsLinks.googleMapsUrl ? (
                   <a
-                    className="rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
+                    className="inline-flex min-h-11 items-center rounded-xl bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-600"
                     href={activeRoutePlan.mapsLinks.googleMapsUrl}
                     rel="noreferrer"
                     target="_blank"
@@ -962,7 +962,7 @@ export function DispatchMapWorkspace({
                 ) : null}
                 {activeRoutePlan.mapsLinks.appleMapsUrl ? (
                   <a
-                    className="rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    className="inline-flex min-h-11 items-center rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     href={activeRoutePlan.mapsLinks.appleMapsUrl}
                     rel="noreferrer"
                     target="_blank"
@@ -972,7 +972,7 @@ export function DispatchMapWorkspace({
                 ) : null}
                 {activeRoutePlan.smsUrl ? (
                   <a
-                    className="rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    className="inline-flex min-h-11 items-center rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     href={activeRoutePlan.smsUrl}
                   >
                     Text route
