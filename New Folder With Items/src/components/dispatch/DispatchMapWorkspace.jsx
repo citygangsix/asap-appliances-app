@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, Card, SecondaryButton } from "../ui";
 import { formatStatusLabel, getStatusTone } from "../../lib/domain/jobs";
-import { formatMiles } from "../../lib/domain/dispatchRouting";
+import {
+  buildDefaultVehicleProfile,
+  calculateFuelReimbursement,
+  formatMiles,
+  formatMoney,
+} from "../../lib/domain/dispatchRouting";
 
 const TILE_SIZE = 256;
 const MIN_ZOOM = 4;
@@ -155,6 +160,26 @@ function isMapControlTarget(target) {
   return target instanceof Element && Boolean(target.closest("[data-map-control]"));
 }
 
+function formatOptionLabel(value) {
+  return formatStatusLabel(String(value || "all").replace(/^status:|^priority:/, ""));
+}
+
+function pointMatchesStatusPriority(point, filterValue) {
+  if (!filterValue || filterValue === "all") {
+    return true;
+  }
+
+  if (filterValue.startsWith("status:")) {
+    return point.status === filterValue.replace("status:", "");
+  }
+
+  if (filterValue.startsWith("priority:")) {
+    return point.job?.priority === filterValue.replace("priority:", "");
+  }
+
+  return true;
+}
+
 function Marker({ point, mapView, size, selected, onSelect }) {
   const position = getPointScreenPosition(point.coordinate, mapView, size);
   const isTechnician = point.type === "technician";
@@ -169,6 +194,7 @@ function Marker({ point, mapView, size, selected, onSelect }) {
     <button
       type="button"
       onClick={onSelect}
+      data-testid={`dispatch-marker-${point.type}-${point.id}`}
       className={`absolute z-20 -translate-x-1/2 -translate-y-full rounded-full border-2 px-2.5 py-1 text-xs font-semibold shadow-lg transition hover:scale-[1.03] ${
         selected ? "ring-4 ring-amber-300" : ""
       } ${markerClass}`}
@@ -225,6 +251,153 @@ function RouteLines({ routePlans, activeRouteTechId, mapView, size }) {
   );
 }
 
+function DetailRow({ label, value }) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
+    </div>
+  );
+}
+
+function MarkerDetailCard({
+  selectedPoint,
+  routePlans,
+  leadRecommendations,
+  selectedTechId,
+  onSelectRouteTechnician,
+  onStageLead,
+}) {
+  if (!selectedPoint) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4" data-testid="marker-detail-card">
+        <p className="text-sm font-semibold text-slate-800">Select a marker</p>
+        <p className="mt-1 text-sm leading-6 text-slate-500">
+          Click a worker, scheduled job, or incoming lead to inspect details and dispatch actions.
+        </p>
+      </div>
+    );
+  }
+
+  if (selectedPoint.type === "technician") {
+    const technician = selectedPoint.technician;
+    const routePlan = routePlans.find((plan) => plan.techId === technician.techId);
+    const vehicleProfile = buildDefaultVehicleProfile(technician);
+    const fuelMath = calculateFuelReimbursement(routePlan?.totalMiles || 0, vehicleProfile);
+
+    return (
+      <div className="rounded-2xl border border-[#dce2ec] bg-white p-4 shadow-sm" data-testid="marker-detail-card">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-950">{technician.name}</p>
+            <p className="mt-1 text-xs text-slate-500">{technician.serviceArea}</p>
+          </div>
+          <Badge tone={getStatusTone(technician.statusToday)}>{formatStatusLabel(technician.statusToday)}</Badge>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <DetailRow label="Vehicle" value={vehicleProfile.vehicleLabel} />
+          <DetailRow label="MPG" value={`${vehicleProfile.milesPerGallon} mpg`} />
+          <DetailRow label="Tank" value={`${vehicleProfile.tankGallons} gal`} />
+          <DetailRow label="Route miles" value={formatMiles(routePlan?.totalMiles || 0)} />
+          <DetailRow label="Stops" value={`${routePlan?.stopCount || 0}`} />
+          <DetailRow label="Gas est." value={formatMoney(fuelMath.reimbursementAmount)} />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {routePlan?.mapsLinks.googleMapsUrl ? (
+            <a
+              className="rounded-xl bg-indigo-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-600"
+              href={routePlan.mapsLinks.googleMapsUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Google route
+            </a>
+          ) : null}
+          {routePlan?.mapsLinks.appleMapsUrl ? (
+            <a
+              className="rounded-xl border border-[#cfd6e2] px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+              href={routePlan.mapsLinks.appleMapsUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Apple route
+            </a>
+          ) : null}
+          {routePlan?.smsUrl ? (
+            <a
+              className="rounded-xl border border-[#cfd6e2] px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+              href={routePlan.smsUrl}
+            >
+              Text route
+            </a>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  const job = selectedPoint.job;
+  const assignedRoute = job.techId ? routePlans.find((plan) => plan.techId === job.techId) : null;
+  const recommendation = leadRecommendations.find((item) => item.job.jobId === job.jobId);
+  const recommendedRoute = recommendation?.bestRoute;
+  const activeRoute = selectedTechId ? routePlans.find((plan) => plan.techId === selectedTechId) : null;
+
+  return (
+    <div className="rounded-2xl border border-[#dce2ec] bg-white p-4 shadow-sm" data-testid="marker-detail-card">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-950">{job.customer?.name || selectedPoint.label}</p>
+          <p className="mt-1 text-xs text-slate-500">{job.serviceAddress}</p>
+        </div>
+        <Badge tone={selectedPoint.type === "lead" ? "rose" : getStatusTone(job.dispatchStatus)}>
+          {selectedPoint.type === "lead" ? "Lead" : formatStatusLabel(job.dispatchStatus)}
+        </Badge>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <DetailRow label="Job type" value={job.applianceLabel || job.applianceBrand || "Service call"} />
+        <DetailRow label="Priority" value={formatStatusLabel(job.priority)} />
+        <DetailRow label="Window" value={job.scheduledStartLabel || job.etaLabel || "Not set"} />
+        <DetailRow label="Assigned" value={assignedRoute?.technicianName || "Unassigned"} />
+      </div>
+      {job.issueSummary ? <p className="mt-4 text-sm leading-6 text-slate-600">{job.issueSummary}</p> : null}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {recommendedRoute ? (
+          <SecondaryButton
+            className="rounded-xl px-3 py-2 text-xs"
+            onClick={() => onStageLead(job.jobId, recommendedRoute.techId)}
+          >
+            Stage {recommendedRoute.technicianName}
+          </SecondaryButton>
+        ) : null}
+        {!recommendedRoute && activeRoute && !job.techId ? (
+          <SecondaryButton
+            className="rounded-xl px-3 py-2 text-xs"
+            onClick={() => onStageLead(job.jobId, activeRoute.techId)}
+          >
+            Stage active tech
+          </SecondaryButton>
+        ) : null}
+        {assignedRoute ? (
+          <SecondaryButton
+            className="rounded-xl px-3 py-2 text-xs"
+            onClick={() => onSelectRouteTechnician(assignedRoute.techId)}
+          >
+            Focus route
+          </SecondaryButton>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 /**
  * @param {{
  *   jobs: any[],
@@ -260,25 +433,103 @@ export function DispatchMapWorkspace({
   const wheelDeltaRef = useRef(0);
   const wheelResetTimeoutRef = useRef(null);
   const size = useElementSize(mapRef);
+  const [showWorkers, setShowWorkers] = useState(true);
+  const [showJobs, setShowJobs] = useState(true);
+  const [showLeads, setShowLeads] = useState(true);
+  const [technicianFilter, setTechnicianFilter] = useState("all");
+  const [statusPriorityFilter, setStatusPriorityFilter] = useState("all");
+  const [selectedMarkerKey, setSelectedMarkerKey] = useState("");
+  const [mapInteractionEnabled, setMapInteractionEnabled] = useState(false);
+  const visibleMapPoints = useMemo(
+    () =>
+      mapPoints.filter((point) => {
+        if (!pointMatchesStatusPriority(point, statusPriorityFilter)) {
+          return false;
+        }
+
+        if (point.type === "technician") {
+          return showWorkers && (technicianFilter === "all" || point.technician.techId === technicianFilter);
+        }
+
+        if (point.type === "job") {
+          return showJobs && (technicianFilter === "all" || point.job.techId === technicianFilter);
+        }
+
+        if (point.type === "lead") {
+          return showLeads;
+        }
+
+        return true;
+      }),
+    [mapPoints, showJobs, showLeads, showWorkers, statusPriorityFilter, technicianFilter],
+  );
+  const visibleRoutePlans = useMemo(
+    () =>
+      routePlans.filter((plan) => {
+        if (technicianFilter !== "all" && plan.techId !== technicianFilter) {
+          return false;
+        }
+
+        if (statusPriorityFilter.startsWith("status:")) {
+          return plan.technician.statusToday === statusPriorityFilter.replace("status:", "");
+        }
+
+        return showJobs || showWorkers;
+      }),
+    [routePlans, showJobs, showWorkers, statusPriorityFilter, technicianFilter],
+  );
   const mapKey = useMemo(
-    () => mapPoints.map((point) => `${point.id}:${point.coordinate.lat}:${point.coordinate.lng}`).join("|"),
-    [mapPoints],
+    () => visibleMapPoints.map((point) => `${point.id}:${point.coordinate.lat}:${point.coordinate.lng}`).join("|"),
+    [visibleMapPoints],
   );
   const [mapView, setMapView] = useState(() => getInitialMapView(mapPoints));
-  const [mapInteractionEnabled, setMapInteractionEnabled] = useState(false);
   const activeRoutePlan =
     routePlans.find((plan) => plan.techId === activeRouteTechId) ||
     routePlans.find((plan) => plan.stopCount > 0) ||
     routePlans[0] ||
     null;
   const visibleTiles = useMemo(() => buildTileGrid(mapView, size), [mapView, size]);
+  const selectedPoint =
+    mapPoints.find((point) => `${point.type}:${point.id}` === selectedMarkerKey) ||
+    mapPoints.find((point) => point.type !== "technician" && point.id === selectedJobId) ||
+    mapPoints.find((point) => point.type === "technician" && point.id === selectedTechId) ||
+    null;
+  const statusPriorityOptions = useMemo(() => {
+    const statusValues = new Set();
+    const priorityValues = new Set();
+
+    mapPoints.forEach((point) => {
+      if (point.status) {
+        statusValues.add(point.status);
+      }
+
+      if (point.job?.priority) {
+        priorityValues.add(point.job.priority);
+      }
+    });
+
+    return [
+      { value: "all", label: "All status / priority" },
+      ...Array.from(statusValues).map((status) => ({
+        value: `status:${status}`,
+        label: `Status: ${formatOptionLabel(status)}`,
+      })),
+      ...Array.from(priorityValues).map((priority) => ({
+        value: `priority:${priority}`,
+        label: `Priority: ${formatOptionLabel(priority)}`,
+      })),
+    ];
+  }, [mapPoints]);
   const locatedWorkers = mapPoints.filter((point) => point.type === "technician").length;
+  const visibleWorkers = visibleMapPoints.filter((point) => point.type === "technician").length;
+  const visibleJobs = visibleMapPoints.filter((point) => point.type === "job").length;
+  const visibleLeads = visibleMapPoints.filter((point) => point.type === "lead").length;
   const incomingLeads = jobs.filter((job) => !job.techId || job.dispatchStatus === "unassigned").length;
   const totalPlannedMiles = routePlans.reduce((total, plan) => total + plan.totalMiles, 0);
 
   useEffect(() => {
-    setMapView(getInitialMapView(mapPoints));
-  }, [mapKey, mapPoints]);
+    setMapView(getInitialMapView(visibleMapPoints.length ? visibleMapPoints : mapPoints));
+  }, [mapKey, mapPoints, visibleMapPoints]);
 
   useEffect(() => {
     function handleDocumentPointerDown(event) {
@@ -322,7 +573,7 @@ export function DispatchMapWorkspace({
   }, [mapInteractionEnabled]);
 
   function fitMapToPins() {
-    setMapView(getInitialMapView(mapPoints));
+    setMapView(getInitialMapView(visibleMapPoints.length ? visibleMapPoints : mapPoints));
   }
 
   function zoomMap(delta) {
@@ -427,20 +678,81 @@ export function DispatchMapWorkspace({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <p className="text-xs text-slate-500">Workers</p>
-              <p className="text-lg font-semibold text-slate-950">{locatedWorkers}/{technicians.length}</p>
+              <p className="text-lg font-semibold text-slate-950">{visibleWorkers}/{locatedWorkers || technicians.length}</p>
             </div>
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <p className="text-xs text-slate-500">Jobs</p>
-              <p className="text-lg font-semibold text-slate-950">{jobs.length}</p>
+              <p className="text-lg font-semibold text-slate-950">{visibleJobs}/{jobs.length - incomingLeads}</p>
             </div>
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <p className="text-xs text-slate-500">Leads</p>
-              <p className="text-lg font-semibold text-rose-600">{incomingLeads}</p>
+              <p className="text-lg font-semibold text-rose-600">{visibleLeads}/{incomingLeads}</p>
             </div>
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <p className="text-xs text-slate-500">Miles</p>
               <p className="text-lg font-semibold text-slate-950">{formatMiles(totalPlannedMiles)}</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-b border-[#e7ebf2] bg-slate-50 px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Map filters</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[
+                ["Workers", showWorkers, setShowWorkers],
+                ["Scheduled jobs", showJobs, setShowJobs],
+                ["Incoming leads", showLeads, setShowLeads],
+              ].map(([label, enabled, setter]) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                    enabled
+                      ? "border-indigo-200 bg-white text-indigo-700 shadow-sm"
+                      : "border-slate-200 bg-transparent text-slate-500 hover:bg-white"
+                  }`}
+                  onClick={() => setter((current) => !current)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[520px]">
+            <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+              Technician
+              <select
+                className="rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium normal-case tracking-normal text-slate-700 outline-none transition focus:border-indigo-500"
+                value={technicianFilter}
+                onChange={(event) => setTechnicianFilter(event.target.value)}
+              >
+                <option value="all">All technicians</option>
+                {technicians.map((technician) => (
+                  <option key={technician.techId} value={technician.techId}>
+                    {technician.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+              Status / priority
+              <select
+                className="rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium normal-case tracking-normal text-slate-700 outline-none transition focus:border-indigo-500"
+                value={statusPriorityFilter}
+                onChange={(event) => setStatusPriorityFilter(event.target.value)}
+              >
+                {statusPriorityOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
       </div>
@@ -471,14 +783,15 @@ export function DispatchMapWorkspace({
           <RouteLines
             activeRouteTechId={activeRouteTechId}
             mapView={mapView}
-            routePlans={routePlans}
+            routePlans={visibleRoutePlans}
             size={size}
           />
-          {mapPoints.map((point) => (
+          {visibleMapPoints.map((point) => (
             <Marker
               key={`${point.type}-${point.id}`}
               mapView={mapView}
               onSelect={() => {
+                setSelectedMarkerKey(`${point.type}:${point.id}`);
                 if (point.type === "technician") {
                   onSelectTechnician(point.technician.techId);
                   onSelectRouteTechnician(point.technician.techId);
@@ -487,10 +800,16 @@ export function DispatchMapWorkspace({
                 }
               }}
               point={point}
-              selected={point.id === selectedJobId || point.id === selectedTechId}
+              selected={`${point.type}:${point.id}` === selectedMarkerKey || point.id === selectedJobId || point.id === selectedTechId}
               size={size}
             />
           ))}
+          {visibleMapPoints.length === 0 ? (
+            <div className="absolute left-1/2 top-1/2 z-30 w-[min(320px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white/95 p-4 text-center shadow-lg">
+              <p className="text-sm font-semibold text-slate-900">No markers match these filters</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Turn a layer back on or loosen the technician/status filters.</p>
+            </div>
+          ) : null}
 
           <div
             className="absolute left-4 top-4 z-30 flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
@@ -555,6 +874,23 @@ export function DispatchMapWorkspace({
         </div>
 
         <aside className="border-t border-[#e7ebf2] bg-white p-5 lg:border-l lg:border-t-0">
+          <div>
+            <p className="section-title">Marker details</p>
+            <h3 className="mt-2 text-lg font-semibold text-slate-950">Selected map item</h3>
+          </div>
+
+          <div className="mt-4">
+            <MarkerDetailCard
+              leadRecommendations={leadRecommendations}
+              onSelectRouteTechnician={onSelectRouteTechnician}
+              onStageLead={onStageLead}
+              routePlans={routePlans}
+              selectedPoint={selectedPoint}
+              selectedTechId={selectedTechId || activeRouteTechId}
+            />
+          </div>
+
+          <div className="mt-6 border-t border-[#e7ebf2] pt-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="section-title">Route focus</p>
@@ -645,6 +981,7 @@ export function DispatchMapWorkspace({
               </div>
             </div>
           ) : null}
+          </div>
 
           <div className="mt-6 border-t border-[#e7ebf2] pt-5">
             <div className="flex items-center justify-between gap-3">
