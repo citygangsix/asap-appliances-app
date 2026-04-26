@@ -1,0 +1,74 @@
+import { stripUndefined, toNullable } from "./shared";
+
+/** @typedef {import("../types/schema").TechnicianPayoutInsertPayload} TechnicianPayoutInsertPayload */
+/** @typedef {import("../types/schema").TechnicianPayoutInvoiceLinkInsertPayload} TechnicianPayoutInvoiceLinkInsertPayload */
+/** @typedef {import("../types/schema").TechnicianPayoutRow} TechnicianPayoutRow */
+/** @typedef {import("../../types/models").TechnicianPayout} TechnicianPayout */
+/** @typedef {import("../../types/models").TechnicianPayoutDraft} TechnicianPayoutDraft */
+/** @typedef {import("../../types/models").PayoutInvoiceLinkDraft} PayoutInvoiceLinkDraft */
+
+/**
+ * @param {TechnicianPayoutRow} row
+ * @param {{ invoiceIds?: string[] }} [relations]
+ * @returns {TechnicianPayout}
+ */
+export function mapTechnicianPayoutRowToDomain(row, relations = {}) {
+  return {
+    payoutId: row.payout_id,
+    techId: row.tech_id,
+    amount: row.net_amount,
+    status: row.payout_status,
+    note: row.note || "",
+    invoiceIds: relations.invoiceIds || [],
+  };
+}
+
+/**
+ * @param {TechnicianPayoutDraft} draft
+ * @returns {TechnicianPayoutInsertPayload}
+ */
+export function mapTechnicianPayoutDraftToInsert(draft) {
+  return {
+    tech_id: draft.techId,
+    payout_number: null,
+    period_start: draft.periodStart,
+    period_end: draft.periodEnd,
+    payout_status: draft.status,
+    gross_amount: draft.amount,
+    gas_reimbursement_amount: 0,
+    adjustment_amount: 0,
+    note: toNullable(draft.note),
+    scheduled_for: null,
+    paid_at: null,
+  };
+}
+
+/**
+ * @param {PayoutInvoiceLinkDraft} draft
+ * @param {number} [allocatedAmount]
+ * @returns {TechnicianPayoutInvoiceLinkInsertPayload[]}
+ */
+export function mapPayoutInvoiceLinksToInsert(draft, allocatedAmount) {
+  const perInvoiceAmount =
+    allocatedAmount !== undefined ? allocatedAmount : Math.max(1, Math.round((1 / draft.invoiceIds.length) * 100) / 100);
+
+  return draft.invoiceIds.map((invoiceId) => ({
+    payout_id: draft.payoutId,
+    invoice_id: invoiceId,
+    allocated_amount: perInvoiceAmount,
+  }));
+}
+
+/**
+ * @param {Partial<TechnicianPayoutDraft>} patch
+ */
+export function mapTechnicianPayoutPatchToUpdate(patch) {
+  return stripUndefined({
+    tech_id: patch.techId,
+    payout_status: patch.status,
+    gross_amount: patch.amount,
+    note: patch.note,
+    period_start: patch.periodStart,
+    period_end: patch.periodEnd,
+  });
+}
