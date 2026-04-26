@@ -1,4 +1,4 @@
-name: Deploy ASAP CRM
+name: Deploy ASAP Website and CRM
 
 on:
   push:
@@ -30,8 +30,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Build website and CRM
+        run: npm run build:pages
         env:
           VITE_APP_DATA_SOURCE: ${{ vars.VITE_APP_DATA_SOURCE }}
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
@@ -46,7 +46,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: dist-pages
 
   deploy:
     environment:

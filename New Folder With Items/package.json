@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:dashboard": "vite build --outDir dist-dashboard",
+    "build:site": "vite build --config vite.site.config.js",
+    "build:pages": "npm run build:site && npm run build:dashboard && node scripts/assemble-pages.mjs",
     "preview": "vite preview",
     "twilio:webhooks": "node server/twilioWebhookServer.js",
     "twilio:webhooks:smoke": "node server/twilioWebhookSmokeTest.js"
