@@ -3,13 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ASAP Operations</title>
+    <title>ASAP AC and Appliance</title>
   </head>
   <body>
     <script>
       (function () {
-        sessionStorage.setItem("asap-crm-spa-redirect", window.location.href);
-        window.location.replace("/dashboard/");
+        if (window.location.pathname.indexOf("/dashboard") === 0) {
+          sessionStorage.setItem("asap-crm-spa-redirect", window.location.href);
+          window.location.replace("/dashboard/");
+          return;
+        }
+
+        window.location.replace("/");
       })();
     </script>
   </body>
