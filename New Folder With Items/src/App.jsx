@@ -17,7 +17,7 @@ function PublicWebsiteHome() {
     <main className="flex min-h-screen items-center justify-center bg-[#f5f7fb] px-6 text-[#151821]">
       <section className="w-full max-w-3xl">
         <p className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-600">
-          ASAP AC & Appliance Repair
+          ASAP Appliance Repair
         </p>
         <h1 className="mt-4 text-4xl font-semibold tracking-normal sm:text-6xl">
           Service website connected.
@@ -35,7 +35,7 @@ function PublicNotFoundPage() {
     <main className="flex min-h-screen items-center justify-center bg-[#f5f7fb] px-6 text-[#151821]">
       <section className="w-full max-w-xl">
         <p className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-600">
-          ASAP AC & Appliance Repair
+          ASAP Appliance Repair
         </p>
         <h1 className="mt-4 text-4xl font-semibold tracking-normal">Page not found.</h1>
         <p className="mt-4 text-base leading-7 text-slate-600">

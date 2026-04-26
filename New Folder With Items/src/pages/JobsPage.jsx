@@ -457,7 +457,7 @@ export function JobsPage() {
               <input
                 value={newJobDraft.applianceLabel}
                 onChange={(event) => updateNewJobDraft("applianceLabel", event.target.value)}
-                placeholder="Refrigerator, AC condenser, washer"
+                placeholder="Refrigerator, washer, dryer"
                 className={JOB_FIELD_CLASS}
               />
             </label>

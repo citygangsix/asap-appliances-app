@@ -39,21 +39,21 @@ export const hiringCandidates = [
     email: null,
     source: "Indeed",
     stage: "onboarded",
-    trade: "Appliance repair / AC technician",
+    trade: "Appliance repair technician",
     city: "Fort Pierce",
     serviceArea: "Fort Pierce, Palm Beach, Port St. Lucie",
     availabilitySummary: "Flexible after 2:30 PM.",
     availabilityDays: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
     availabilityTimePreferences: ["weekdays", "weekends", "afternoons"],
-    payoutExpectationSummary: "$40-$50 per diagnostic, $60-$90 per installation, $750 for AC installation.",
+    payoutExpectationSummary: "$40-$50 per diagnostic and $60-$90 per installation.",
     experienceSummary:
-      "Significant appliance repair experience and EPA universal certification for AC work.",
+      "Significant appliance repair experience with strong field troubleshooting background.",
     nextStep:
       "Hired. Add onboarding details and assign first eligible appliance repair jobs after his current work hours.",
     callHighlights:
-      "Mike reached Joseph from Indeed about the appliance repair technician role. They discussed Joseph's repair experience, EPA universal AC certification, payout structure, Fort Pierce / Port St. Lucie coverage, schedule after 2:30 PM, and taking jobs after his current work hours.",
+      "Mike reached Joseph from Indeed about the appliance repair technician role. They discussed Joseph's repair experience, payout structure, Fort Pierce / Port St. Lucie coverage, schedule after 2:30 PM, and taking jobs after his current work hours.",
     transcriptText:
-      "Mike called Joseph from ASAP Appliance after receiving his Indeed resume. Joseph confirmed he has appliance repair experience, does this work for a living, is based around Fort Pierce and Port St. Lucie, and is EPA universal certified for AC work. Mike explained daily payout, diagnostics, installation payouts, gas coverage, customer communication, reviews, and available work after Joseph's current hours.",
+      "Mike called Joseph from ASAP Appliance after receiving his Indeed resume. Joseph confirmed he has appliance repair experience, does this work for a living, and is based around Fort Pierce and Port St. Lucie. Mike explained daily payout, diagnostics, installation payouts, gas coverage, customer communication, reviews, and available work after Joseph's current hours.",
     linkedCommunicationId: null,
     providerCallSid: "CA5b1c37045b92454681b0c0ae72670627",
     promotedTechId: "tech-joseph-6158704760",
