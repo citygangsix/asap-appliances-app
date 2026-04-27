@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: npm run build:pages
         env:
           VITE_APP_DATA_SOURCE: mock
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://gntijouqttihazdupoiu.supabase.co' }}
@@ -52,7 +52,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: New Folder With Items/dist
+          path: New Folder With Items/dist-pages
 
   deploy:
     environment:
