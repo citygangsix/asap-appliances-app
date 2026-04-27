@@ -1,11 +1,11 @@
 import { stripUndefined, toNullable } from "./shared";
 
-/** @typedef {import("../types/schema").TechnicianPayoutInsertPayload} TechnicianPayoutInsertPayload */
-/** @typedef {import("../types/schema").TechnicianPayoutInvoiceLinkInsertPayload} TechnicianPayoutInvoiceLinkInsertPayload */
-/** @typedef {import("../types/schema").TechnicianPayoutRow} TechnicianPayoutRow */
-/** @typedef {import("../../types/models").TechnicianPayout} TechnicianPayout */
-/** @typedef {import("../../types/models").TechnicianPayoutDraft} TechnicianPayoutDraft */
-/** @typedef {import("../../types/models").PayoutInvoiceLinkDraft} PayoutInvoiceLinkDraft */
+/** @typedef {import("../types/schema.js").TechnicianPayoutInsertPayload} TechnicianPayoutInsertPayload */
+/** @typedef {import("../types/schema.js").TechnicianPayoutInvoiceLinkInsertPayload} TechnicianPayoutInvoiceLinkInsertPayload */
+/** @typedef {import("../types/schema.js").TechnicianPayoutRow} TechnicianPayoutRow */
+/** @typedef {import("../../../types/models.js").TechnicianPayout} TechnicianPayout */
+/** @typedef {import("../../../types/models.js").TechnicianPayoutDraft} TechnicianPayoutDraft */
+/** @typedef {import("../../../types/models.js").PayoutInvoiceLinkDraft} PayoutInvoiceLinkDraft */
 
 /**
  * @param {TechnicianPayoutRow} row

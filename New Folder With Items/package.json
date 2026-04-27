@@ -9,7 +9,7 @@
     "build:dashboard": "vite build --outDir dist-dashboard",
     "build:site": "vite build --config vite.site.config.js",
     "build:pages": "npm run build:site && npm run build:dashboard && node scripts/assemble-pages.mjs",
-    "build:pages:hosted": "VITE_LOCAL_OPERATIONS_SERVER_URL=https://gntijouqttihazdupoiu.supabase.co/functions/v1/asap-crm npm run build:pages",
+    "build:pages:hosted": "VITE_LOCAL_OPERATIONS_SERVER_URL=https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm npm run build:pages",
     "preview": "vite preview",
     "api:prepare": "node scripts/prepare-edge-function.mjs",
     "api:deploy": "npm run api:prepare && supabase functions deploy asap-crm --use-api --no-verify-jwt --import-map supabase/functions/import_map.json",

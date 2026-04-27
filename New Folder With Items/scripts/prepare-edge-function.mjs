@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,3 +29,14 @@ for (const [source, destination] of copies) {
     },
   );
 }
+
+await writeFile(
+  path.join(functionRepoRoot, "server/lib/loadEnv.js"),
+  [
+    "export function loadServerEnv() {",
+    "  // Supabase Edge Functions read environment values from project secrets.",
+    "}",
+    "",
+  ].join("\n"),
+  "utf8",
+);

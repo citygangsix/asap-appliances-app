@@ -1,10 +1,10 @@
 import { stripUndefined, toNullable } from "./shared";
 
-/** @typedef {import("../types/schema").DbTimelineEventType} DbTimelineEventType */
-/** @typedef {import("../types/schema").JobTimelineEventInsertPayload} JobTimelineEventInsertPayload */
-/** @typedef {import("../types/schema").JobTimelineEventRow} JobTimelineEventRow */
-/** @typedef {import("../../types/models").JobTimelineEvent} JobTimelineEvent */
-/** @typedef {import("../../types/models").JobTimelineEventDraft} JobTimelineEventDraft */
+/** @typedef {import("../types/schema.js").DbTimelineEventType} DbTimelineEventType */
+/** @typedef {import("../types/schema.js").JobTimelineEventInsertPayload} JobTimelineEventInsertPayload */
+/** @typedef {import("../types/schema.js").JobTimelineEventRow} JobTimelineEventRow */
+/** @typedef {import("../../../types/models.js").JobTimelineEvent} JobTimelineEvent */
+/** @typedef {import("../../../types/models.js").JobTimelineEventDraft} JobTimelineEventDraft */
 
 const TIMELINE_EVENT_TO_DB = {
   quote_sent: "parts_requested",

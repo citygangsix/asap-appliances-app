@@ -1,4 +1,5 @@
 import { loadServerEnv } from "./loadEnv.js";
+import { readServerEnv } from "./serverEnv.js";
 
 loadServerEnv();
 
@@ -89,7 +90,7 @@ const TRIAL_SCHEDULED_PATTERNS = [
 ];
 
 function readOptionalEnv(key) {
-  const value = process.env[key];
+  const value = readServerEnv(key);
   return value ? value : null;
 }
 
@@ -265,7 +266,7 @@ function inferHiringDecisionFromTranscript(transcriptText) {
 }
 
 function buildTwilioAuthHeader(accountSid, authToken) {
-  return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
+  return `Basic ${btoa(`${accountSid}:${authToken}`)}`;
 }
 
 function buildRecordingDownloadCandidates(recordingUrl) {
@@ -335,7 +336,7 @@ async function downloadTwilioRecording(payload, twilioConfig) {
       }
 
       const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      const buffer = new Uint8Array(arrayBuffer);
 
       if (buffer.byteLength > MAX_AUDIO_BYTES) {
         throw new Error(

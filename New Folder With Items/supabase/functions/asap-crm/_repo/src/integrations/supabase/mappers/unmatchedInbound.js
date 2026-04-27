@@ -30,9 +30,9 @@ function mapCallSummarySectionsToDatabase(sections) {
   };
 }
 
-/** @typedef {import("../types/schema").UnmatchedInboundCommunicationInsertPayload} UnmatchedInboundCommunicationInsertPayload */
-/** @typedef {import("../types/schema").UnmatchedInboundCommunicationRow} UnmatchedInboundCommunicationRow */
-/** @typedef {import("../../types/models").UnmatchedInboundCommunication} UnmatchedInboundCommunication */
+/** @typedef {import("../types/schema.js").UnmatchedInboundCommunicationInsertPayload} UnmatchedInboundCommunicationInsertPayload */
+/** @typedef {import("../types/schema.js").UnmatchedInboundCommunicationRow} UnmatchedInboundCommunicationRow */
+/** @typedef {import("../../../types/models.js").UnmatchedInboundCommunication} UnmatchedInboundCommunication */
 
 /**
  * @param {UnmatchedInboundCommunicationRow} row
@@ -70,7 +70,7 @@ export function mapUnmatchedInboundCommunicationRowToDomain(row) {
  * @param {string} draft.previewText
  * @param {string|null} [draft.transcriptText]
  * @param {string|null} [draft.callHighlights]
- * @param {import("../../types/models").CallSummarySections|null} [draft.callSummarySections]
+ * @param {import("../../../types/models.js").CallSummarySections|null} [draft.callSummarySections]
  * @param {"pending"|"completed"|"failed"|null} [draft.transcriptionStatus]
  * @param {string|null} [draft.transcriptionError]
  * @param {string|null} [draft.fromNumber]
@@ -116,7 +116,7 @@ export function mapUnmatchedInboundCommunicationDraftToInsert(draft) {
 
 /**
  * @param {Object} patch
- * @returns {import("../types/schema").UnmatchedInboundCommunicationUpdatePayload}
+ * @returns {import("../types/schema.js").UnmatchedInboundCommunicationUpdatePayload}
  */
 export function mapUnmatchedInboundCommunicationPatchToUpdate(patch) {
   return stripUndefined({

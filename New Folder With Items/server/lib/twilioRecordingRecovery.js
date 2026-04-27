@@ -1,4 +1,5 @@
 import { getServerSupabaseClient, getTwilioServerConfig } from "./supabaseAdmin.js";
+import { readServerEnv, readServerNumberEnv } from "./serverEnv.js";
 import { persistRecordingStatusCallback } from "./twilioVoiceRecordings.js";
 
 const TWILIO_API_BASE_URL = "https://api.twilio.com/2010-04-01";
@@ -13,12 +14,12 @@ let activeRecoveryPromise = null;
 const scheduledRecoveryTimers = new Set();
 
 function readOptionalNumberEnv(key, fallback) {
-  const value = Number(process.env[key]);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
+  const value = readServerNumberEnv(key, fallback);
+  return value > 0 ? value : fallback;
 }
 
 function readOptionalBooleanEnv(key, fallback) {
-  const value = process.env[key];
+  const value = readServerEnv(key);
 
   if (value === undefined || value === null || value === "") {
     return fallback;
@@ -56,7 +57,7 @@ function isLikelyPhoneNumber(value) {
 }
 
 function buildTwilioAuthHeader(accountSid, authToken) {
-  return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
+  return `Basic ${btoa(`${accountSid}:${authToken}`)}`;
 }
 
 function getRecoveryConfig() {

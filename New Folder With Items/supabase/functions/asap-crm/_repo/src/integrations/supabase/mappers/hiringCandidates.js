@@ -1,8 +1,8 @@
 import { formatTimeLabelFromIso, stripUndefined, toNullable } from "./shared.js";
 
-/** @typedef {import("../types/schema").HiringCandidateInsertPayload} HiringCandidateInsertPayload */
-/** @typedef {import("../types/schema").HiringCandidateRow} HiringCandidateRow */
-/** @typedef {import("../../types/models").HiringCandidate} HiringCandidate */
+/** @typedef {import("../types/schema.js").HiringCandidateInsertPayload} HiringCandidateInsertPayload */
+/** @typedef {import("../types/schema.js").HiringCandidateRow} HiringCandidateRow */
+/** @typedef {import("../../../types/models.js").HiringCandidate} HiringCandidate */
 
 function formatDateLabel(dateLike) {
   if (!dateLike) {

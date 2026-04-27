@@ -19,7 +19,7 @@ function escapeXml(value) {
 }
 
 function buildTwilioAuthHeader(accountSid, authToken) {
-  return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
+  return `Basic ${btoa(`${accountSid}:${authToken}`)}`;
 }
 
 function buildTwimlSayResponse(message) {

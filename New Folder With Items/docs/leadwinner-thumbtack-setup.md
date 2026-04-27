@@ -9,7 +9,7 @@ Use this when configuring LeadWinner for ASAP CRM.
 
 ## ASAP Webhook Endpoint
 
-- URL: `https://gntijouqttihazdupoiu.supabase.co/functions/v1/asap-crm/api/thumbtack/lead`
+- URL: `https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm/api/thumbtack/lead`
 - Method: `POST`
 - Header:
   - `Authorization: Bearer <THUMBTACK_WEBHOOK_SECRET>`

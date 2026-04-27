@@ -1,11 +1,11 @@
 import { formatTimeLabelFromIso, stripUndefined, toNullable } from "./shared";
 
-/** @typedef {import("../types/schema").JobInsertPayload} JobInsertPayload */
-/** @typedef {import("../types/schema").JobRow} JobRow */
-/** @typedef {import("../../types/models").Job} Job */
-/** @typedef {import("../../types/models").JobAssignmentDraft} JobAssignmentDraft */
-/** @typedef {import("../../types/models").JobDraft} JobDraft */
-/** @typedef {import("../../types/models").JobWorkflowPatch} JobWorkflowPatch */
+/** @typedef {import("../types/schema.js").JobInsertPayload} JobInsertPayload */
+/** @typedef {import("../types/schema.js").JobRow} JobRow */
+/** @typedef {import("../../../types/models.js").Job} Job */
+/** @typedef {import("../../../types/models.js").JobAssignmentDraft} JobAssignmentDraft */
+/** @typedef {import("../../../types/models.js").JobDraft} JobDraft */
+/** @typedef {import("../../../types/models.js").JobWorkflowPatch} JobWorkflowPatch */
 
 function formatEtaLabel(row) {
   if (row.lifecycle_status === "onsite") {

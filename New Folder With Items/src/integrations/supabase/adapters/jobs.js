@@ -5,13 +5,13 @@ import { mapJobRowToDomain } from "../mappers/jobs";
 import { mapJobTimelineEventRowToDomain } from "../mappers/jobTimelineEvents";
 import { mapTechnicianRowToDomain } from "../mappers/technicians";
 
-/** @typedef {import("../types/schema").CommunicationRow} CommunicationRow */
-/** @typedef {import("../types/schema").CustomerRow} CustomerRow */
-/** @typedef {import("../types/schema").InvoiceRow} InvoiceRow */
-/** @typedef {import("../types/schema").JobRow} JobRow */
-/** @typedef {import("../types/schema").JobTimelineEventRow} JobTimelineEventRow */
-/** @typedef {import("../types/schema").TechnicianRow} TechnicianRow */
-/** @typedef {import("../../../types/models").JobRecord} JobRecord */
+/** @typedef {import("../types/schema.js").CommunicationRow} CommunicationRow */
+/** @typedef {import("../types/schema.js").CustomerRow} CustomerRow */
+/** @typedef {import("../types/schema.js").InvoiceRow} InvoiceRow */
+/** @typedef {import("../types/schema.js").JobRow} JobRow */
+/** @typedef {import("../types/schema.js").JobTimelineEventRow} JobTimelineEventRow */
+/** @typedef {import("../types/schema.js").TechnicianRow} TechnicianRow */
+/** @typedef {import("../../../types/models.js").JobRecord} JobRecord */
 
 /**
  * @typedef {JobRow & {

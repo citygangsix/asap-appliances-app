@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { getTwilioServerConfig } from "./supabaseAdmin.js";
 
 const BROWSER_CALL_TOKEN_TTL_SECONDS = 3600;
@@ -34,18 +33,36 @@ function escapeXml(value) {
 }
 
 function base64UrlEncode(value) {
-  const buffer = Buffer.isBuffer(value) ? value : Buffer.from(JSON.stringify(value));
-  return buffer.toString("base64url");
+  const bytes = value instanceof Uint8Array
+    ? value
+    : new TextEncoder().encode(JSON.stringify(value));
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.slice(index, index + chunkSize));
+  }
+
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
 }
 
-function signJwt(payload, secret) {
+async function signJwt(payload, secret) {
   const header = { alg: "HS256", typ: "JWT", cty: "twilio-fpa;v=1" };
   const encodedHeader = base64UrlEncode(header);
   const encodedPayload = base64UrlEncode(payload);
-  const signature = crypto
-    .createHmac("sha256", secret)
-    .update(`${encodedHeader}.${encodedPayload}`)
-    .digest("base64url");
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const cryptoKey = await globalThis.crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = base64UrlEncode(
+    new Uint8Array(
+      await globalThis.crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(signingInput)),
+    ),
+  );
 
   return `${encodedHeader}.${encodedPayload}.${signature}`;
 }
@@ -184,7 +201,7 @@ export async function requestBrowserVoiceToken() {
   return {
     ok: true,
     status: 200,
-    token: signJwt(payload, config.apiKeySecret),
+    token: await signJwt(payload, config.apiKeySecret),
     identity,
     expiresAt: new Date((now + BROWSER_CALL_TOKEN_TTL_SECONDS) * 1000).toISOString(),
     twimlAppSid: config.twimlAppSid,

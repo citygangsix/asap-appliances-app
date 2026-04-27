@@ -1,10 +1,10 @@
 import { formatTimeLabelFromIso, stripUndefined, toNullable } from "./shared";
 
-/** @typedef {import("../types/schema").CustomerInsertPayload} CustomerInsertPayload */
-/** @typedef {import("../types/schema").CustomerRow} CustomerRow */
-/** @typedef {import("../../types/models").Customer} Customer */
-/** @typedef {import("../../types/models").CustomerDraft} CustomerDraft */
-/** @typedef {import("../../types/models").CustomerPatch} CustomerPatch */
+/** @typedef {import("../types/schema.js").CustomerInsertPayload} CustomerInsertPayload */
+/** @typedef {import("../types/schema.js").CustomerRow} CustomerRow */
+/** @typedef {import("../../../types/models.js").Customer} Customer */
+/** @typedef {import("../../../types/models.js").CustomerDraft} CustomerDraft */
+/** @typedef {import("../../../types/models.js").CustomerPatch} CustomerPatch */
 
 /**
  * @param {CustomerRow} row

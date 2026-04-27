@@ -199,12 +199,12 @@ async function validateTwilioWebhookRequest(request, context, options = {}) {
   }
 
   if (
-    !isValidTwilioSignature({
+    !(await isValidTwilioSignature({
       authToken: config.authToken,
       signature,
       url: buildWebhookUrl(config.webhookBaseUrl, context.pathAndSearch),
       params: signatureParams,
-    })
+    }))
   ) {
     return {
       response: respondJson(403, { ok: false, message: "Invalid Twilio webhook signature." }),

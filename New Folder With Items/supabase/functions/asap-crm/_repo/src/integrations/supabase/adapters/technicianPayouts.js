@@ -1,10 +1,10 @@
 import { mapTechnicianPayoutRowToDomain } from "../mappers/technicianPayouts";
 import { mapTechnicianRowToDomain } from "../mappers/technicians";
 
-/** @typedef {import("../types/schema").TechnicianPayoutInvoiceLinkRow} TechnicianPayoutInvoiceLinkRow */
-/** @typedef {import("../types/schema").TechnicianPayoutRow} TechnicianPayoutRow */
-/** @typedef {import("../types/schema").TechnicianRow} TechnicianRow */
-/** @typedef {import("../../../types/models").TechnicianPayoutRecord} TechnicianPayoutRecord */
+/** @typedef {import("../types/schema.js").TechnicianPayoutInvoiceLinkRow} TechnicianPayoutInvoiceLinkRow */
+/** @typedef {import("../types/schema.js").TechnicianPayoutRow} TechnicianPayoutRow */
+/** @typedef {import("../types/schema.js").TechnicianRow} TechnicianRow */
+/** @typedef {import("../../../types/models.js").TechnicianPayoutRecord} TechnicianPayoutRecord */
 
 /**
  * @typedef {Pick<TechnicianPayoutInvoiceLinkRow, "invoice_id">} HydratedTechnicianPayoutInvoiceLinkRow

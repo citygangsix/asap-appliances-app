@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { getTwilioServerConfig } from "./supabaseAdmin.js";
 import { requestClickToCall } from "./twilioClickToCall.js";
 
@@ -105,14 +104,20 @@ function readProvidedSecret(headers = {}, payload = {}) {
 }
 
 function secureEquals(expected, provided) {
-  const left = Buffer.from(String(expected), "utf8");
-  const right = Buffer.from(String(provided), "utf8");
+  const left = String(expected);
+  const right = String(provided);
 
   if (left.length !== right.length) {
     return false;
   }
 
-  return crypto.timingSafeEqual(left, right);
+  let mismatch = 0;
+
+  for (let index = 0; index < left.length; index += 1) {
+    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+
+  return mismatch === 0;
 }
 
 function authorizeThumbtackRequest(config, headers, payload) {

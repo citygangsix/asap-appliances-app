@@ -3,12 +3,12 @@ import { mapCommunicationRowToDomain } from "../mappers/communications";
 import { mapCustomerRowToDomain } from "../mappers/customers";
 import { mapInvoiceRowToDomain } from "../mappers/invoices";
 
-/** @typedef {import("../types/schema").CommunicationRow} CommunicationRow */
-/** @typedef {import("../types/schema").CustomerRow} CustomerRow */
-/** @typedef {import("../types/schema").InvoiceRow} InvoiceRow */
-/** @typedef {import("../types/schema").JobRow} JobRow */
-/** @typedef {import("../types/schema").TechnicianRow} TechnicianRow */
-/** @typedef {import("../../../types/models").CommunicationRecord} CommunicationRecord */
+/** @typedef {import("../types/schema.js").CommunicationRow} CommunicationRow */
+/** @typedef {import("../types/schema.js").CustomerRow} CustomerRow */
+/** @typedef {import("../types/schema.js").InvoiceRow} InvoiceRow */
+/** @typedef {import("../types/schema.js").JobRow} JobRow */
+/** @typedef {import("../types/schema.js").TechnicianRow} TechnicianRow */
+/** @typedef {import("../../../types/models.js").CommunicationRecord} CommunicationRecord */
 
 /**
  * @typedef {JobRow & {

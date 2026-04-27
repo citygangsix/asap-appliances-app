@@ -13,7 +13,7 @@ import {
 } from "../mappers";
 
 /**
- * @param {ReturnType<import("./mockDatabaseSnapshot").getMockDatabaseSnapshot>} snapshot
+ * @param {ReturnType<import("./mockDatabaseSnapshot.js").getMockDatabaseSnapshot>} snapshot
  */
 export function buildOperationsReadModels(snapshot) {
   const primaryInvoiceIdsByJob = new Map();

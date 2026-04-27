@@ -1,12 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { loadServerEnv } from "./loadEnv.js";
+import { readServerEnv, readServerNumberEnv } from "./serverEnv.js";
 
 loadServerEnv();
 
 let serverSupabaseClient = null;
 
 function readRequiredEnv(key) {
-  const value = process.env[key];
+  const value = readServerEnv(key);
 
   if (!value) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -16,12 +17,12 @@ function readRequiredEnv(key) {
 }
 
 function readOptionalEnv(key) {
-  const value = process.env[key];
+  const value = readServerEnv(key);
   return value ? value : null;
 }
 
 function readRequiredSupabaseUrl() {
-  const value = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const value = readServerEnv("VITE_SUPABASE_URL") || readServerEnv("SUPABASE_URL");
 
   if (!value) {
     throw new Error("Missing required environment variable: VITE_SUPABASE_URL or SUPABASE_URL");
@@ -31,7 +32,8 @@ function readRequiredSupabaseUrl() {
 }
 
 function readRequiredSupabaseServiceRoleKey() {
-  const value = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE;
+  const value =
+    readServerEnv("SUPABASE_SERVICE_ROLE_KEY") || readServerEnv("SUPABASE_SERVICE_ROLE");
 
   if (!value) {
     throw new Error(
@@ -56,8 +58,7 @@ function readOptionalListEnv(key) {
 }
 
 function readOptionalNumberEnv(key, fallback) {
-  const value = Number(process.env[key]);
-  return Number.isFinite(value) ? value : fallback;
+  return readServerNumberEnv(key, fallback);
 }
 
 export function getTwilioServerConfig() {
@@ -108,7 +109,7 @@ export function getTwilioServerConfig() {
     ),
     clickToCallMissedSmsBody: readOptionalEnv("TWILIO_CLICK_TO_CALL_MISSED_SMS_BODY"),
     webhookBaseUrl: readRequiredEnv("TWILIO_WEBHOOK_BASE_URL").replace(/\/$/u, ""),
-    port: Number(process.env.TWILIO_WEBHOOK_PORT || 8787),
+    port: Number(readServerEnv("TWILIO_WEBHOOK_PORT") || 8787),
   };
 }
 

@@ -1,12 +1,12 @@
 import { formatTimeLabelFromIso, stripUndefined, toNullable } from "./shared.js";
 
-/** @typedef {import("../types/schema").CommunicationInsertPayload} CommunicationInsertPayload */
-/** @typedef {import("../types/schema").CommunicationRow} CommunicationRow */
-/** @typedef {import("../../types/models").Communication} Communication */
-/** @typedef {import("../../types/models").CommunicationAttachmentDraft} CommunicationAttachmentDraft */
-/** @typedef {import("../../types/models").CommunicationDraft} CommunicationDraft */
-/** @typedef {import("../../types/models").CallSummarySections} CallSummarySections */
-/** @typedef {import("../../types/models").CommunicationStatusPatch} CommunicationStatusPatch */
+/** @typedef {import("../types/schema.js").CommunicationInsertPayload} CommunicationInsertPayload */
+/** @typedef {import("../types/schema.js").CommunicationRow} CommunicationRow */
+/** @typedef {import("../../../types/models.js").Communication} Communication */
+/** @typedef {import("../../../types/models.js").CommunicationAttachmentDraft} CommunicationAttachmentDraft */
+/** @typedef {import("../../../types/models.js").CommunicationDraft} CommunicationDraft */
+/** @typedef {import("../../../types/models.js").CallSummarySections} CallSummarySections */
+/** @typedef {import("../../../types/models.js").CommunicationStatusPatch} CommunicationStatusPatch */
 
 function mapCallSummarySectionsToDomain(sections) {
   if (!sections || typeof sections !== "object") {

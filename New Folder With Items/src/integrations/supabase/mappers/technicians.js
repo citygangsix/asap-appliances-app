@@ -1,8 +1,8 @@
 import { stripUndefined, toNullable } from "./shared";
 
-/** @typedef {import("../types/schema").TechnicianInsertPayload} TechnicianInsertPayload */
-/** @typedef {import("../types/schema").TechnicianRow} TechnicianRow */
-/** @typedef {import("../../types/models").Technician} Technician */
+/** @typedef {import("../types/schema.js").TechnicianInsertPayload} TechnicianInsertPayload */
+/** @typedef {import("../types/schema.js").TechnicianRow} TechnicianRow */
+/** @typedef {import("../../../types/models.js").Technician} Technician */
 
 function formatDateLabel(dateLike) {
   if (!dateLike) {

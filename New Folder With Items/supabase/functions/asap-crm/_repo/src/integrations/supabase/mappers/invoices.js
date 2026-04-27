@@ -1,13 +1,13 @@
 import { formatDateOnly, stripUndefined, toNullable } from "./shared";
 
-/** @typedef {import("../types/schema").DbInvoicePaymentStatus} DbInvoicePaymentStatus */
-/** @typedef {import("../types/schema").InvoiceInsertPayload} InvoiceInsertPayload */
-/** @typedef {import("../types/schema").InvoicePaymentUpdatePayload} InvoicePaymentUpdatePayload */
-/** @typedef {import("../types/schema").InvoiceRow} InvoiceRow */
-/** @typedef {import("../../types/models").Invoice} Invoice */
-/** @typedef {import("../../types/models").InvoiceDraft} InvoiceDraft */
-/** @typedef {import("../../types/models").InvoicePaymentPatch} InvoicePaymentPatch */
-/** @typedef {import("../../types/models").PaymentStatus} PaymentStatus */
+/** @typedef {import("../types/schema.js").DbInvoicePaymentStatus} DbInvoicePaymentStatus */
+/** @typedef {import("../types/schema.js").InvoiceInsertPayload} InvoiceInsertPayload */
+/** @typedef {import("../types/schema.js").InvoicePaymentUpdatePayload} InvoicePaymentUpdatePayload */
+/** @typedef {import("../types/schema.js").InvoiceRow} InvoiceRow */
+/** @typedef {import("../../../types/models.js").Invoice} Invoice */
+/** @typedef {import("../../../types/models.js").InvoiceDraft} InvoiceDraft */
+/** @typedef {import("../../../types/models.js").InvoicePaymentPatch} InvoicePaymentPatch */
+/** @typedef {import("../../../types/models.js").PaymentStatus} PaymentStatus */
 
 /**
  * @param {DbInvoicePaymentStatus} status
