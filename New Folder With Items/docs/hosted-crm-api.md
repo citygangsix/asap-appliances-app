@@ -25,7 +25,7 @@ npm run api:deploy
 
 The function is deployed with `--no-verify-jwt` because Twilio, Thumbtack, and the public dashboard need to reach webhook/API routes without a Supabase user JWT. Route-level secrets and Twilio signatures still protect the sensitive webhook paths.
 
-Keep these human destination secrets pointed at phones the office can actually answer; do not set them to the Twilio business line unless that is intentionally routed to a person:
+Keep these human destination secrets pointed at phones the office can actually answer. Do not set `TWILIO_CLICK_TO_CALL_AGENT_NUMBER` to the Twilio business caller ID; outbound click-to-call first rings this human destination, then bridges the customer from `+18445424212`.
 
 - `TWILIO_VOICE_FORWARD_TO`
 - `TWILIO_CLICK_TO_CALL_AGENT_NUMBER`

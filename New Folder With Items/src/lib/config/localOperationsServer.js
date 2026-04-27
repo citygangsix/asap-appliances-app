@@ -1,4 +1,4 @@
-const HOSTED_OPERATIONS_API_URL = "https://retold-playback-cause.ngrok-free.dev";
+const HOSTED_OPERATIONS_API_URL = "https://gntijouqttihazdupoiu.supabase.co/functions/v1/asap-crm";
 
 function getConfiguredBaseUrl() {
   return import.meta.env.VITE_LOCAL_OPERATIONS_SERVER_URL?.trim() || "";

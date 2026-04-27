@@ -47,7 +47,137 @@ function buildTwilioAuthHeader(accountSid, authToken) {
   return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
 }
 
-async function parseTwilioResponse(response) {
+function normalizeTwilioDialNumber(value) {
+  const rawValue = toNullableString(value);
+
+  if (!rawValue) {
+    return null;
+  }
+
+  const digits = rawValue.replace(/\D/g, "");
+
+  if (!digits) {
+    return null;
+  }
+
+  if (rawValue.startsWith("+")) {
+    return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : null;
+  }
+
+  if (digits.length === 10) {
+    return `+1${digits}`;
+  }
+
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+${digits}`;
+  }
+
+  return null;
+}
+
+function redactPhoneNumber(value) {
+  const phoneNumber = normalizePhoneNumber(toNullableString(value)) || toNullableString(value);
+
+  if (!phoneNumber) {
+    return null;
+  }
+
+  const visibleSuffix = phoneNumber.slice(-4);
+  const redactedLength = Math.max(phoneNumber.length - visibleSuffix.length - (phoneNumber.startsWith("+") ? 1 : 0), 1);
+  return `${phoneNumber.startsWith("+") ? "+" : ""}${"*".repeat(redactedLength)}${visibleSuffix}`;
+}
+
+function redactUrl(value) {
+  const rawValue = toNullableString(value);
+
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const url = new URL(rawValue);
+    return `${url.origin}${url.pathname}`;
+  } catch (error) {
+    return rawValue.split("?")[0];
+  }
+}
+
+function redactPhoneLikeText(value) {
+  if (!value) {
+    return null;
+  }
+
+  return String(value).replace(/\+?\d[\d\s().-]{6,}\d/g, (match) => redactPhoneNumber(match) || match);
+}
+
+function buildTwilioApiFailureMessage(responseJson, status) {
+  const twilioCode = String(responseJson?.code || "");
+  const twilioMessage = String(responseJson?.message || "").toLowerCase();
+
+  if (status === 401) {
+    return "Twilio rejected the server credentials. Update TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in the server environment, then redeploy or restart the API.";
+  }
+
+  if (
+    twilioCode === "21212" ||
+    twilioMessage.includes("caller id") ||
+    twilioMessage.includes("from phone") ||
+    twilioMessage.includes("'from'")
+  ) {
+    return "Twilio rejected the outbound caller ID. Confirm TWILIO_PHONE_NUMBER is +18445424212, the number belongs to this Twilio account, and TWILIO_MANAGED_PHONE_NUMBERS includes it.";
+  }
+
+  if (twilioCode === "21211" || twilioMessage.includes("valid phone number")) {
+    return "Twilio rejected one of the phone numbers. Confirm the customer phone and the configured office phone are valid E.164 numbers.";
+  }
+
+  if (
+    twilioCode === "21215" ||
+    twilioMessage.includes("trial") ||
+    twilioMessage.includes("not verified") ||
+    twilioMessage.includes("unverified")
+  ) {
+    return "Twilio blocked the call because of a trial-account or verification restriction. Verify the destination number in Twilio or upgrade the account.";
+  }
+
+  if (twilioMessage.includes("permission") || twilioMessage.includes("geo")) {
+    return "Twilio blocked the call because of account permissions or geographic calling settings. Check Twilio Voice geographic permissions.";
+  }
+
+  if (twilioCode) {
+    return `Twilio rejected the outbound call with error code ${twilioCode}. Check the Twilio call log for the full provider detail.`;
+  }
+
+  return `Twilio request failed with status ${status}.`;
+}
+
+function logClickToCallFailure(reason, context = {}) {
+  console.error("[twilio-click-to-call:failure]", {
+    reason,
+    status: context.status || null,
+    twilioCode: context.twilioCode || null,
+    twilioMessage: redactPhoneLikeText(context.twilioMessage),
+    moreInfo: redactUrl(context.moreInfo),
+    fromNumber: redactPhoneNumber(context.fromNumber),
+    toNumber: redactPhoneNumber(context.toNumber),
+    agentPhone: redactPhoneNumber(context.agentPhone),
+    customerPhone: redactPhoneNumber(context.customerPhone),
+    businessPhoneNumber: redactPhoneNumber(context.businessPhoneNumber),
+    requestedBusinessPhoneNumber: redactPhoneNumber(context.requestedBusinessPhoneNumber),
+    managedPhoneNumbers: Array.isArray(context.managedPhoneNumbers)
+      ? context.managedPhoneNumbers.map(redactPhoneNumber)
+      : undefined,
+    bridgeUrl: redactUrl(context.bridgeUrl || context.url),
+    statusCallbackUrl: redactUrl(context.statusCallback || context.statusCallbackUrl),
+    webhookHealthUrl: redactUrl(context.webhookHealthUrl),
+    detail: redactPhoneLikeText(context.detail),
+    errorMessage: redactPhoneLikeText(context.errorMessage),
+    accountSidPresent: context.accountSidPresent === undefined ? undefined : Boolean(context.accountSidPresent),
+    authTokenPresent: context.authTokenPresent === undefined ? undefined : Boolean(context.authTokenPresent),
+  });
+}
+
+async function parseTwilioResponse(response, context = {}) {
   const responseText = await response.text();
   let responseJson = null;
 
@@ -60,15 +190,15 @@ async function parseTwilioResponse(response) {
   }
 
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error(
-        "Twilio rejected the server credentials. Update TWILIO_AUTH_TOKEN or TWILIO_API_KEY_SECRET in .env.server.local, then restart the webhook server.",
-      );
-    }
+    logClickToCallFailure("twilio_api_rejected", {
+      ...context,
+      status: response.status,
+      twilioCode: responseJson?.code || null,
+      twilioMessage: responseJson?.message || null,
+      moreInfo: responseJson?.more_info || null,
+    });
 
-    throw new Error(
-      responseJson?.message || `Twilio request failed with status ${response.status}.`,
-    );
+    throw new Error(buildTwilioApiFailureMessage(responseJson, response.status));
   }
 
   return responseJson;
@@ -226,6 +356,8 @@ async function createOutboundCallCommunicationLog(config, payload, providerCallS
   const customerId = toNullableString(payload.customerId);
   const businessPhoneNumber =
     normalizePhoneNumber(toNullableString(payload.businessPhoneNumber)) || config.phoneNumber;
+  const customerPhone =
+    normalizeTwilioDialNumber(payload.customerPhone) || toNullableString(payload.customerPhone);
 
   if (!customerId || !providerCallSid) {
     return null;
@@ -253,7 +385,7 @@ async function createOutboundCallCommunicationLog(config, payload, providerCallS
       startedAt: new Date().toISOString(),
       endedAt: null,
       fromNumber: businessPhoneNumber,
-      toNumber: toNullableString(payload.customerPhone),
+      toNumber: customerPhone,
       providerName: "twilio",
       providerMessageSid: null,
       providerCallSid,
@@ -445,16 +577,39 @@ async function placeTwilioApiCall({
     body.append("StatusCallbackEvent", event);
   }
 
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`, {
-    method: "POST",
-    headers: {
-      Authorization: buildTwilioAuthHeader(accountSid, authToken),
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
+  let response = null;
 
-  return parseTwilioResponse(response);
+  try {
+    response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`, {
+      method: "POST",
+      headers: {
+        Authorization: buildTwilioAuthHeader(accountSid, authToken),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+  } catch (error) {
+    logClickToCallFailure("twilio_api_unreachable", {
+      fromNumber,
+      toNumber,
+      url,
+      statusCallback,
+      errorMessage: error?.message || "Twilio API request failed before a response was returned.",
+      accountSidPresent: Boolean(accountSid),
+      authTokenPresent: Boolean(authToken),
+    });
+
+    throw new Error("The CRM could not reach Twilio's Calls API. Check network access and retry.");
+  }
+
+  return parseTwilioResponse(response, {
+    fromNumber,
+    toNumber,
+    url,
+    statusCallback,
+    accountSidPresent: Boolean(accountSid),
+    authTokenPresent: Boolean(authToken),
+  });
 }
 
 async function ensureCallAttemptLog(client, communication, payload) {
@@ -587,15 +742,17 @@ async function scheduleMissedCallSmsFollowup({ communication, triggerSource }) {
 
 export function buildClickToCallBridgeTwiml(config, payload = {}) {
   const customerName = toNullableString(payload.customerName) || "the customer";
-  const customerPhone = toNullableString(payload.customerPhone);
+  const customerPhone = normalizeTwilioDialNumber(payload.customerPhone);
   const resolvedBusinessPhoneNumber = resolveManagedBusinessPhoneNumber(
     config,
     payload.businessPhoneNumber,
   );
-  const callerId = resolvedBusinessPhoneNumber.phoneNumber || config.phoneNumber;
+  const callerId =
+    normalizeTwilioDialNumber(resolvedBusinessPhoneNumber.phoneNumber || config.phoneNumber) ||
+    config.phoneNumber;
 
   if (!customerPhone) {
-    return `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">The customer phone number is missing.</Say><Hangup/></Response>`;
+    return `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">The customer phone number is missing or invalid.</Say><Hangup/></Response>`;
   }
 
   return [
@@ -618,18 +775,20 @@ export function buildClickToCallBridgeTwiml(config, payload = {}) {
 export async function requestClickToCall(payload = {}) {
   const config = getTwilioServerConfig();
   const customerPhone = toNullableString(payload.customerPhone);
-  const normalizedCustomerPhone = normalizePhoneNumber(customerPhone) || customerPhone;
+  const normalizedCustomerPhone = normalizeTwilioDialNumber(customerPhone);
   const customerName = toNullableString(payload.customerName) || "customer";
   const { agentPhone, ignoredRequestedAgentPhone } = resolveClickToCallAgentPhone(
     config,
     payload.agentPhone,
   );
+  const normalizedAgentPhone = normalizeTwilioDialNumber(agentPhone);
   const dryRun = payload.dryRun === true;
   const triggerSource = resolveTriggerSource(payload);
   const isAutomated = isAutomatedTrigger(triggerSource, payload.manualRetry === true);
   const requestedBusinessPhone = toNullableString(payload.businessPhoneNumber);
   const resolvedBusinessPhoneNumber = resolveManagedBusinessPhoneNumber(config, requestedBusinessPhone);
   const businessPhoneNumber = resolvedBusinessPhoneNumber.phoneNumber || config.phoneNumber;
+  const normalizedBusinessPhoneNumber = normalizeTwilioDialNumber(businessPhoneNumber);
 
   if (!customerPhone) {
     return {
@@ -640,7 +799,21 @@ export async function requestClickToCall(payload = {}) {
     };
   }
 
+  if (!normalizedCustomerPhone) {
+    return {
+      ok: false,
+      status: 400,
+      dryRun,
+      message: "Click-to-call requires a valid US customer phone number or an E.164 international number.",
+    };
+  }
+
   if (!agentPhone) {
+    logClickToCallFailure("missing_agent_phone", {
+      customerPhone: normalizedCustomerPhone,
+      businessPhoneNumber,
+    });
+
     return {
       ok: false,
       status: 500,
@@ -651,6 +824,12 @@ export async function requestClickToCall(payload = {}) {
   }
 
   if (!resolvedBusinessPhoneNumber.ok) {
+    logClickToCallFailure("unmanaged_business_phone_number", {
+      customerPhone: normalizedCustomerPhone,
+      requestedBusinessPhoneNumber: requestedBusinessPhone,
+      managedPhoneNumbers: resolvedBusinessPhoneNumber.managedPhoneNumbers,
+    });
+
     return {
       ok: false,
       status: 400,
@@ -660,7 +839,60 @@ export async function requestClickToCall(payload = {}) {
     };
   }
 
-  const bridgeUrl = buildClickToCallBridgeUrl(config, payload);
+  if (!normalizedAgentPhone) {
+    logClickToCallFailure("invalid_agent_phone", {
+      customerPhone: normalizedCustomerPhone,
+      agentPhone,
+      businessPhoneNumber,
+    });
+
+    return {
+      ok: false,
+      status: 500,
+      dryRun,
+      message:
+        "TWILIO_CLICK_TO_CALL_AGENT_NUMBER, ASSISTANT_OFFICE_PHONE_NUMBER, or TWILIO_VOICE_FORWARD_TO must be a valid US phone number or E.164 international number.",
+    };
+  }
+
+  if (!normalizedBusinessPhoneNumber) {
+    logClickToCallFailure("invalid_business_phone_number", {
+      customerPhone: normalizedCustomerPhone,
+      agentPhone: normalizedAgentPhone,
+      businessPhoneNumber,
+    });
+
+    return {
+      ok: false,
+      status: 500,
+      dryRun,
+      message:
+        "TWILIO_PHONE_NUMBER must be a valid Twilio business number in E.164 format, such as +18445424212.",
+    };
+  }
+
+  if (normalizedAgentPhone === normalizedBusinessPhoneNumber) {
+    logClickToCallFailure("agent_phone_matches_business_line", {
+      customerPhone: normalizedCustomerPhone,
+      agentPhone: normalizedAgentPhone,
+      businessPhoneNumber: normalizedBusinessPhoneNumber,
+    });
+
+    return {
+      ok: false,
+      status: 500,
+      dryRun,
+      message:
+        "TWILIO_CLICK_TO_CALL_AGENT_NUMBER must be an answerable office phone, not the Twilio business caller ID.",
+    };
+  }
+
+  const callPayload = {
+    ...payload,
+    customerPhone: normalizedCustomerPhone,
+    businessPhoneNumber: normalizedBusinessPhoneNumber,
+  };
+  const bridgeUrl = buildClickToCallBridgeUrl(config, callPayload);
   const statusCallbackUrl = buildClickToCallStatusUrl(config);
   const recordingCallbackUrl = buildClickToCallRecordingUrl(config);
   const followUpPolicy = buildFollowUpPolicyPreview(config, triggerSource);
@@ -671,15 +903,15 @@ export async function requestClickToCall(payload = {}) {
       status: 200,
       dryRun: true,
       preview: {
-        agentPhone,
+        agentPhone: normalizedAgentPhone,
         ignoredRequestedAgentPhone,
-        businessPhoneNumber,
-        customerPhone,
+        businessPhoneNumber: normalizedBusinessPhoneNumber,
+        customerPhone: normalizedCustomerPhone,
         customerName,
         bridgeUrl,
         statusCallbackUrl,
         recordingCallbackUrl,
-        bridgeTwiml: buildDryRunBridgeTwiml(config, payload),
+        bridgeTwiml: buildDryRunBridgeTwiml(config, callPayload),
         followUpPolicy,
       },
       message: "Dry run prepared click-to-call request.",
@@ -689,7 +921,7 @@ export async function requestClickToCall(payload = {}) {
   const client = getServerSupabaseClient();
   const customerLookup = await findCustomerOutreachProfile(client, {
     customerId: toNullableString(payload.customerId),
-    customerPhone,
+    customerPhone: normalizedCustomerPhone,
   });
   const customerProfile = customerLookup.customer;
   const resolvedCustomerId = toNullableString(payload.customerId) || customerProfile?.customer_id || null;
@@ -705,7 +937,7 @@ export async function requestClickToCall(payload = {}) {
       outcome: "blocked_opt_out",
       outcomeDetail: "Call request blocked because the customer has opted out.",
       completedAt: new Date().toISOString(),
-      rawPayload: payload,
+      rawPayload: callPayload,
     });
 
     return {
@@ -747,7 +979,7 @@ export async function requestClickToCall(payload = {}) {
         outcomeDetail: `Automatic calling is cooling down until ${activeCooldownUntil}.`,
         cooldownAppliedUntil: activeCooldownUntil,
         completedAt: new Date().toISOString(),
-        rawPayload: payload,
+        rawPayload: callPayload,
       });
 
       return {
@@ -762,13 +994,24 @@ export async function requestClickToCall(payload = {}) {
   const webhookHealth = await verifyWebhookBaseUrlHealth(config);
 
   if (!webhookHealth.ok) {
+    logClickToCallFailure("webhook_health_failed", {
+      agentPhone: normalizedAgentPhone,
+      ignoredRequestedAgentPhone,
+      customerPhone: normalizedCustomerPhone,
+      businessPhoneNumber: normalizedBusinessPhoneNumber,
+      bridgeUrl,
+      statusCallbackUrl,
+      webhookHealthUrl: webhookHealth.healthUrl,
+      detail: webhookHealth.detail,
+    });
+
     return {
       ok: false,
       status: 503,
       dryRun: false,
-    agentPhone,
-    ignoredRequestedAgentPhone,
-    customerPhone,
+      agentPhone: normalizedAgentPhone,
+      ignoredRequestedAgentPhone,
+      customerPhone: normalizedCustomerPhone,
       message: `TWILIO_WEBHOOK_BASE_URL is not serving the webhook server. Checked ${webhookHealth.healthUrl}. ${webhookHealth.detail} Restart the tunnel, update TWILIO_WEBHOOK_BASE_URL, and restart the webhook server before using click-to-call.`,
     };
   }
@@ -776,8 +1019,8 @@ export async function requestClickToCall(payload = {}) {
   const twilioResponse = await placeTwilioApiCall({
     accountSid: config.accountSid,
     authToken: config.authToken,
-    fromNumber: businessPhoneNumber,
-    toNumber: agentPhone,
+    fromNumber: normalizedBusinessPhoneNumber,
+    toNumber: normalizedAgentPhone,
     url: bridgeUrl,
     statusCallback: statusCallbackUrl,
   });
@@ -788,9 +1031,9 @@ export async function requestClickToCall(payload = {}) {
     communicationRecord = await createOutboundCallCommunicationLog(
       config,
       {
-        ...payload,
+        ...callPayload,
         customerId: resolvedCustomerId,
-        businessPhoneNumber,
+        businessPhoneNumber: normalizedBusinessPhoneNumber,
       },
       twilioResponse?.sid || null,
     );
@@ -825,7 +1068,7 @@ export async function requestClickToCall(payload = {}) {
       providerCallSid: twilioResponse?.sid || null,
       outcome: "assistant_initiated",
       cooldownAppliedUntil,
-      rawPayload: payload,
+      rawPayload: callPayload,
     });
   } catch (error) {
     console.error("Click-to-call attempt log failed.", error);
@@ -836,12 +1079,12 @@ export async function requestClickToCall(payload = {}) {
     status: 200,
     dryRun: false,
     providerCallSid: twilioResponse?.sid || null,
-    agentPhone,
+    agentPhone: normalizedAgentPhone,
     ignoredRequestedAgentPhone,
-    businessPhoneNumber,
-    customerPhone,
+    businessPhoneNumber: normalizedBusinessPhoneNumber,
+    customerPhone: normalizedCustomerPhone,
     followUpPolicy,
-    message: `Twilio is calling ${agentPhone} and will connect ${customerName} once you answer.`,
+    message: `Twilio is calling ${normalizedAgentPhone} and will connect ${customerName} once you answer.`,
   };
 }
 

@@ -120,6 +120,7 @@ Use `TWILIO_WEBHOOK_BASE_URL` as the public base URL. With the current route str
   - `TWILIO_CLICK_TO_CALL_AGENT_NUMBER`
   - if unset, `ASSISTANT_OFFICE_PHONE_NUMBER`
   - if that is unset, `TWILIO_VOICE_FORWARD_TO`
+  - this must be an answerable office or staff phone, not the Twilio business caller ID `+18445424212`
 
 For the hosted ASAPACboss.com API, use these exact URLs on the Twilio phone number `+18445424212`:
 
