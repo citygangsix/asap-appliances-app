@@ -5,7 +5,8 @@ Frontend demo for an appliance service operations dashboard built with React, Vi
 ## What This Project Includes
 
 - A multi-page single-page app with mock operational workflows
-- Dashboard-style views for Home, Jobs, Dispatch, Communications, Invoices, Revenue, Technicians, and Settings
+- Dashboard-style views for Phone, Home, Jobs, Dispatch, Communications, Invoices, Revenue, Technicians, and Settings
+- `/dashboard` opens the Phone screen first for quickest Twilio access; Dispatch remains available from the sidebar at `/dashboard/dispatch-board`
 - Shared UI components with both mock and Supabase-backed repository modes
 
 ## Tech Stack

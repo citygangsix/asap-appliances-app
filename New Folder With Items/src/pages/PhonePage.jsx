@@ -9,11 +9,6 @@ import {
 const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 const AGENT_PHONE_PRESETS = [
   {
-    id: "owner-1545",
-    label: "561-564-1545",
-    phone: "+15615641545",
-  },
-  {
     id: "assistant-1674",
     label: "561-878-1674",
     phone: "+15618781674",
@@ -164,7 +159,7 @@ export function PhonePage() {
   return (
     <PageScaffold
       title="Phone"
-      subtitle="Mobile-ready Twilio bridge dialing from the ASAP dashboard."
+      subtitle="Default dashboard landing screen for the fastest Twilio bridge call."
       contentClassName="bg-[#11141c] p-4 sm:p-6 lg:p-8"
     >
       <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,430px)_1fr]">
@@ -188,7 +183,7 @@ export function PhonePage() {
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
                 inputMode="tel"
                 onChange={(event) => setAgentPhone(event.target.value)}
-                placeholder="Server default: 561-564-1545"
+                placeholder="Server default office phone"
                 type="tel"
                 value={formattedAgentPhone}
               />

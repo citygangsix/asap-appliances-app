@@ -17,15 +17,23 @@ const TECHNICIAN_FEEDBACK_TONES = {
   rose: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
-const RECORDED_AGENT_CALL_OPTIONS = [
+const RECORDED_BUSINESS_CALL_OPTIONS = [
   {
-    id: "owner-1545",
-    label: "Call on 561-564-1545",
-    phone: "+15615641545",
+    id: "asap-main-4212",
+    label: "Call from 844-542-4212",
+    phone: "+18445424212",
+  },
+];
+
+const MANUAL_CALL_PHONE_OPTIONS = [
+  {
+    id: "asap-main-4212",
+    label: "844-542-4212",
+    phone: "+18445424212",
   },
   {
     id: "assistant-1674",
-    label: "Call on 561-878-1674",
+    label: "561-878-1674",
     phone: "+15618781674",
   },
 ];
@@ -111,7 +119,7 @@ export function TechniciansPage() {
     candidateName: "",
     candidatePhone: "",
     email: "",
-    agentPhone: RECORDED_AGENT_CALL_OPTIONS[0].phone,
+    agentPhone: MANUAL_CALL_PHONE_OPTIONS[0].phone,
     callOutcome: "voicemail_left",
     note: "",
   });
@@ -138,7 +146,7 @@ export function TechniciansPage() {
     window.setTimeout(() => candidateNameInputRef.current?.focus(), 250);
   };
 
-  const runCandidateClickToCall = async (agentPhone) => {
+  const runCandidateClickToCall = async (businessPhoneNumber) => {
     if (!selectedCandidate) {
       return;
     }
@@ -151,21 +159,21 @@ export function TechniciansPage() {
       return;
     }
 
-    const actionKey = `candidate:call:${selectedCandidate.candidateId}:${agentPhone}`;
+    const actionKey = `candidate:call:${selectedCandidate.candidateId}:${businessPhoneNumber}`;
     setActiveActionKey(actionKey);
 
     try {
       const result = await requestClickToCall({
         customerName: selectedCandidate.name,
         customerPhone: selectedCandidate.primaryPhone,
-        agentPhone,
+        businessPhoneNumber,
         triggerSource: "manual_hiring_ui",
       });
 
       setActionFeedback({
         message:
           result.message ||
-          `Twilio is calling ${agentPhone} first. After you answer, the candidate leg will be recorded and analyzed automatically.`,
+          `Twilio is calling the configured office phone first from ${businessPhoneNumber}. After you answer, the candidate leg will be recorded and analyzed automatically.`,
         tone: "emerald",
       });
     } catch (callError) {
@@ -449,7 +457,7 @@ export function TechniciansPage() {
                 }
                 className={TECHNICIAN_FIELD_CLASS}
               >
-                {RECORDED_AGENT_CALL_OPTIONS.map((option) => (
+                {MANUAL_CALL_PHONE_OPTIONS.map((option) => (
                   <option key={option.id} value={option.phone}>
                     {option.label}
                   </option>
@@ -487,7 +495,7 @@ export function TechniciansPage() {
                 }))
               }
               rows={5}
-              placeholder="Example: Called from 561-564-1545, candidate did not answer, left voicemail about appliance repair work in Broward and asked for callback."
+              placeholder="Example: Called from 844-542-4212, candidate did not answer, left voicemail about appliance repair work in Broward and asked for callback."
               className={`${TECHNICIAN_FIELD_CLASS} resize-none`}
             />
           </label>
@@ -561,11 +569,11 @@ export function TechniciansPage() {
               <div>
                 <h2 className="text-lg font-semibold">{selectedCandidate.name}</h2>
                 <p className="mt-2 text-sm text-slate-500">
-                  Use either recorded Twilio line below for automatic recording, transcription, and CRM population after the conversation.
+                  Start a recorded CRM bridge from the ASAP business line for automatic recording, transcription, and CRM population after the conversation.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                {RECORDED_AGENT_CALL_OPTIONS.map((option) => {
+                {RECORDED_BUSINESS_CALL_OPTIONS.map((option) => {
                   const actionKey = `candidate:call:${selectedCandidate.candidateId}:${option.phone}`;
 
                   return (

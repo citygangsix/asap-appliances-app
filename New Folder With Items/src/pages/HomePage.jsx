@@ -21,7 +21,7 @@ export function HomePage() {
   const actions = (
     <>
       <SecondaryButton onClick={refreshDashboard}>Refresh dashboard</SecondaryButton>
-      <PrimaryButton onClick={() => navigate("/dashboard/dispatch")}>Open urgent queue</PrimaryButton>
+      <PrimaryButton onClick={() => navigate("/dashboard/dispatch-board")}>Open urgent queue</PrimaryButton>
     </>
   );
 

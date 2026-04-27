@@ -4,9 +4,18 @@
 /** @type {RouteMeta[]} */
 export const ROUTES = [
   {
+    routeId: "phone",
+    path: "/dashboard/phone",
+    label: "Phone",
+    icon: "☎",
+    group: "Main",
+    eyebrow: "Quick Twilio access",
+    alert: "Type a number and start a call",
+  },
+  {
     routeId: "home",
-    path: "/dashboard",
-    label: "Home",
+    path: "/dashboard/home",
+    label: "Overview",
     icon: "◫",
     group: "Main",
     eyebrow: "Operations overview",
@@ -32,7 +41,7 @@ export const ROUTES = [
   },
   {
     routeId: "dispatch",
-    path: "/dashboard/dispatch",
+    path: "/dashboard/dispatch-board",
     label: "Dispatch",
     icon: "⇄",
     group: "Operations",
@@ -47,15 +56,6 @@ export const ROUTES = [
     group: "Operations",
     eyebrow: "Customer contact",
     alert: "Texts, calls, and extracted event review",
-  },
-  {
-    routeId: "phone",
-    path: "/dashboard/phone",
-    label: "Phone",
-    icon: "☎",
-    group: "Operations",
-    eyebrow: "Browser dialer",
-    alert: "Twilio Voice command center",
   },
   {
     routeId: "invoices",

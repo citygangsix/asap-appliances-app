@@ -9,7 +9,7 @@ Use this when configuring LeadWinner for ASAP CRM.
 
 ## ASAP Webhook Endpoint
 
-- URL: `https://retold-playback-cause.ngrok-free.dev/api/thumbtack/lead`
+- URL: `https://gntijouqttihazdupoiu.supabase.co/functions/v1/asap-crm/api/thumbtack/lead`
 - Method: `POST`
 - Header:
   - `Authorization: Bearer <THUMBTACK_WEBHOOK_SECRET>`
@@ -42,5 +42,5 @@ The webhook currently accepts common variants such as:
 
 - New lead calls target `+15618781674` first.
 - Calls are recorded through the CRM Twilio flow.
-- The current outbound caller ID shown to customers is still `+15617706385`.
-- Once BYOC is live for `+15615641545` or `+15618781674`, we can switch the caller ID to one of those business lines.
+- The current outbound caller ID shown to customers is `+18445424212`.
+- Keep `TWILIO_PHONE_NUMBER=+18445424212` and `TWILIO_MANAGED_PHONE_NUMBERS=+18445424212` in the hosted Supabase secrets unless another Twilio or BYOC line is intentionally added.

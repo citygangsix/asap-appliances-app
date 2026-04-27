@@ -28,15 +28,23 @@ const CUSTOMER_FEEDBACK_TONES = {
   rose: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
-const RECORDED_AGENT_CALL_OPTIONS = [
+const RECORDED_BUSINESS_CALL_OPTIONS = [
   {
-    id: "owner-1545",
-    label: "Call on 561-564-1545",
-    phone: "+15615641545",
+    id: "asap-main-4212",
+    label: "Call from 844-542-4212",
+    phone: "+18445424212",
+  },
+];
+
+const MANUAL_CALL_PHONE_OPTIONS = [
+  {
+    id: "asap-main-4212",
+    label: "844-542-4212",
+    phone: "+18445424212",
   },
   {
     id: "assistant-1674",
-    label: "Call on 561-878-1674",
+    label: "561-878-1674",
     phone: "+15618781674",
   },
 ];
@@ -158,7 +166,7 @@ export function CustomersPage() {
   const [customerDraft, setCustomerDraft] = useState(createEmptyCustomerDraft);
   const [customerEditDraft, setCustomerEditDraft] = useState(createEmptyCustomerDraft);
   const [manualCustomerCallDraft, setManualCustomerCallDraft] = useState({
-    agentPhone: RECORDED_AGENT_CALL_OPTIONS[0].phone,
+    agentPhone: MANUAL_CALL_PHONE_OPTIONS[0].phone,
     callOutcome: "voicemail_left",
     note: "",
   });
@@ -343,7 +351,7 @@ export function CustomersPage() {
     );
   };
 
-  const runClickToCall = async (agentPhone) => {
+  const runClickToCall = async (businessPhoneNumber) => {
     if (!selectedCustomerProfile) {
       return;
     }
@@ -358,7 +366,7 @@ export function CustomersPage() {
       return;
     }
 
-    const actionKey = `customer:call:${selectedCustomerProfile.customerId}:${agentPhone}`;
+    const actionKey = `customer:call:${selectedCustomerProfile.customerId}:${businessPhoneNumber}`;
     setActiveActionKey(actionKey);
 
     try {
@@ -366,7 +374,7 @@ export function CustomersPage() {
         customerId: selectedCustomerProfile.customerId,
         customerName: selectedCustomerProfile.name,
         customerPhone,
-        agentPhone,
+        businessPhoneNumber,
         jobId: selectedCustomerProfile.activeJob?.jobId || null,
         triggerSource: "manual_ui",
       });
@@ -374,7 +382,7 @@ export function CustomersPage() {
       setActionFeedback({
         message:
           result.message ||
-          `Twilio is calling ${agentPhone} first. After you answer, the customer conversation will be recorded and pushed into the CRM.`,
+          `Twilio is calling the configured office phone first from ${businessPhoneNumber}. After you answer, the customer conversation will be recorded and pushed into the CRM.`,
         tone: "emerald",
       });
     } catch (callError) {
@@ -642,10 +650,10 @@ export function CustomersPage() {
                 {selectedCustomerProfile.city} · {selectedCustomerProfile.serviceArea}
               </p>
               <p className="mt-3 text-sm text-slate-500">
-                Use either office line below to keep the call on the recorded Twilio path for CRM transcription and auto-population.
+                Start a recorded CRM bridge from the ASAP business line for transcription and auto-population.
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
-                {RECORDED_AGENT_CALL_OPTIONS.map((option) => {
+                {RECORDED_BUSINESS_CALL_OPTIONS.map((option) => {
                   const actionKey = `customer:call:${selectedCustomerProfile.customerId}:${option.phone}`;
 
                   return (
@@ -709,7 +717,7 @@ export function CustomersPage() {
                     }
                     className={CUSTOMER_FIELD_CLASS}
                   >
-                    {RECORDED_AGENT_CALL_OPTIONS.map((option) => (
+                    {MANUAL_CALL_PHONE_OPTIONS.map((option) => (
                       <option key={option.id} value={option.phone}>
                         {option.label}
                       </option>
@@ -747,7 +755,7 @@ export function CustomersPage() {
                     }))
                   }
                   rows={4}
-                  placeholder="Example: Called from 561-564-1545, customer did not answer, left voicemail about tomorrow morning availability and asked for callback."
+                  placeholder="Example: Called from 844-542-4212, customer did not answer, left voicemail about tomorrow morning availability and asked for callback."
                   className={`${CUSTOMER_FIELD_CLASS} resize-none`}
                 />
               </label>

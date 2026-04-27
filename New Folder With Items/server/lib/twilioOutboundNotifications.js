@@ -113,6 +113,7 @@ export async function sendOutboundSms({ toNumber, body, dryRun = false, label = 
       skipped: false,
       smsRequested: false,
       preview: {
+        fromNumber: config.phoneNumber,
         toNumber: destination,
         body,
       },
@@ -166,6 +167,7 @@ export async function sendOutboundCall({ toNumber, message, dryRun = false, labe
       skipped: false,
       callRequested: false,
       preview: {
+        fromNumber: config.phoneNumber,
         toNumber: destination,
         message,
         twiml: buildTwimlSayResponse(message),
