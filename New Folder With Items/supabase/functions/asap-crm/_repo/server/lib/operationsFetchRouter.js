@@ -391,90 +391,90 @@ export async function handleOperationsFetchRequest(request, options = {}) {
     }
 
     if (request.method === "POST" && pathname === "/api/invoices/send-lumia") {
-      return handleJsonWorkflowRequest(request, notifyLumiaAboutInvoice);
+      return await handleJsonWorkflowRequest(request, notifyLumiaAboutInvoice);
     }
 
     if (request.method === "POST" && pathname === "/api/dispatch/notify-eta") {
-      return handleJsonWorkflowRequest(request, notifyDispatchEtaUpdate);
+      return await handleJsonWorkflowRequest(request, notifyDispatchEtaUpdate);
     }
 
     if (request.method === "POST" && pathname === "/api/workflows/dispatch") {
-      return handleJsonWorkflowRequest(request, runDispatchWorkflow);
+      return await handleJsonWorkflowRequest(request, runDispatchWorkflow);
     }
 
     if (request.method === "POST" && pathname === "/api/workflows/generate-invoice") {
-      return handleJsonWorkflowRequest(request, runInvoiceGenerationWorkflow);
+      return await handleJsonWorkflowRequest(request, runInvoiceGenerationWorkflow);
     }
 
     if (request.method === "POST" && pathname === "/api/workflows/invoice-paid") {
-      return handleJsonWorkflowRequest(request, runInvoicePaidWorkflow);
+      return await handleJsonWorkflowRequest(request, runInvoicePaidWorkflow);
     }
 
     if (request.method === "POST" && pathname === "/api/workflows/final-work") {
-      return handleJsonWorkflowRequest(request, runFinalWorkWorkflow);
+      return await handleJsonWorkflowRequest(request, runFinalWorkWorkflow);
     }
 
     if (request.method === "POST" && pathname === CLICK_TO_CALL_PATH) {
-      return handleClickToCallRequest(request);
+      return await handleClickToCallRequest(request);
     }
 
     if (request.method === "POST" && pathname === BROWSER_CALL_PATH) {
-      return handleBrowserCallRequest(request);
+      return await handleBrowserCallRequest(request);
     }
 
     if (request.method === "POST" && pathname === BROWSER_CALL_TWIML_PATH) {
-      return handleBrowserCallTwimlRequest(request, context);
+      return await handleBrowserCallTwimlRequest(request, context);
     }
 
     if (request.method === "POST" && pathname === BROWSER_CALL_STATUS_PATH) {
-      return handleBrowserCallStatusWebhook(request, context);
+      return await handleBrowserCallStatusWebhook(request, context);
     }
 
     if (request.method === "POST" && pathname === BROWSER_HANGUP_PATH) {
-      return handleBrowserHangupRequest(request);
+      return await handleBrowserHangupRequest(request);
     }
 
     if (request.method === "GET" && pathname === BROWSER_VOICE_TOKEN_PATH) {
-      return handleBrowserVoiceTokenRequest();
+      return await handleBrowserVoiceTokenRequest();
     }
 
     if (request.method === "GET" && pathname === HIRING_CANDIDATES_PATH) {
-      return handleHiringCandidatesRequest();
+      return await handleHiringCandidatesRequest();
     }
 
     if (request.method === "POST" && pathname === THUMBTACK_LEAD_PATH) {
-      return handleThumbtackLeadWebhook(request, context);
+      return await handleThumbtackLeadWebhook(request, context);
     }
 
     if (request.method === "POST" && pathname === MANUAL_CALL_LOG_PATH) {
-      return handleManualCallLogRequest(request);
+      return await handleManualCallLogRequest(request);
     }
 
     if (request.method === "POST" && pathname === SMS_WEBHOOK_PATH) {
-      return handleTwilioWebhook(request, context, pathname, persistInboundSms);
+      return await handleTwilioWebhook(request, context, pathname, persistInboundSms);
     }
 
     if (request.method === "POST" && pathname === VOICE_WEBHOOK_PATH) {
-      return handleTwilioVoiceWebhook(request, context);
+      return await handleTwilioVoiceWebhook(request, context);
     }
 
     if (request.method === "POST" && pathname === CALL_STATUS_WEBHOOK_PATH) {
-      return handleTwilioWebhook(request, context, pathname, persistInboundCallEvent);
+      return await handleTwilioWebhook(request, context, pathname, persistInboundCallEvent);
     }
 
     if (request.method === "POST" && pathname === RECORDING_STATUS_WEBHOOK_PATH) {
-      return handleRecordingStatusWebhook(request, context);
+      return await handleRecordingStatusWebhook(request, context);
     }
 
     if (
       (request.method === "POST" || request.method === "GET") &&
       pathname === CLICK_TO_CALL_BRIDGE_PATH
     ) {
-      return handleClickToCallBridgeWebhook(request, context);
+      return await handleClickToCallBridgeWebhook(request, context);
     }
 
     if (request.method === "POST" && pathname === CLICK_TO_CALL_STATUS_PATH) {
-      return handleClickToCallStatusWebhook(request, context);
+      return await handleClickToCallStatusWebhook(request, context);
     }
 
     return respondJson(404, { ok: false, message: "Route not found." });
