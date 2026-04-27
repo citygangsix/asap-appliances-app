@@ -46,9 +46,9 @@ Then copy `dist-pages` into the `gh-pages` worktree and push the live publish co
 
 For the phone number `+18445424212`, update Twilio webhook URLs from the old ngrok host to:
 
-- Incoming SMS webhook: `https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm/api/twilio/sms`
-- Incoming voice webhook: `https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm/api/twilio/voice`
-- Incoming voice call status callback: `https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm/api/twilio/calls/status`
+- Incoming SMS webhook: `https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm/api/twilio/sms` using HTTP POST
+- Incoming voice webhook: `https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm/api/twilio/voice` using HTTP POST
+- Incoming voice call status callback: `https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm/api/twilio/calls/status` using HTTP POST
 
 Browser calling and click-to-call generate their own callback URLs from `TWILIO_WEBHOOK_BASE_URL`, so they will use the hosted API after the secret is updated:
 
@@ -58,3 +58,19 @@ Browser calling and click-to-call generate their own callback URLs from `TWILIO_
 - Browser TwiML App voice request URL if browser calling is enabled: `https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm/api/twilio/browser-call/twiml`
 
 Outbound SMS status callbacks are not currently configured by the CRM's Twilio Messages API call.
+
+## Current Twilio Account Blocker
+
+The CRM backend, hosted Supabase Edge Function, database routes, and click-to-call dry run are working. A controlled live outbound call reached Twilio, but Twilio rejected the Calls API request with error `10005`, which indicates Voice calling is disabled for the account. Twilio also showed the account restriction message: `Account is restricted from provisioning new long code Phone Numbers.`
+
+This is a Twilio account compliance or Voice enablement issue, not a CRM code issue. Before retesting live outbound calls:
+
+- Add the emergency address in Twilio.
+- Confirm the inbound voice webhook for `+18445424212` is set to `https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm/api/twilio/voice` using HTTP POST.
+- Contact Twilio support/compliance and ask them to enable Programmable Voice outbound calling and remove the long-code provisioning restriction.
+
+Suggested Twilio support message:
+
+```text
+My account is upgraded, active, and Full. My Twilio number +18445424212 has Voice capability, but Calls API requests are failing with error code 10005: "Voice calling has been disabled for this account." I am also seeing "Account is restricted from provisioning new long code Phone Numbers." Please enable Programmable Voice outbound calling and remove the long code provisioning restriction on my account.
+```

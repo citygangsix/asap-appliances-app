@@ -16,7 +16,7 @@ cp .env.server.example .env.server.local
 ```
 
 3. Fill in the env vars listed in `Required Frontend Env` and `Required Server Env`.
-4. Apply the Supabase migration `supabase/migrations/20260420_000004_twilio_voice_recordings.sql` before expecting recording callbacks to persist successfully.
+4. Apply the Supabase migration `supabase/migrations/20260420120004_twilio_voice_recordings.sql` before expecting recording callbacks to persist successfully.
 5. Start the frontend:
 
 ```bash
@@ -55,6 +55,7 @@ Create `.env.local` in the app root and set:
 
 Create `.env.server.local` in the app root and set:
 
+- `SUPABASE_URL=...`
 - `SUPABASE_SERVICE_ROLE_KEY=...`
 - `TWILIO_ACCOUNT_SID=...`
 - `TWILIO_AUTH_TOKEN=...`
@@ -76,7 +77,7 @@ Create `.env.server.local` in the app root and set:
 - `TWILIO_WEBHOOK_BASE_URL=...`
 - `TWILIO_WEBHOOK_PORT=8787` (optional)
 
-The webhook server also reads `VITE_SUPABASE_URL` from `.env.local` so it can connect to the live project.
+The webhook server reads `SUPABASE_URL` from `.env.server.local`. If that is unset, it falls back to `VITE_SUPABASE_URL` from `.env.local`.
 
 Start from `.env.server.example` to avoid missing keys.
 
@@ -267,7 +268,7 @@ curl -X POST "$TWILIO_WEBHOOK_BASE_URL/api/thumbtack/lead" \
 ## Supabase Migration Requirement
 
 - Recording callback persistence depends on the table created by:
-  - `supabase/migrations/20260420_000004_twilio_voice_recordings.sql`
+  - `supabase/migrations/20260420120004_twilio_voice_recordings.sql`
 - If that migration is not applied yet:
   - inbound and outbound calls can still be placed
   - `POST /api/twilio/recordings/status` will fail to persist metadata until the migration is applied
