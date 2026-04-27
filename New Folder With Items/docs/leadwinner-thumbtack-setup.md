@@ -4,8 +4,8 @@ Use this when configuring LeadWinner for ASAP CRM.
 
 ## Immediate Lead Call Target
 
-- LeadWinner notification / 2-way call number: `+15618781674`
-- ASAP CRM Thumbtack assistant number: `+15618781674`
+- LeadWinner notification / 2-way call number: `+15615641545`
+- ASAP CRM Thumbtack assistant number: `+15615641545`
 
 ## ASAP Webhook Endpoint
 
@@ -40,7 +40,7 @@ The webhook currently accepts common variants such as:
 
 ## Current Runtime Notes
 
-- New lead calls target `+15618781674` first.
+- New lead calls target `+15615641545` first.
 - Calls are recorded through the CRM Twilio flow.
 - The current outbound caller ID shown to customers is `+18445424212`.
 - Keep `TWILIO_PHONE_NUMBER=+18445424212` and `TWILIO_MANAGED_PHONE_NUMBERS=+18445424212` in the hosted Supabase secrets unless another Twilio or BYOC line is intentionally added.

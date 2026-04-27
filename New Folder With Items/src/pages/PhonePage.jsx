@@ -9,9 +9,9 @@ import {
 const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 const AGENT_PHONE_PRESETS = [
   {
-    id: "assistant-1674",
-    label: "561-878-1674",
-    phone: "+15618781674",
+    id: "assistant-1545",
+    label: "561-564-1545",
+    phone: "+15615641545",
   },
 ];
 

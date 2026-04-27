@@ -43,9 +43,9 @@ const MANUAL_CALL_PHONE_OPTIONS = [
     phone: "+18445424212",
   },
   {
-    id: "assistant-1674",
-    label: "561-878-1674",
-    phone: "+15618781674",
+    id: "assistant-1545",
+    label: "561-564-1545",
+    phone: "+15615641545",
   },
 ];
 
