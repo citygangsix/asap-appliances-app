@@ -8,9 +8,11 @@ const dashboardDist = path.join(repoRoot, "dist-dashboard");
 const pagesDist = path.join(repoRoot, "dist-pages");
 const dashboardPagesDist = path.join(pagesDist, "dashboard");
 const dashboardDirectRoutes = [
+  "home",
   "jobs",
   "customers",
   "dispatch",
+  "dispatch-board",
   "communications",
   "phone",
   "invoices",
