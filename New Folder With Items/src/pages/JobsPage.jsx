@@ -560,7 +560,7 @@ export function JobsPage() {
             <input
               value={filters.search}
               onChange={(event) => updateFilter("search", event.target.value)}
-              placeholder="Customer, appliance, issue, or job ID"
+              placeholder="Search jobs"
               className="rounded-xl border border-[#cfd6e2] bg-white px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-indigo-500"
             />
           </label>
@@ -760,7 +760,7 @@ export function JobsPage() {
                 {getJobDetailRows(selectedJob).map(([label, value]) => (
                   <div key={label} className="rounded-2xl border border-[#e1e6ef] bg-white p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-700">{value}</p>
+                    <p className="mt-2 break-words text-sm leading-6 text-slate-700">{value}</p>
                   </div>
                 ))}
               </div>

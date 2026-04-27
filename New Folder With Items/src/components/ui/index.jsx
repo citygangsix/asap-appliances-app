@@ -36,7 +36,7 @@ export function PageTabs({ tabs }) {
 
   return (
     <div className="border-b border-[#d8ddea] bg-white px-4 sm:px-8">
-      <div className="-mx-4 flex gap-4 overflow-x-auto px-4 sm:mx-0 sm:gap-8 sm:px-0">
+      <div className="-mx-4 flex gap-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:gap-8 sm:px-0 [&::-webkit-scrollbar]:hidden">
         {tabs.map((tab) => {
           const hasAction = typeof tab.onClick === "function";
 
@@ -45,7 +45,7 @@ export function PageTabs({ tabs }) {
               key={tab.id || tab.label}
               aria-current={tab.active ? "page" : undefined}
               aria-disabled={!hasAction}
-              className={`min-h-11 border-b-[3px] pb-3 pt-4 text-base font-semibold whitespace-nowrap transition sm:text-[17px] ${
+              className={`min-h-11 shrink-0 border-b-[3px] pb-3 pt-4 text-base font-semibold whitespace-nowrap transition sm:text-[17px] ${
                 tab.active
                   ? "border-indigo-500 text-indigo-500"
                   : hasAction
