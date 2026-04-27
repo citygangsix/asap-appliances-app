@@ -171,12 +171,20 @@ export function PhonePage() {
               </p>
               <Badge tone={getStatusTone(status)}>{status}</Badge>
             </div>
-            <div className="mt-6 min-h-[88px] rounded-2xl border border-white/10 bg-black/30 px-4 py-5 text-right">
-              <p className="text-3xl font-semibold tracking-normal text-white sm:text-4xl">
-                {formattedNumber || "Enter number"}
-              </p>
-              <p className="mt-3 text-sm text-slate-500">{e164Number || "US numbers only"}</p>
-            </div>
+            <label className="mt-6 block text-sm font-semibold text-slate-300">
+              Customer number
+              <input
+                className="mt-2 min-h-[88px] w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-5 text-right text-3xl font-semibold tracking-normal text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300 sm:text-4xl"
+                inputMode="tel"
+                onChange={(event) => setRawNumber(onlyPhoneDigits(event.target.value))}
+                placeholder="Enter number"
+                type="tel"
+                value={formattedNumber}
+              />
+              <span className="mt-3 block text-right text-sm font-medium text-slate-500">
+                {e164Number || "US numbers only"}
+              </span>
+            </label>
             <label className="mt-4 block text-sm font-semibold text-slate-300">
               Ring this phone first
               <input
