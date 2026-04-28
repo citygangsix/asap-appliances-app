@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageScaffold } from "../components/layout/PageScaffold";
 import { Badge, Card } from "../components/ui";
+import { useAsyncValue } from "../hooks/useAsyncValue";
 import {
   getLocalOperationsServerHeaders,
   getLocalOperationsServerUrl,
 } from "../lib/config/localOperationsServer";
+import { getOperationsRepository } from "../lib/repositories";
 
 const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 const DTMF_FREQUENCIES = {
@@ -31,6 +33,32 @@ const AGENT_PHONE_PRESETS = [
 
 function onlyPhoneDigits(value) {
   return value.replace(/\D/g, "").slice(0, 11);
+}
+
+function normalizePhoneLookup(value) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+
+  if (!digits) {
+    return null;
+  }
+
+  return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+}
+
+function findSavedCustomerByPhone(customers, phoneNumber) {
+  const targetPhone = normalizePhoneLookup(phoneNumber);
+
+  if (!targetPhone) {
+    return null;
+  }
+
+  return (
+    customers.find((customer) =>
+      [customer.primaryPhone, customer.secondaryPhone]
+        .map(normalizePhoneLookup)
+        .some((phone) => phone && phone === targetPhone),
+    ) || null
+  );
 }
 
 function sanitizeDialValue(value) {
@@ -86,6 +114,14 @@ function stopOscillator(oscillator) {
   }
 }
 
+function disconnectAudioNode(node) {
+  try {
+    node?.disconnect();
+  } catch (error) {
+    // A node can only be disconnected once.
+  }
+}
+
 async function requestClickToCall(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/twilio/outbound/calls"), {
     method: "POST",
@@ -115,19 +151,32 @@ async function requestClickToCall(payload) {
 }
 
 export function PhonePage() {
+  const repository = getOperationsRepository();
   const [rawNumber, setRawNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [agentPhone, setAgentPhone] = useState("");
   const [status, setStatus] = useState("Ready");
   const [message, setMessage] = useState("Enter a customer number and start the Twilio bridge.");
+  const [customerRefreshNonce, setCustomerRefreshNonce] = useState(0);
   const audioContextRef = useRef(null);
   const activeToneRef = useRef(null);
-  const ringingRef = useRef({ intervalId: null, timeoutId: null, oscillators: [] });
+  const ringingRef = useRef({ intervalId: null, burst: null });
+  const customersQuery = useAsyncValue(
+    () => repository.customers.list(),
+    [repository, customerRefreshNonce],
+  );
   const formattedNumber = useMemo(() => formatUsPhone(rawNumber), [rawNumber]);
   const formattedAgentPhone = useMemo(() => formatUsPhone(agentPhone), [agentPhone]);
   const e164Number = useMemo(() => toE164(rawNumber), [rawNumber]);
   const e164AgentPhone = useMemo(() => toE164(agentPhone), [agentPhone]);
   const trimmedCustomerName = customerName.trim();
+  const customerDirectory = customersQuery.data || [];
+  const matchedCustomer = useMemo(
+    () => findSavedCustomerByPhone(customerDirectory, e164Number || rawNumber),
+    [customerDirectory, e164Number, rawNumber],
+  );
+  const callCustomerName = matchedCustomer?.name || trimmedCustomerName;
+  const callTargetLabel = callCustomerName || formattedNumber || e164Number || "No number entered";
   const canCall = Boolean(e164Number) && status !== "Calling";
 
   function getAudioContext() {
@@ -159,6 +208,7 @@ export function PhonePage() {
 
     window.clearTimeout(activeToneRef.current.timeoutId);
     activeToneRef.current.oscillators.forEach(stopOscillator);
+    disconnectAudioNode(activeToneRef.current.gain);
     activeToneRef.current = null;
   }
 
@@ -191,20 +241,37 @@ export function PhonePage() {
       oscillator.stop(now + 0.18);
     });
 
-    activeToneRef.current = {
+    const toneHandle = {
+      gain,
       oscillators,
-      timeoutId: window.setTimeout(() => {
-        gain.disconnect();
-        activeToneRef.current = null;
-      }, 220),
+      timeoutId: null,
     };
+
+    activeToneRef.current = toneHandle;
+    toneHandle.timeoutId = window.setTimeout(() => {
+      disconnectAudioNode(gain);
+
+      if (activeToneRef.current === toneHandle) {
+        activeToneRef.current = null;
+      }
+    }, 220);
+  }
+
+  function stopRingBurst() {
+    if (!ringingRef.current.burst) {
+      return;
+    }
+
+    window.clearTimeout(ringingRef.current.burst.timeoutId);
+    ringingRef.current.burst.oscillators.forEach(stopOscillator);
+    disconnectAudioNode(ringingRef.current.burst.gain);
+    ringingRef.current.burst = null;
   }
 
   function stopRinging() {
     window.clearInterval(ringingRef.current.intervalId);
-    window.clearTimeout(ringingRef.current.timeoutId);
-    ringingRef.current.oscillators.forEach(stopOscillator);
-    ringingRef.current = { intervalId: null, timeoutId: null, oscillators: [] };
+    stopRingBurst();
+    ringingRef.current.intervalId = null;
   }
 
   function playRingBurst() {
@@ -214,7 +281,7 @@ export function PhonePage() {
       return;
     }
 
-    ringingRef.current.oscillators.forEach(stopOscillator);
+    stopRingBurst();
 
     const gain = audioContext.createGain();
     const oscillators = [440, 480].map((frequency) => {
@@ -236,10 +303,19 @@ export function PhonePage() {
       oscillator.stop(now + 0.92);
     });
 
-    ringingRef.current.oscillators = oscillators;
-    ringingRef.current.timeoutId = window.setTimeout(() => {
-      gain.disconnect();
-      ringingRef.current.oscillators = [];
+    const burstHandle = {
+      gain,
+      oscillators,
+      timeoutId: null,
+    };
+
+    ringingRef.current.burst = burstHandle;
+    burstHandle.timeoutId = window.setTimeout(() => {
+      disconnectAudioNode(gain);
+
+      if (ringingRef.current.burst === burstHandle) {
+        ringingRef.current.burst = null;
+      }
     }, 1000);
   }
 
@@ -276,20 +352,29 @@ export function PhonePage() {
     startRinging();
     setMessage(
       selectedAgentPhone
-        ? `Calling ${formatUsPhone(selectedAgentPhone)} first. Answer it to connect ${formattedNumber}.`
-        : `Calling the configured office phone first. Answer it to connect ${formattedNumber}.`,
+        ? `Calling ${formatUsPhone(selectedAgentPhone)} first. Answer it to connect ${callTargetLabel}.`
+        : `Calling the configured office phone first. Answer it to connect ${callTargetLabel}.`,
     );
 
     try {
+      const shouldRefreshCustomersAfterCall = !matchedCustomer && Boolean(trimmedCustomerName);
       const result = await requestClickToCall({
-        customerName: trimmedCustomerName || formattedNumber || e164Number,
+        ...(matchedCustomer?.customerId ? { customerId: matchedCustomer.customerId } : {}),
+        customerName: callCustomerName || formattedNumber || e164Number,
         customerPhone: e164Number,
-        persistCustomerContact: Boolean(trimmedCustomerName),
+        persistCustomerContact: !matchedCustomer && Boolean(trimmedCustomerName),
         ...(selectedAgentPhone ? { agentPhone: selectedAgentPhone } : {}),
         triggerSource: "manual_phone_dialer",
       });
       stopRinging();
       setStatus("Sent");
+      if (
+        shouldRefreshCustomersAfterCall ||
+        ["created", "matched", "ambiguous"].includes(result.customerContactStatus)
+      ) {
+        repository.clearRuntimeCaches?.();
+        setCustomerRefreshNonce((current) => current + 1);
+      }
       setMessage(
         result.message
           ? `${result.message} Customer sees ${result.businessPhoneNumber || "the Twilio number"}.`
@@ -345,14 +430,26 @@ export function PhonePage() {
                 {e164Number || "US numbers only"}
               </span>
             </label>
+            {matchedCustomer ? (
+              <div className="mt-4 rounded-2xl border border-emerald-300/30 bg-emerald-400/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                  Saved customer
+                </p>
+                <p className="mt-2 text-xl font-semibold text-white">{matchedCustomer.name}</p>
+                <p className="mt-1 text-sm text-emerald-100/80">
+                  {[matchedCustomer.primaryPhone, matchedCustomer.customerSegment].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+            ) : null}
             <label className="mt-4 block text-sm font-semibold text-slate-300">
               Customer name
               <input
-                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300 disabled:text-slate-400"
+                disabled={Boolean(matchedCustomer)}
                 onChange={(event) => setCustomerName(event.target.value)}
-                placeholder="Optional"
+                placeholder={customersQuery.isLoading ? "Loading saved customers" : "Optional"}
                 type="text"
-                value={customerName}
+                value={matchedCustomer ? matchedCustomer.name : customerName}
               />
             </label>
             <label className="mt-4 block text-sm font-semibold text-slate-300">
@@ -437,6 +534,15 @@ export function PhonePage() {
         <div className="space-y-6">
           <Card className="border-white/10 bg-[#1c1e26] p-5 text-white sm:p-6">
             <p className="section-title">Call state</p>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Call target
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-white">{callTargetLabel}</p>
+              <p className="mt-1 text-sm text-slate-400">
+                {matchedCustomer ? matchedCustomer.primaryPhone || e164Number : e164Number || formattedNumber}
+              </p>
+            </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-4">
               {["Ready", "Calling", "Sent", "Failed"].map((state) => (
                 <div

@@ -691,10 +691,10 @@ export function CommunicationsPage() {
                 <Badge tone={getStatusTone(selectedCommunication.communicationStatus)}>
                   {formatStatusLabel(selectedCommunication.communicationStatus)}
                 </Badge>
-                <span className="text-sm font-semibold text-slate-700">
-                  {getCommunicationContactLabel(selectedCommunication)}
-                </span>
               </div>
+              <h3 className="mt-4 text-2xl font-semibold text-slate-950">
+                {getCommunicationContactLabel(selectedCommunication)}
+              </h3>
               {getCommunicationPhoneLabel(selectedCommunication) ? (
                 <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   {getCommunicationPhoneLabel(selectedCommunication)}

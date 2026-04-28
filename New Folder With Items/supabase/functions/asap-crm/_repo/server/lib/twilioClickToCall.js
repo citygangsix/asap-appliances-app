@@ -252,6 +252,10 @@ function resolveTriggerSource(payload) {
   return toNullableString(payload.triggerSource) || "manual_ui";
 }
 
+function shouldPersistCustomerContact(payload, triggerSource) {
+  return payload.persistCustomerContact === true || triggerSource === "manual_phone_dialer";
+}
+
 function formatCallStatus(callStatus) {
   return (callStatus || "initiated").replace(/-/g, " ");
 }
@@ -1028,7 +1032,7 @@ export async function requestClickToCall(payload = {}) {
 
   let customerContactStatus = customerLookup.status;
 
-  if (!resolvedCustomerId && payload.persistCustomerContact === true) {
+  if (!resolvedCustomerId && shouldPersistCustomerContact(payload, triggerSource)) {
     try {
       const customerContact = await ensureCustomerContact(client, {
         customerName,
