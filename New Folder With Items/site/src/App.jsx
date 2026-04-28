@@ -211,7 +211,8 @@ function App() {
       </main>
 
       <footer className="site-footer">
-        ASAP Appliance is a trade name of CASE-LESS INDUSTRIES LLC.
+        ASAP Appliance is a trade name of CASE-LESS INDUSTRIES LLC.{" "}
+        <a href="/confirmations/">SMS opt-in confirmation</a>
       </footer>
     </div>
   );
