@@ -1,4 +1,11 @@
 const OPT_OUT_KEYWORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit"]);
+const PLACEHOLDER_CUSTOMER_NAMES = new Set([
+  "customer",
+  "the customer",
+  "unknown",
+  "unknown customer",
+  "thumbtack customer",
+]);
 
 function toNullableString(value) {
   const trimmed = String(value ?? "").trim();
@@ -32,6 +39,23 @@ export function normalizePhoneNumber(value) {
   }
 
   return `+${digits}`;
+}
+
+export function hasMeaningfulCustomerName(customerName, customerPhone = null) {
+  const name = toNullableString(customerName);
+
+  if (!name) {
+    return false;
+  }
+
+  if (PLACEHOLDER_CUSTOMER_NAMES.has(name.toLowerCase())) {
+    return false;
+  }
+
+  const nameDigits = normalizePhoneLookup(name);
+  const phoneDigits = normalizePhoneLookup(customerPhone);
+
+  return !(nameDigits && phoneDigits && nameDigits === phoneDigits);
 }
 
 function unwrapQueryResult(label, result) {
@@ -117,6 +141,84 @@ export async function findCustomerOutreachProfile(client, { customerId = null, c
     status: "not_found",
     customer: null,
   };
+}
+
+function buildCapturedCustomerNotes({ triggerSource, leadSource, sourceLeadId }) {
+  const parts = ["Automatically captured from initial call."];
+  const source = toNullableString(leadSource) || toNullableString(triggerSource);
+  const leadId = toNullableString(sourceLeadId);
+
+  if (source) {
+    parts.push(`Source: ${source}.`);
+  }
+
+  if (leadId) {
+    parts.push(`Lead ID: ${leadId}.`);
+  }
+
+  return parts.join(" ");
+}
+
+async function createCapturedCustomerContact(client, payload) {
+  const now = new Date().toISOString();
+  const result = await client
+    .from("customers")
+    .insert({
+      name: payload.customerName,
+      primary_phone: payload.customerPhone,
+      secondary_phone: null,
+      email: null,
+      city: "Unknown",
+      service_area: "Unassigned",
+      customer_segment: "New customer",
+      communication_status: "unresolved",
+      last_contact_at: now,
+      lifetime_value: 0,
+      notes: buildCapturedCustomerNotes(payload),
+    })
+    .select(
+      "customer_id,name,primary_phone,secondary_phone,sms_opted_out_at,voice_opted_out_at,auto_contact_cooldown_until",
+    )
+    .single();
+
+  return unwrapQueryResult("customers.createCapturedContact", result);
+}
+
+export async function ensureCustomerContact(client, payload = {}) {
+  const customerPhone = normalizePhoneNumber(payload.customerPhone);
+  const customerName = toNullableString(payload.customerName);
+
+  if (!customerPhone || !hasMeaningfulCustomerName(customerName, customerPhone)) {
+    return {
+      status: "skipped",
+      customer: null,
+    };
+  }
+
+  const existingLookup = await findCustomerOutreachProfile(client, { customerPhone });
+
+  if (existingLookup.status === "matched" || existingLookup.status === "ambiguous") {
+    return existingLookup;
+  }
+
+  try {
+    return {
+      status: "created",
+      customer: await createCapturedCustomerContact(client, {
+        ...payload,
+        customerName,
+        customerPhone,
+      }),
+    };
+  } catch (error) {
+    const retryLookup = await findCustomerOutreachProfile(client, { customerPhone });
+
+    if (retryLookup.status === "matched" || retryLookup.status === "ambiguous") {
+      return retryLookup;
+    }
+
+    throw error;
+  }
 }
 
 export function isGlobalOptOutMessage(messageBody) {

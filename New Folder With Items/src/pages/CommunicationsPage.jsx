@@ -78,6 +78,20 @@ function formatUnmatchedMatchLabel(matchStatus) {
   return "Needs review";
 }
 
+function getCommunicationPhoneLabel(item) {
+  if (!item) {
+    return null;
+  }
+
+  return item.direction === "outbound"
+    ? item.toNumber || item.fromNumber || null
+    : item.fromNumber || item.toNumber || null;
+}
+
+function getCommunicationContactLabel(item) {
+  return item?.customer?.name || getCommunicationPhoneLabel(item) || "Unknown caller";
+}
+
 export function CommunicationsPage() {
   const repository = getOperationsRepository();
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -631,12 +645,20 @@ export function CommunicationsPage() {
                   selectedCommunication?.communicationId === item.communicationId
                     ? "border-indigo-300 bg-indigo-50/70"
                     : "border-slate-200 bg-slate-50 hover:border-slate-300"
-                }`}
+                  }`}
               >
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-slate-900">
-                    {formatStatusLabel(item.communicationChannel)} · {item.customer?.name || "Unknown customer"}
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">
+                      {getCommunicationContactLabel(item)}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      {formatStatusLabel(item.communicationChannel)}
+                      {getCommunicationPhoneLabel(item)
+                        ? ` · ${getCommunicationPhoneLabel(item)}`
+                        : ""}
+                    </p>
+                  </div>
                   <Badge tone={getStatusTone(item.communicationStatus)}>
                     {formatStatusLabel(item.communicationStatus)}
                   </Badge>
@@ -669,10 +691,15 @@ export function CommunicationsPage() {
                 <Badge tone={getStatusTone(selectedCommunication.communicationStatus)}>
                   {formatStatusLabel(selectedCommunication.communicationStatus)}
                 </Badge>
-                <span className="text-sm text-slate-500">
-                  {selectedCommunication.customer?.name || "Unknown customer"}
+                <span className="text-sm font-semibold text-slate-700">
+                  {getCommunicationContactLabel(selectedCommunication)}
                 </span>
               </div>
+              {getCommunicationPhoneLabel(selectedCommunication) ? (
+                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  {getCommunicationPhoneLabel(selectedCommunication)}
+                </p>
+              ) : null}
               <p className="mt-4 text-sm leading-6 text-slate-600">
                 {selectedCommunication.communicationChannel === "call"
                   ? selectedCommunication.previewText
@@ -754,7 +781,7 @@ export function CommunicationsPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <p className="font-medium text-slate-900">{selectedCommunication.extractedEventLabel}</p>
               <p className="mt-2 text-sm text-slate-500">
-                {selectedCommunication.customer?.name || "Unknown customer"}
+                {getCommunicationContactLabel(selectedCommunication)}
               </p>
               <p className="mt-3 text-sm text-slate-500">{selectedCommunication.previewText}</p>
               <div className="mt-4 flex flex-wrap gap-3">

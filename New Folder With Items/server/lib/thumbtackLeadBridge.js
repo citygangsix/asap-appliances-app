@@ -181,6 +181,7 @@ export async function handleThumbtackLeadRequest(payload = {}, headers = {}) {
     triggerSource: "thumbtack_lead",
     leadSource: "thumbtack",
     sourceLeadId: lead.leadId,
+    persistCustomerContact: true,
     rawLeadPayload: payload,
   });
 

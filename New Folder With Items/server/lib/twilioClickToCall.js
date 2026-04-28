@@ -15,6 +15,7 @@ import {
   buildCooldownUntil,
   buildMissedCallSmsBody,
   createOutboundContactAttempt,
+  ensureCustomerContact,
   findCustomerOutreachProfile,
   findLatestAutomatedCallAttemptByNumber,
   findLatestOutboundContactAttempt,
@@ -923,8 +924,8 @@ export async function requestClickToCall(payload = {}) {
     customerId: toNullableString(payload.customerId),
     customerPhone: normalizedCustomerPhone,
   });
-  const customerProfile = customerLookup.customer;
-  const resolvedCustomerId = toNullableString(payload.customerId) || customerProfile?.customer_id || null;
+  let customerProfile = customerLookup.customer;
+  let resolvedCustomerId = toNullableString(payload.customerId) || customerProfile?.customer_id || null;
 
   if (isCustomerOptedOut(customerProfile)) {
     await createOutboundContactAttempt(client, {
@@ -1025,6 +1026,27 @@ export async function requestClickToCall(payload = {}) {
     statusCallback: statusCallbackUrl,
   });
 
+  let customerContactStatus = customerLookup.status;
+
+  if (!resolvedCustomerId && payload.persistCustomerContact === true) {
+    try {
+      const customerContact = await ensureCustomerContact(client, {
+        customerName,
+        customerPhone: normalizedCustomerPhone,
+        triggerSource,
+        leadSource: payload.leadSource,
+        sourceLeadId: payload.sourceLeadId,
+      });
+
+      customerContactStatus = customerContact.status;
+      customerProfile = customerContact.customer || customerProfile;
+      resolvedCustomerId = customerProfile?.customer_id || null;
+    } catch (error) {
+      customerContactStatus = "failed";
+      console.error("Click-to-call contact capture failed.", error);
+    }
+  }
+
   let communicationRecord = null;
 
   try {
@@ -1079,6 +1101,8 @@ export async function requestClickToCall(payload = {}) {
     status: 200,
     dryRun: false,
     providerCallSid: twilioResponse?.sid || null,
+    customerId: resolvedCustomerId,
+    customerContactStatus,
     agentPhone: normalizedAgentPhone,
     ignoredRequestedAgentPhone,
     businessPhoneNumber: normalizedBusinessPhoneNumber,

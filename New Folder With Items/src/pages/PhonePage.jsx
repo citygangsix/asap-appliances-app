@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageScaffold } from "../components/layout/PageScaffold";
 import { Badge, Card } from "../components/ui";
 import {
@@ -7,6 +7,20 @@ import {
 } from "../lib/config/localOperationsServer";
 
 const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+const DTMF_FREQUENCIES = {
+  "1": [697, 1209],
+  "2": [697, 1336],
+  "3": [697, 1477],
+  "4": [770, 1209],
+  "5": [770, 1336],
+  "6": [770, 1477],
+  "7": [852, 1209],
+  "8": [852, 1336],
+  "9": [852, 1477],
+  "*": [941, 1209],
+  "0": [941, 1336],
+  "#": [941, 1477],
+};
 const AGENT_PHONE_PRESETS = [
   {
     id: "assistant-1545",
@@ -17,6 +31,10 @@ const AGENT_PHONE_PRESETS = [
 
 function onlyPhoneDigits(value) {
   return value.replace(/\D/g, "").slice(0, 11);
+}
+
+function sanitizeDialValue(value) {
+  return String(value).replace(/[^\d*#]/g, "").slice(0, 32);
 }
 
 function toE164(value) {
@@ -60,6 +78,14 @@ function getStatusTone(status) {
   return "slate";
 }
 
+function stopOscillator(oscillator) {
+  try {
+    oscillator.stop();
+  } catch (error) {
+    // Some browsers throw if an oscillator already reached its scheduled stop.
+  }
+}
+
 async function requestClickToCall(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/twilio/outbound/calls"), {
     method: "POST",
@@ -90,22 +116,142 @@ async function requestClickToCall(payload) {
 
 export function PhonePage() {
   const [rawNumber, setRawNumber] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [agentPhone, setAgentPhone] = useState("");
   const [status, setStatus] = useState("Ready");
   const [message, setMessage] = useState("Enter a customer number and start the Twilio bridge.");
+  const audioContextRef = useRef(null);
+  const activeToneRef = useRef(null);
+  const ringingRef = useRef({ intervalId: null, timeoutId: null, oscillators: [] });
   const formattedNumber = useMemo(() => formatUsPhone(rawNumber), [rawNumber]);
   const formattedAgentPhone = useMemo(() => formatUsPhone(agentPhone), [agentPhone]);
   const e164Number = useMemo(() => toE164(rawNumber), [rawNumber]);
   const e164AgentPhone = useMemo(() => toE164(agentPhone), [agentPhone]);
+  const trimmedCustomerName = customerName.trim();
   const canCall = Boolean(e164Number) && status !== "Calling";
 
-  function appendDigit(value) {
-    if (value === "*" || value === "#") {
-      setRawNumber((current) => current + value);
+  function getAudioContext() {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContext) {
+      return null;
+    }
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext();
+    }
+
+    if (audioContextRef.current.state === "suspended") {
+      audioContextRef.current.resume();
+    }
+
+    return audioContextRef.current;
+  }
+
+  function stopActiveTone() {
+    if (!activeToneRef.current) {
       return;
     }
 
-    setRawNumber((current) => onlyPhoneDigits(current + value));
+    window.clearTimeout(activeToneRef.current.timeoutId);
+    activeToneRef.current.oscillators.forEach(stopOscillator);
+    activeToneRef.current = null;
+  }
+
+  function playDtmfTone(key) {
+    const frequencies = DTMF_FREQUENCIES[key];
+    const audioContext = getAudioContext();
+
+    if (!frequencies || !audioContext) {
+      return;
+    }
+
+    stopActiveTone();
+
+    const gain = audioContext.createGain();
+    const oscillators = frequencies.map((frequency) => {
+      const oscillator = audioContext.createOscillator();
+      oscillator.frequency.value = frequency;
+      oscillator.type = "sine";
+      oscillator.connect(gain);
+      return oscillator;
+    });
+    const now = audioContext.currentTime;
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    gain.connect(audioContext.destination);
+    oscillators.forEach((oscillator) => {
+      oscillator.start(now);
+      oscillator.stop(now + 0.18);
+    });
+
+    activeToneRef.current = {
+      oscillators,
+      timeoutId: window.setTimeout(() => {
+        gain.disconnect();
+        activeToneRef.current = null;
+      }, 220),
+    };
+  }
+
+  function stopRinging() {
+    window.clearInterval(ringingRef.current.intervalId);
+    window.clearTimeout(ringingRef.current.timeoutId);
+    ringingRef.current.oscillators.forEach(stopOscillator);
+    ringingRef.current = { intervalId: null, timeoutId: null, oscillators: [] };
+  }
+
+  function playRingBurst() {
+    const audioContext = getAudioContext();
+
+    if (!audioContext) {
+      return;
+    }
+
+    ringingRef.current.oscillators.forEach(stopOscillator);
+
+    const gain = audioContext.createGain();
+    const oscillators = [440, 480].map((frequency) => {
+      const oscillator = audioContext.createOscillator();
+      oscillator.frequency.value = frequency;
+      oscillator.type = "sine";
+      oscillator.connect(gain);
+      return oscillator;
+    });
+    const now = audioContext.currentTime;
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.08, now + 0.03);
+    gain.gain.setValueAtTime(0.08, now + 0.72);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+    gain.connect(audioContext.destination);
+    oscillators.forEach((oscillator) => {
+      oscillator.start(now);
+      oscillator.stop(now + 0.92);
+    });
+
+    ringingRef.current.oscillators = oscillators;
+    ringingRef.current.timeoutId = window.setTimeout(() => {
+      gain.disconnect();
+      ringingRef.current.oscillators = [];
+    }, 1000);
+  }
+
+  function startRinging() {
+    stopRinging();
+    playRingBurst();
+    ringingRef.current.intervalId = window.setInterval(playRingBurst, 3000);
+  }
+
+  function appendDigit(value) {
+    playDtmfTone(value);
+    setRawNumber((current) => sanitizeDialValue(current + value));
   }
 
   function backspace() {
@@ -113,6 +259,7 @@ export function PhonePage() {
   }
 
   function clearNumber() {
+    stopRinging();
     setRawNumber("");
     setStatus("Ready");
     setMessage("Ready for the next Twilio bridge call.");
@@ -126,6 +273,7 @@ export function PhonePage() {
     const selectedAgentPhone = e164AgentPhone || null;
 
     setStatus("Calling");
+    startRinging();
     setMessage(
       selectedAgentPhone
         ? `Calling ${formatUsPhone(selectedAgentPhone)} first. Answer it to connect ${formattedNumber}.`
@@ -134,11 +282,13 @@ export function PhonePage() {
 
     try {
       const result = await requestClickToCall({
-        customerName: formattedNumber || e164Number,
+        customerName: trimmedCustomerName || formattedNumber || e164Number,
         customerPhone: e164Number,
+        persistCustomerContact: Boolean(trimmedCustomerName),
         ...(selectedAgentPhone ? { agentPhone: selectedAgentPhone } : {}),
         triggerSource: "manual_phone_dialer",
       });
+      stopRinging();
       setStatus("Sent");
       setMessage(
         result.message
@@ -146,15 +296,25 @@ export function PhonePage() {
           : `Twilio is calling ${formatUsPhone(result.agentPhone || selectedAgentPhone || "") || "the configured phone"}. Customer sees ${result.businessPhoneNumber || "the Twilio number"}.`,
       );
     } catch (error) {
+      stopRinging();
       setStatus("Failed");
       setMessage(error.message);
     }
   }
 
   function resetCallState() {
+    stopRinging();
     setStatus("Ready");
     setMessage("Ready for the next Twilio bridge call.");
   }
+
+  useEffect(() => {
+    return () => {
+      stopRinging();
+      stopActiveTone();
+      audioContextRef.current?.close();
+    };
+  }, []);
 
   return (
     <PageScaffold
@@ -176,7 +336,7 @@ export function PhonePage() {
               <input
                 className="mt-2 min-h-[88px] w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-5 text-right text-3xl font-semibold tracking-normal text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300 sm:text-4xl"
                 inputMode="tel"
-                onChange={(event) => setRawNumber(onlyPhoneDigits(event.target.value))}
+                onChange={(event) => setRawNumber(sanitizeDialValue(event.target.value))}
                 placeholder="Enter number"
                 type="tel"
                 value={formattedNumber}
@@ -184,6 +344,16 @@ export function PhonePage() {
               <span className="mt-3 block text-right text-sm font-medium text-slate-500">
                 {e164Number || "US numbers only"}
               </span>
+            </label>
+            <label className="mt-4 block text-sm font-semibold text-slate-300">
+              Customer name
+              <input
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
+                onChange={(event) => setCustomerName(event.target.value)}
+                placeholder="Optional"
+                type="text"
+                value={customerName}
+              />
             </label>
             <label className="mt-4 block text-sm font-semibold text-slate-300">
               Ring this phone first
@@ -259,7 +429,7 @@ export function PhonePage() {
               onClick={resetCallState}
               type="button"
             >
-              Reset
+              {status === "Calling" ? "Cancel" : "Reset"}
             </button>
           </div>
         </Card>
