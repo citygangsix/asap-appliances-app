@@ -1,30 +1,25 @@
-name: Deploy ASAP CRM
+name: Publish ASAP Website and CRM
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
-defaults:
-  run:
-    working-directory: New Folder With Items
-
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -34,33 +29,39 @@ jobs:
           cache-dependency-path: New Folder With Items/package-lock.json
 
       - name: Install dependencies
+        working-directory: New Folder With Items
         run: npm ci
 
-      - name: Build
+      - name: Build website and CRM
+        working-directory: New Folder With Items
         run: npm run build:pages
         env:
-          VITE_APP_DATA_SOURCE: mock
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://gntijouqttihazdupoiu.supabase.co' }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Xp5nmASlNf44ALxGAR-j2w_nUQjCBOB' }}
-          VITE_ASAP_AUTH_EMAIL: CityGang6SIX@gmail.com
-          VITE_ASAP_AUTH_PASSWORD_SHA256: e7cf3ef4f17c3999a94f2c6f612e8a888e5b1026878e4e19398b23bd38ec221a
-          VITE_LOCAL_OPERATIONS_SERVER_URL: ${{ secrets.VITE_LOCAL_OPERATIONS_SERVER_URL || 'https://retold-playback-cause.ngrok-free.dev' }}
+          VITE_APP_DATA_SOURCE: ${{ vars.VITE_APP_DATA_SOURCE }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ASAP_AUTH_EMAIL: ${{ vars.VITE_ASAP_AUTH_EMAIL }}
+          VITE_ASAP_AUTH_PASSWORD_SHA256: ${{ secrets.VITE_ASAP_AUTH_PASSWORD_SHA256 }}
+          VITE_LOCAL_OPERATIONS_SERVER_URL: ${{ vars.VITE_LOCAL_OPERATIONS_SERVER_URL }}
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+      - name: Publish generated site to gh-pages
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: New Folder With Items/dist-pages
+          publish_dir="$(mktemp -d)"
+          cp -R "New Folder With Items/dist-pages/." "$publish_dir"/
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --track origin/gh-pages
+
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R "$publish_dir"/. .
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No GitHub Pages changes to publish."
+          else
+            git commit -m "Deploy website and dashboard"
+            git push origin gh-pages
+          fi
