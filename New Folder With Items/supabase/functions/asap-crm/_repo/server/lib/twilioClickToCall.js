@@ -125,7 +125,7 @@ function buildTwilioApiFailureMessage(responseJson, status) {
     twilioMessage.includes("from phone") ||
     twilioMessage.includes("'from'")
   ) {
-    return "Twilio rejected the outbound caller ID. Confirm TWILIO_PHONE_NUMBER is +18445424212, the number belongs to this Twilio account, and TWILIO_MANAGED_PHONE_NUMBERS includes it.";
+    return "Twilio rejected the outbound caller ID. Confirm TWILIO_PHONE_NUMBER belongs to this Twilio account and TWILIO_MANAGED_PHONE_NUMBERS includes it.";
   }
 
   if (twilioCode === "21211" || twilioMessage.includes("valid phone number")) {
@@ -873,7 +873,7 @@ export async function requestClickToCall(payload = {}) {
       status: 500,
       dryRun,
       message:
-        "TWILIO_PHONE_NUMBER must be a valid Twilio business number in E.164 format, such as +18445424212.",
+        "TWILIO_PHONE_NUMBER must be a valid Twilio business number in E.164 format, such as +15615769819.",
     };
   }
 
