@@ -1,5 +1,5 @@
 import { loadServerEnv } from "./loadEnv.js";
-import { readServerEnv } from "./serverEnv.js";
+import { readServerEnv, readServerNumberEnv } from "./serverEnv.js";
 
 loadServerEnv();
 
@@ -7,6 +7,9 @@ const OPENAI_API_BASE_URL = "https://api.openai.com/v1";
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const DEFAULT_ANALYSIS_MODEL = "gpt-4o-mini";
+const DEFAULT_LOCAL_WHISPER_CLI_PATH = "whisper-cli";
+const DEFAULT_LOCAL_WHISPER_MODEL_PATH = "/Users/xxx/.cache/whisper-cpp/ggml-base.bin";
+const DEFAULT_LOCAL_WHISPER_TIMEOUT_SECONDS = 900;
 const HIRING_CANDIDATE_STAGES = new Set([
   "contacted",
   "interviewed",
@@ -92,6 +95,21 @@ const TRIAL_SCHEDULED_PATTERNS = [
 function readOptionalEnv(key) {
   const value = readServerEnv(key);
   return value ? value : null;
+}
+
+function readOptionalNumberEnv(key, fallback) {
+  const value = readServerNumberEnv(key, fallback);
+  return value > 0 ? value : fallback;
+}
+
+function readOptionalBooleanEnv(key, fallback) {
+  const value = readServerEnv(key);
+
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  return !["0", "false", "no", "off"].includes(String(value).trim().toLowerCase());
 }
 
 function normalizeOptionalString(value) {
@@ -314,7 +332,46 @@ function getOpenAiConfig() {
   };
 }
 
+function getTranscriptionConfig() {
+  const provider =
+    readOptionalEnv("CALL_TRANSCRIPTION_PROVIDER") ||
+    readOptionalEnv("TRANSCRIPTION_PROVIDER") ||
+    "openai";
+
+  return {
+    provider: provider.toLowerCase(),
+    whisperCliPath: readOptionalEnv("LOCAL_WHISPER_CLI_PATH") || DEFAULT_LOCAL_WHISPER_CLI_PATH,
+    whisperModelPath:
+      readOptionalEnv("LOCAL_WHISPER_MODEL_PATH") || DEFAULT_LOCAL_WHISPER_MODEL_PATH,
+    whisperLanguage: readOptionalEnv("LOCAL_WHISPER_LANGUAGE") || "auto",
+    whisperThreads: readOptionalNumberEnv("LOCAL_WHISPER_THREADS", 4),
+    whisperTimeoutSeconds: readOptionalNumberEnv(
+      "LOCAL_WHISPER_TIMEOUT_SECONDS",
+      DEFAULT_LOCAL_WHISPER_TIMEOUT_SECONDS,
+    ),
+    whisperNoGpu: readOptionalBooleanEnv("LOCAL_WHISPER_NO_GPU", true),
+  };
+}
+
+function getAnalysisProvider() {
+  return (
+    readOptionalEnv("CALL_ANALYSIS_PROVIDER") ||
+    readOptionalEnv("ANALYSIS_PROVIDER") ||
+    "openai"
+  ).toLowerCase();
+}
+
+function isLocalWhisperProvider(provider) {
+  return ["local-whisper", "whisper", "whisper-cli"].includes(provider);
+}
+
 export function isCallIntelligenceConfigured() {
+  const transcriptionConfig = getTranscriptionConfig();
+
+  if (isLocalWhisperProvider(transcriptionConfig.provider)) {
+    return Boolean(transcriptionConfig.whisperModelPath);
+  }
+
   return Boolean(getOpenAiConfig().apiKey);
 }
 
@@ -337,14 +394,20 @@ async function downloadTwilioRecording(payload, twilioConfig) {
 
       const arrayBuffer = await response.arrayBuffer();
       const buffer = new Uint8Array(arrayBuffer);
+      const contentType = inferAudioContentType(recordingUrl, response);
+
+      if (buffer.byteLength < 1024 || /^text\//iu.test(contentType)) {
+        lastError = new Error(
+          `Twilio recording download did not return audio from ${recordingUrl}. Received ${buffer.byteLength} bytes with content type ${contentType}.`,
+        );
+        continue;
+      }
 
       if (buffer.byteLength > MAX_AUDIO_BYTES) {
         throw new Error(
           `Recording is ${Math.round(buffer.byteLength / (1024 * 1024))} MB, above the 25 MB transcription limit.`,
         );
       }
-
-      const contentType = inferAudioContentType(recordingUrl, response);
 
       return {
         buffer,
@@ -359,7 +422,7 @@ async function downloadTwilioRecording(payload, twilioConfig) {
   throw lastError || new Error("Unable to download the Twilio recording.");
 }
 
-async function transcribeRecordingAudio(recording) {
+async function transcribeRecordingAudioWithOpenAi(recording) {
   const { apiKey, transcriptionModel } = getOpenAiConfig();
 
   if (!apiKey) {
@@ -396,6 +459,80 @@ async function transcribeRecordingAudio(recording) {
   }
 
   return payload.text.trim();
+}
+
+function buildLocalWhisperArgs(config, inputPath, outputBasePath) {
+  return [
+    ...(config.whisperNoGpu ? ["-ng"] : []),
+    "-m",
+    config.whisperModelPath,
+    "-f",
+    inputPath,
+    "-l",
+    config.whisperLanguage,
+    "-t",
+    String(config.whisperThreads),
+    "-otxt",
+    "-of",
+    outputBasePath,
+    "-np",
+    "--prompt",
+    "This is a business phone call for an appliance company.",
+  ];
+}
+
+async function transcribeRecordingAudioWithLocalWhisper(recording) {
+  const config = getTranscriptionConfig();
+  const [{ execFile }, { mkdtemp, readFile, rm, writeFile }, { tmpdir }, pathModule, { promisify }] =
+    await Promise.all([
+      import("node:child_process"),
+      import("node:fs/promises"),
+      import("node:os"),
+      import("node:path"),
+      import("node:util"),
+    ]);
+  const execFileAsync = promisify(execFile);
+  const tempDir = await mkdtemp(pathModule.join(tmpdir(), "asap-whisper-"));
+  const extension = recording.filename?.toLowerCase().endsWith(".wav") ? ".wav" : ".mp3";
+  const inputPath = pathModule.join(tempDir, `recording${extension}`);
+  const outputBasePath = pathModule.join(tempDir, "transcript");
+  const outputTextPath = `${outputBasePath}.txt`;
+
+  try {
+    await writeFile(inputPath, Buffer.from(recording.buffer));
+    await execFileAsync(
+      config.whisperCliPath,
+      buildLocalWhisperArgs(config, inputPath, outputBasePath),
+      {
+        timeout: config.whisperTimeoutSeconds * 1000,
+        maxBuffer: 10 * 1024 * 1024,
+      },
+    );
+
+    const transcriptText = (await readFile(outputTextPath, "utf8")).trim();
+
+    if (!transcriptText) {
+      throw new Error("Local Whisper did not produce transcript text.");
+    }
+
+    return transcriptText;
+  } catch (error) {
+    throw new Error(
+      `Local Whisper transcription failed: ${error?.message || "Unknown whisper-cli error."}`,
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function transcribeRecordingAudio(recording) {
+  const config = getTranscriptionConfig();
+
+  if (isLocalWhisperProvider(config.provider)) {
+    return transcribeRecordingAudioWithLocalWhisper(recording);
+  }
+
+  return transcribeRecordingAudioWithOpenAi(recording);
 }
 
 function extractJsonStringFromResponse(responsePayload) {
@@ -678,6 +815,92 @@ async function analyzeTranscript(transcriptText) {
   return JSON.parse(jsonText);
 }
 
+function buildTranscriptExcerpt(transcriptText, maxLength = 320) {
+  const normalized = normalizeOptionalString(transcriptText).replace(/\s+/gu, " ");
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function buildLocalHeuristicAnalysis(transcriptText) {
+  const classification = classifyTranscriptAudienceForCrm(transcriptText);
+  const conversationType = classification.conversationType || "other";
+  const isHiringConversation = conversationType === "hiring";
+  const isServiceConversation = conversationType === "service";
+  const excerpt = buildTranscriptExcerpt(transcriptText);
+
+  return {
+    headline: isHiringConversation
+      ? "Hiring call transcript captured"
+      : isServiceConversation
+        ? "Customer service call transcript captured"
+        : "Call transcript captured",
+    highlights: excerpt || "Transcript captured locally with Whisper.",
+    conversation_type: conversationType,
+    language: {
+      original_language: "Auto-detected by local Whisper",
+      contains_non_english: false,
+      english_translation_note:
+        "Local free transcription does not run the paid translation summary step.",
+      english_key_details: "",
+    },
+    sections: {
+      customer_need: isServiceConversation ? excerpt : "",
+      appliance_or_system: "",
+      scheduling_and_location: "",
+      parts_and_warranty: "",
+      billing_and_payment: "",
+      follow_up_actions: "Review the transcript for exact next steps.",
+    },
+    hiring_candidate: {
+      is_hiring: isHiringConversation,
+      candidate_name: "",
+      email: "",
+      source: "",
+      stage: "contacted",
+      trade: isHiringConversation ? "Appliance repair" : "",
+      city: "",
+      service_area: "",
+      is_hired: false,
+      start_date: "",
+      availability_summary: "",
+      availability_days: [],
+      availability_time_preferences: [],
+      current_job_status: "",
+      tools_status: "unclear",
+      vehicle_status: "unclear",
+      tools_vehicle_summary: "",
+      payout_expectation_summary: "",
+      experience_summary: isHiringConversation ? excerpt : "",
+      appliance_experience_summary: "",
+      other_work_experience_summary: "",
+      next_step: "Review the transcript and update candidate details manually.",
+    },
+  };
+}
+
+async function analyzeTranscriptWithConfiguredProvider(transcriptText) {
+  const provider = getAnalysisProvider();
+
+  if (["local", "local-heuristic", "heuristic", "off", "none"].includes(provider)) {
+    return buildLocalHeuristicAnalysis(transcriptText);
+  }
+
+  try {
+    return await analyzeTranscript(transcriptText);
+  } catch (error) {
+    if (!readOptionalBooleanEnv("CALL_ANALYSIS_FALLBACK_ENABLED", true)) {
+      throw error;
+    }
+
+    console.error("[call-intelligence][analysis-fallback]", error);
+    return buildLocalHeuristicAnalysis(transcriptText);
+  }
+}
+
 function normalizeAnalysisResult(analysis, transcriptText = "") {
   const keywordClassification = classifyTranscriptAudienceForCrm(transcriptText);
   const modelConversationType =
@@ -775,7 +998,10 @@ function normalizeAnalysisResult(analysis, transcriptText = "") {
 export async function transcribeAndAnalyzeTwilioRecording(payload, twilioConfig) {
   const recording = await downloadTwilioRecording(payload, twilioConfig);
   const transcriptText = await transcribeRecordingAudio(recording);
-  const analysis = normalizeAnalysisResult(await analyzeTranscript(transcriptText), transcriptText);
+  const analysis = normalizeAnalysisResult(
+    await analyzeTranscriptWithConfiguredProvider(transcriptText),
+    transcriptText,
+  );
 
   return {
     transcriptText,
@@ -797,7 +1023,7 @@ export async function analyzeTranscriptText(transcriptText) {
   }
 
   const analysis = normalizeAnalysisResult(
-    await analyzeTranscript(normalizedTranscript),
+    await analyzeTranscriptWithConfiguredProvider(normalizedTranscript),
     normalizedTranscript,
   );
 
