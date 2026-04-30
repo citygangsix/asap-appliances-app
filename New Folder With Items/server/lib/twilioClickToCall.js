@@ -1039,6 +1039,7 @@ export async function requestClickToCall(payload = {}) {
       const customerContact = await ensureCustomerContact(client, {
         customerName,
         customerPhone: normalizedCustomerPhone,
+        allowPlaceholderName: triggerSource === "manual_phone_dialer",
         triggerSource,
         leadSource: payload.leadSource,
         sourceLeadId: payload.sourceLeadId,

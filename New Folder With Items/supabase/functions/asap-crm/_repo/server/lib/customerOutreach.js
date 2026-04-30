@@ -58,6 +58,17 @@ export function hasMeaningfulCustomerName(customerName, customerPhone = null) {
   return !(nameDigits && phoneDigits && nameDigits === phoneDigits);
 }
 
+function formatPhoneContactName(customerPhone) {
+  const normalizedPhone = normalizePhoneNumber(customerPhone);
+  const digits = normalizePhoneLookup(normalizedPhone);
+
+  if (digits?.length === 10) {
+    return `Phone contact (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+
+  return normalizedPhone ? `Phone contact ${normalizedPhone}` : null;
+}
+
 function unwrapQueryResult(label, result) {
   if (result.error) {
     throw new Error(`${label}: ${result.error.message}`);
@@ -186,9 +197,8 @@ async function createCapturedCustomerContact(client, payload) {
 
 export async function ensureCustomerContact(client, payload = {}) {
   const customerPhone = normalizePhoneNumber(payload.customerPhone);
-  const customerName = toNullableString(payload.customerName);
 
-  if (!customerPhone || !hasMeaningfulCustomerName(customerName, customerPhone)) {
+  if (!customerPhone) {
     return {
       status: "skipped",
       customer: null,
@@ -199,6 +209,20 @@ export async function ensureCustomerContact(client, payload = {}) {
 
   if (existingLookup.status === "matched" || existingLookup.status === "ambiguous") {
     return existingLookup;
+  }
+
+  const providedCustomerName = toNullableString(payload.customerName);
+  const customerName = hasMeaningfulCustomerName(providedCustomerName, customerPhone)
+    ? providedCustomerName
+    : payload.allowPlaceholderName === true
+      ? formatPhoneContactName(customerPhone)
+      : null;
+
+  if (!customerName) {
+    return {
+      status: "skipped",
+      customer: null,
+    };
   }
 
   try {
