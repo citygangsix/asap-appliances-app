@@ -564,6 +564,7 @@ function resolveClickToCallAgentPhone(config, requestedPhoneNumber) {
 async function placeTwilioApiCall({
   accountSid,
   authToken,
+  apiBaseUrl,
   fromNumber,
   toNumber,
   url,
@@ -585,7 +586,7 @@ async function placeTwilioApiCall({
   let response = null;
 
   try {
-    response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`, {
+    response = await fetch(`${apiBaseUrl}/Accounts/${accountSid}/Calls.json`, {
       method: "POST",
       headers: {
         Authorization: buildTwilioAuthHeader(accountSid, authToken),
@@ -1024,6 +1025,7 @@ export async function requestClickToCall(payload = {}) {
   const twilioResponse = await placeTwilioApiCall({
     accountSid: config.accountSid,
     authToken: config.authToken,
+    apiBaseUrl: config.apiBaseUrl,
     fromNumber: normalizedBusinessPhoneNumber,
     toNumber: normalizedAgentPhone,
     url: bridgeUrl,

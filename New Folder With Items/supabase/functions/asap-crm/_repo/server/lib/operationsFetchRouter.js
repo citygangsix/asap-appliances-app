@@ -177,7 +177,8 @@ async function validateTwilioWebhookRequest(request, context, options = {}) {
   const queryPayload = Object.fromEntries(context.routeUrl.searchParams.entries());
   const payload = request.method === "GET" ? queryPayload : { ...queryPayload, ...formPayload };
   const signatureParams = request.method === "GET" ? {} : formPayload;
-  const signature = context.headers["x-twilio-signature"];
+  const twilioSignature = context.headers["x-twilio-signature"];
+  const signalWireSignature = context.headers["x-signalwire-signature"];
 
   if (payload.AccountSid !== config.accountSid) {
     return {
@@ -198,16 +199,25 @@ async function validateTwilioWebhookRequest(request, context, options = {}) {
     };
   }
 
-  if (
-    !(await isValidTwilioSignature({
-      authToken: config.authToken,
-      signature,
-      url: buildWebhookUrl(config.webhookBaseUrl, context.pathAndSearch),
+  const webhookUrl = buildWebhookUrl(config.webhookBaseUrl, context.pathAndSearch);
+  const hasValidTwilioSignature = await isValidTwilioSignature({
+    authToken: config.authToken,
+    signature: twilioSignature,
+    url: webhookUrl,
+    params: signatureParams,
+  });
+  const hasValidSignalWireSignature =
+    Boolean(config.signalWireSigningKey) &&
+    (await isValidTwilioSignature({
+      authToken: config.signalWireSigningKey,
+      signature: signalWireSignature,
+      url: webhookUrl,
       params: signatureParams,
-    }))
-  ) {
+    }));
+
+  if (!hasValidTwilioSignature && !hasValidSignalWireSignature) {
     return {
-      response: respondJson(403, { ok: false, message: "Invalid Twilio webhook signature." }),
+      response: respondJson(403, { ok: false, message: "Invalid voice provider webhook signature." }),
     };
   }
 

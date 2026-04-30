@@ -53,8 +53,8 @@ async function parseTwilioResponse(response) {
   return responseJson;
 }
 
-async function sendTwilioSms({ accountSid, authToken, fromNumber, toNumber, body }) {
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+async function sendTwilioSms({ accountSid, authToken, apiBaseUrl, fromNumber, toNumber, body }) {
+  const response = await fetch(`${apiBaseUrl}/Accounts/${accountSid}/Messages.json`, {
     method: "POST",
     headers: {
       Authorization: buildTwilioAuthHeader(accountSid, authToken),
@@ -70,8 +70,8 @@ async function sendTwilioSms({ accountSid, authToken, fromNumber, toNumber, body
   return parseTwilioResponse(response);
 }
 
-async function placeTwilioCall({ accountSid, authToken, fromNumber, toNumber, message }) {
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Calls.json`, {
+async function placeTwilioCall({ accountSid, authToken, apiBaseUrl, fromNumber, toNumber, message }) {
+  const response = await fetch(`${apiBaseUrl}/Accounts/${accountSid}/Calls.json`, {
     method: "POST",
     headers: {
       Authorization: buildTwilioAuthHeader(accountSid, authToken),
@@ -124,6 +124,7 @@ export async function sendOutboundSms({ toNumber, body, dryRun = false, label = 
   const twilioResponse = await sendTwilioSms({
     accountSid: config.accountSid,
     authToken: config.authToken,
+    apiBaseUrl: config.apiBaseUrl,
     fromNumber: config.phoneNumber,
     toNumber: destination,
     body,
@@ -179,6 +180,7 @@ export async function sendOutboundCall({ toNumber, message, dryRun = false, labe
   const twilioResponse = await placeTwilioCall({
     accountSid: config.accountSid,
     authToken: config.authToken,
+    apiBaseUrl: config.apiBaseUrl,
     fromNumber: config.phoneNumber,
     toNumber: destination,
     message,

@@ -78,8 +78,12 @@ export function getTwilioServerConfig() {
     supabaseServiceRoleKey: readRequiredSupabaseServiceRoleKey(),
     accountSid: readRequiredEnv("TWILIO_ACCOUNT_SID"),
     authToken: readRequiredEnv("TWILIO_AUTH_TOKEN"),
+    signalWireSigningKey: readOptionalEnv("SIGNALWIRE_SIGNING_KEY"),
     apiKeySid: readOptionalEnv("TWILIO_API_KEY_SID"),
     apiKeySecret: readOptionalEnv("TWILIO_API_KEY_SECRET"),
+    apiBaseUrl:
+      readOptionalEnv("TWILIO_API_BASE_URL")?.replace(/\/$/u, "") ||
+      "https://api.twilio.com/2010-04-01",
     twimlAppSid: readOptionalEnv("TWILIO_TWIML_APP_SID"),
     phoneNumber,
     managedPhoneNumbers,

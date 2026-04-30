@@ -2,7 +2,7 @@ import { getServerSupabaseClient, getTwilioServerConfig } from "./supabaseAdmin.
 import { readServerEnv, readServerNumberEnv } from "./serverEnv.js";
 import { persistRecordingStatusCallback } from "./twilioVoiceRecordings.js";
 
-const TWILIO_API_BASE_URL = "https://api.twilio.com/2010-04-01";
+const DEFAULT_TWILIO_API_BASE_URL = "https://api.twilio.com/2010-04-01";
 const DEFAULT_RECOVERY_INTERVAL_SECONDS = 60;
 const DEFAULT_RECOVERY_INITIAL_DELAY_SECONDS = 20;
 const DEFAULT_RECOVERY_LOOKBACK_MINUTES = 480;
@@ -88,7 +88,8 @@ function getRecoveryConfig() {
 }
 
 function buildTwilioApiUrl(config, pathname, params = {}) {
-  const url = new URL(`${TWILIO_API_BASE_URL}/Accounts/${config.accountSid}${pathname}`);
+  const apiBaseUrl = config.apiBaseUrl || DEFAULT_TWILIO_API_BASE_URL;
+  const url = new URL(`${apiBaseUrl}/Accounts/${config.accountSid}${pathname}`);
 
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
@@ -130,7 +131,8 @@ function parseTwilioDate(value) {
 }
 
 function buildRecordingUrl(config, recordingSid) {
-  return `${TWILIO_API_BASE_URL}/Accounts/${config.accountSid}/Recordings/${recordingSid}`;
+  const apiBaseUrl = config.apiBaseUrl || DEFAULT_TWILIO_API_BASE_URL;
+  return `${apiBaseUrl}/Accounts/${config.accountSid}/Recordings/${recordingSid}`;
 }
 
 async function listRecentTwilioRecordings(config, recoveryConfig) {
