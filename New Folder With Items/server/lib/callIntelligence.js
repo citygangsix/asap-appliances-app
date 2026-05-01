@@ -8,6 +8,7 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const DEFAULT_ANALYSIS_MODEL = "gpt-4o-mini";
 const DEFAULT_LOCAL_WHISPER_CLI_PATH = "whisper-cli";
+const DEFAULT_LOCAL_WHISPER_FFMPEG_PATH = "ffmpeg";
 const DEFAULT_LOCAL_WHISPER_MODEL_PATH = "/Users/xxx/.cache/whisper-cpp/ggml-base.bin";
 const DEFAULT_LOCAL_WHISPER_TIMEOUT_SECONDS = 900;
 const HIRING_CANDIDATE_STAGES = new Set([
@@ -287,6 +288,29 @@ function buildTwilioAuthHeader(accountSid, authToken) {
   return `Basic ${btoa(`${accountSid}:${authToken}`)}`;
 }
 
+function stripKnownRecordingExtension(recordingUrl) {
+  return String(recordingUrl || "").replace(/\.(?:mp3|wav|json)$/iu, "");
+}
+
+function buildAccountLevelRecordingUrl(recordingUrl) {
+  try {
+    const url = new URL(recordingUrl);
+    const accountLevelPathname = url.pathname.replace(
+      /\/Calls\/[^/]+(?=\/Recordings\/)/u,
+      "",
+    );
+
+    if (accountLevelPathname === url.pathname) {
+      return null;
+    }
+
+    url.pathname = accountLevelPathname;
+    return url.toString();
+  } catch (error) {
+    return null;
+  }
+}
+
 function buildRecordingDownloadCandidates(recordingUrl) {
   if (!recordingUrl) {
     return [];
@@ -298,7 +322,28 @@ function buildRecordingDownloadCandidates(recordingUrl) {
     return [];
   }
 
-  return trimmed.endsWith(".mp3") || trimmed.endsWith(".wav") ? [trimmed] : [`${trimmed}.mp3`, trimmed];
+  const bases = [
+    { label: "callback", url: stripKnownRecordingExtension(trimmed) },
+    {
+      label: "account",
+      url: stripKnownRecordingExtension(buildAccountLevelRecordingUrl(trimmed)),
+    },
+  ].filter((candidate) => candidate.url);
+  const seen = new Set();
+  const candidates = [];
+
+  for (const base of bases) {
+    for (const url of [`${base.url}.mp3`, `${base.url}.wav`, base.url]) {
+      if (seen.has(url)) {
+        continue;
+      }
+
+      seen.add(url);
+      candidates.push({ label: base.label, url });
+    }
+  }
+
+  return candidates;
 }
 
 function inferAudioContentType(downloadUrl, response) {
@@ -323,6 +368,40 @@ function inferAudioFilename(downloadUrl, contentType) {
   return contentType?.includes("mpeg") ? "call-recording.mp3" : "call-recording.wav";
 }
 
+function isAudioResponse(contentType) {
+  return (
+    /^audio\//iu.test(contentType || "") ||
+    /octet-stream/iu.test(contentType || "") ||
+    /application\/x-mpegurl/iu.test(contentType || "")
+  );
+}
+
+function buildSafeResponsePreview(buffer, contentType) {
+  if (!/^text\//iu.test(contentType || "") && !/json/iu.test(contentType || "")) {
+    return "";
+  }
+
+  return new TextDecoder()
+    .decode(buffer.slice(0, Math.min(buffer.byteLength, 160)))
+    .replace(/\s+/gu, " ")
+    .replace(/[A-Za-z0-9_-]{16,}/gu, "[redacted]")
+    .trim();
+}
+
+function formatRecordingDownloadAttempts(attempts) {
+  if (attempts.length === 0) {
+    return "No recording URLs were available.";
+  }
+
+  return attempts
+    .map((attempt, index) => {
+      const preview = attempt.preview ? ` preview="${attempt.preview}"` : "";
+
+      return `#${index + 1} ${attempt.label}/${attempt.authMode}: status ${attempt.status}, content-type ${attempt.contentType || "unknown"}, content-length ${attempt.contentLength || "unknown"}, bytes ${attempt.bytes}${preview}`;
+    })
+    .join("; ");
+}
+
 function getOpenAiConfig() {
   return {
     apiKey: readOptionalEnv("OPENAI_API_KEY"),
@@ -341,6 +420,8 @@ function getTranscriptionConfig() {
   return {
     provider: provider.toLowerCase(),
     whisperCliPath: readOptionalEnv("LOCAL_WHISPER_CLI_PATH") || DEFAULT_LOCAL_WHISPER_CLI_PATH,
+    whisperFfmpegPath:
+      readOptionalEnv("LOCAL_WHISPER_FFMPEG_PATH") || DEFAULT_LOCAL_WHISPER_FFMPEG_PATH,
     whisperModelPath:
       readOptionalEnv("LOCAL_WHISPER_MODEL_PATH") || DEFAULT_LOCAL_WHISPER_MODEL_PATH,
     whisperLanguage: readOptionalEnv("LOCAL_WHISPER_LANGUAGE") || "auto",
@@ -377,49 +458,68 @@ export function isCallIntelligenceConfigured() {
 
 async function downloadTwilioRecording(payload, twilioConfig) {
   const recordingCandidates = buildRecordingDownloadCandidates(payload.RecordingUrl);
-  const headers = {
+  const authenticatedHeaders = {
     Authorization: buildTwilioAuthHeader(twilioConfig.accountSid, twilioConfig.authToken),
   };
+  const attempts = [];
 
-  let lastError = null;
+  for (const candidate of recordingCandidates) {
+    for (const authMode of ["public", "authenticated"]) {
+      const headers = authMode === "authenticated" ? authenticatedHeaders : {};
+      let response = null;
+      let buffer = new Uint8Array();
+      let contentType = "";
 
-  for (const recordingUrl of recordingCandidates) {
-    try {
-      const response = await fetch(recordingUrl, { headers });
+      try {
+        response = await fetch(candidate.url, { headers });
+        buffer = new Uint8Array(await response.arrayBuffer());
+        contentType = inferAudioContentType(candidate.url, response);
+        attempts.push({
+          authMode,
+          bytes: buffer.byteLength,
+          contentLength: response.headers.get("content-length"),
+          contentType,
+          label: candidate.label,
+          preview: buildSafeResponsePreview(buffer, contentType),
+          status: response.status,
+        });
 
-      if (!response.ok) {
-        lastError = new Error(`Twilio recording download failed with status ${response.status}.`);
-        continue;
+        if (!response.ok) {
+          continue;
+        }
+
+        if (buffer.byteLength < 1024 || !isAudioResponse(contentType)) {
+          continue;
+        }
+
+        if (buffer.byteLength > MAX_AUDIO_BYTES) {
+          throw new Error(
+            `Recording is ${Math.round(buffer.byteLength / (1024 * 1024))} MB, above the 25 MB transcription limit.`,
+          );
+        }
+
+        return {
+          buffer,
+          contentType,
+          filename: inferAudioFilename(candidate.url, contentType),
+        };
+      } catch (error) {
+        attempts.push({
+          authMode,
+          bytes: 0,
+          contentLength: null,
+          contentType: null,
+          label: candidate.label,
+          preview: error?.message || "fetch failed",
+          status: response?.status || "error",
+        });
       }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = new Uint8Array(arrayBuffer);
-      const contentType = inferAudioContentType(recordingUrl, response);
-
-      if (buffer.byteLength < 1024 || /^text\//iu.test(contentType)) {
-        lastError = new Error(
-          `Twilio recording download did not return audio from ${recordingUrl}. Received ${buffer.byteLength} bytes with content type ${contentType}.`,
-        );
-        continue;
-      }
-
-      if (buffer.byteLength > MAX_AUDIO_BYTES) {
-        throw new Error(
-          `Recording is ${Math.round(buffer.byteLength / (1024 * 1024))} MB, above the 25 MB transcription limit.`,
-        );
-      }
-
-      return {
-        buffer,
-        contentType,
-        filename: inferAudioFilename(recordingUrl, contentType),
-      };
-    } catch (error) {
-      lastError = error;
     }
   }
 
-  throw lastError || new Error("Unable to download the Twilio recording.");
+  throw new Error(
+    `Unable to download Twilio/SignalWire recording audio. ${formatRecordingDownloadAttempts(attempts)}`,
+  );
 }
 
 async function transcribeRecordingAudioWithOpenAi(recording) {
@@ -481,9 +581,85 @@ function buildLocalWhisperArgs(config, inputPath, outputBasePath) {
   ];
 }
 
+function summarizeProcessOutput(output) {
+  return String(output || "")
+    .replace(/\s+/gu, " ")
+    .slice(0, 600)
+    .trim();
+}
+
+async function prepareLocalWhisperAudioInput(execFileAsync, config, inputPath, tempDir, pathModule) {
+  const normalizedPath = pathModule.join(tempDir, "recording-normalized.wav");
+
+  try {
+    await execFileAsync(
+      config.whisperFfmpegPath,
+      [
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        inputPath,
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "pcm_s16le",
+        normalizedPath,
+      ],
+      {
+        timeout: 60 * 1000,
+        maxBuffer: 2 * 1024 * 1024,
+      },
+    );
+
+    return { inputPath: normalizedPath, warning: "" };
+  } catch (error) {
+    const output = summarizeProcessOutput(`${error?.stdout || ""} ${error?.stderr || ""}`);
+    const warning = output
+      ? `Audio normalization skipped after ffmpeg failed: ${output}`
+      : "Audio normalization skipped after ffmpeg failed.";
+
+    return { inputPath, warning };
+  }
+}
+
+async function readLocalWhisperTranscript(tempDir, outputTextPath, readFile, readdir, pathModule) {
+  const entries = await readdir(tempDir).catch(() => []);
+  const candidates = [
+    outputTextPath,
+    ...entries.filter((entry) => entry.endsWith(".txt")).map((entry) => pathModule.join(tempDir, entry)),
+  ];
+  const seen = new Set();
+
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) {
+      continue;
+    }
+
+    seen.add(candidate);
+
+    try {
+      const transcriptText = (await readFile(candidate, "utf8")).trim();
+
+      if (transcriptText) {
+        return transcriptText;
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  return null;
+}
+
 async function transcribeRecordingAudioWithLocalWhisper(recording) {
   const config = getTranscriptionConfig();
-  const [{ execFile }, { mkdtemp, readFile, rm, writeFile }, { tmpdir }, pathModule, { promisify }] =
+  const [{ execFile }, { mkdtemp, readFile, readdir, rm, writeFile }, { tmpdir }, pathModule, { promisify }] =
     await Promise.all([
       import("node:child_process"),
       import("node:fs/promises"),
@@ -497,28 +673,59 @@ async function transcribeRecordingAudioWithLocalWhisper(recording) {
   const inputPath = pathModule.join(tempDir, `recording${extension}`);
   const outputBasePath = pathModule.join(tempDir, "transcript");
   const outputTextPath = `${outputBasePath}.txt`;
+  let normalizationWarning = "";
+  let whisperResult = null;
 
   try {
-    await writeFile(inputPath, Buffer.from(recording.buffer));
-    await execFileAsync(
+    await writeFile(inputPath, recording.buffer);
+    const preparedAudio = await prepareLocalWhisperAudioInput(
+      execFileAsync,
+      config,
+      inputPath,
+      tempDir,
+      pathModule,
+    );
+    normalizationWarning = preparedAudio.warning;
+    whisperResult = await execFileAsync(
       config.whisperCliPath,
-      buildLocalWhisperArgs(config, inputPath, outputBasePath),
+      buildLocalWhisperArgs(config, preparedAudio.inputPath, outputBasePath),
       {
         timeout: config.whisperTimeoutSeconds * 1000,
         maxBuffer: 10 * 1024 * 1024,
       },
     );
 
-    const transcriptText = (await readFile(outputTextPath, "utf8")).trim();
+    const transcriptText = await readLocalWhisperTranscript(
+      tempDir,
+      outputTextPath,
+      readFile,
+      readdir,
+      pathModule,
+    );
 
     if (!transcriptText) {
-      throw new Error("Local Whisper did not produce transcript text.");
+      const entries = (await readdir(tempDir).catch(() => [])).join(", ") || "none";
+      const stdout = summarizeProcessOutput(whisperResult?.stdout);
+      const stderr = summarizeProcessOutput(whisperResult?.stderr);
+      const details = [
+        normalizationWarning,
+        entries ? `files: ${entries}` : "",
+        stdout ? `stdout: ${stdout}` : "",
+        stderr ? `stderr: ${stderr}` : "",
+      ].filter(Boolean);
+
+      throw new Error(
+        `Local Whisper did not produce transcript text.${details.length ? ` ${details.join(" ")}` : ""}`,
+      );
     }
 
     return transcriptText;
   } catch (error) {
+    const output = summarizeProcessOutput(`${error?.stdout || ""} ${error?.stderr || ""}`);
+    const message = [error?.message || "Unknown whisper-cli error.", output].filter(Boolean).join(" ");
+
     throw new Error(
-      `Local Whisper transcription failed: ${error?.message || "Unknown whisper-cli error."}`,
+      `Local Whisper transcription failed: ${message}`,
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {});
