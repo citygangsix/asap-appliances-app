@@ -135,11 +135,12 @@ function buildTwilioApiFailureMessage(responseJson, status) {
 
   if (
     twilioCode === "21215" ||
+    twilioCode === "21219" ||
     twilioMessage.includes("trial") ||
     twilioMessage.includes("not verified") ||
     twilioMessage.includes("unverified")
   ) {
-    return "Twilio blocked the call because of a trial-account or verification restriction. Verify the destination number in Twilio or upgrade the account.";
+    return "SignalWire blocked the call because this Space is in Trial mode. Verify the destination number in SignalWire or upgrade the Space before calling it.";
   }
 
   if (twilioMessage.includes("permission") || twilioMessage.includes("geo")) {
@@ -174,6 +175,7 @@ function logClickToCallFailure(reason, context = {}) {
     webhookHealthUrl: redactUrl(context.webhookHealthUrl),
     detail: redactPhoneLikeText(context.detail),
     errorMessage: redactPhoneLikeText(context.errorMessage),
+    responseBody: redactPhoneLikeText(context.responseBody),
     accountSidPresent: context.accountSidPresent === undefined ? undefined : Boolean(context.accountSidPresent),
     authTokenPresent: context.authTokenPresent === undefined ? undefined : Boolean(context.authTokenPresent),
   });
@@ -201,6 +203,18 @@ async function parseTwilioResponse(response, context = {}) {
     });
 
     throw new Error(buildTwilioApiFailureMessage(responseJson, response.status));
+  }
+
+  if (!responseJson) {
+    logClickToCallFailure("twilio_api_non_json_success", {
+      ...context,
+      status: response.status,
+      responseBody: responseText.slice(0, 500),
+    });
+
+    throw new Error(
+      "SignalWire accepted the HTTP request but did not return a call record. No phone call was created.",
+    );
   }
 
   return responseJson;
@@ -604,6 +618,7 @@ async function placeTwilioApiCall({
       method: "POST",
       headers: {
         Authorization: buildTwilioAuthHeader(accountSid, authToken),
+        Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body,
@@ -622,7 +637,7 @@ async function placeTwilioApiCall({
     throw new Error("The CRM could not reach Twilio's Calls API. Check network access and retry.");
   }
 
-  return parseTwilioResponse(response, {
+  const callRecord = await parseTwilioResponse(response, {
     fromNumber,
     toNumber,
     url,
@@ -630,6 +645,23 @@ async function placeTwilioApiCall({
     accountSidPresent: Boolean(accountSid),
     authTokenPresent: Boolean(authToken),
   });
+
+  if (!callRecord?.sid) {
+    logClickToCallFailure("twilio_api_missing_call_sid", {
+      fromNumber,
+      toNumber,
+      url,
+      statusCallback,
+      status: response.status,
+      responseBody: JSON.stringify(callRecord).slice(0, 500),
+      accountSidPresent: Boolean(accountSid),
+      authTokenPresent: Boolean(authToken),
+    });
+
+    throw new Error("SignalWire did not return a call SID. No phone call was created.");
+  }
+
+  return callRecord;
 }
 
 async function ensureCallAttemptLog(client, communication, payload) {
