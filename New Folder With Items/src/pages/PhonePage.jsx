@@ -30,6 +30,10 @@ const AGENT_PHONE_PRESETS = [
     phone: "+15615641545",
   },
 ];
+const CONTACT_TYPE_OPTIONS = [
+  { value: "customer", label: "Customer" },
+  { value: "technician", label: "Technician" },
+];
 
 function onlyPhoneDigits(value) {
   return value.replace(/\D/g, "").slice(0, 11);
@@ -59,6 +63,25 @@ function findSavedCustomerByPhone(customers, phoneNumber) {
         .some((phone) => phone && phone === targetPhone),
     ) || null
   );
+}
+
+function findSavedTechnicianByPhone(technicians, phoneNumber) {
+  const targetPhone = normalizePhoneLookup(phoneNumber);
+
+  if (!targetPhone) {
+    return null;
+  }
+
+  return (
+    technicians.find((technician) => {
+      const technicianPhone = normalizePhoneLookup(technician.primaryPhone);
+      return technicianPhone && technicianPhone === targetPhone;
+    }) || null
+  );
+}
+
+function getContactTypeLabel(contactType) {
+  return contactType === "technician" ? "technician" : "customer";
 }
 
 function sanitizeDialValue(value) {
@@ -154,16 +177,21 @@ export function PhonePage() {
   const repository = getOperationsRepository();
   const [rawNumber, setRawNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [contactType, setContactType] = useState("customer");
   const [agentPhone, setAgentPhone] = useState("");
   const [status, setStatus] = useState("Ready");
-  const [message, setMessage] = useState("Enter a customer number and start the Twilio bridge.");
-  const [customerRefreshNonce, setCustomerRefreshNonce] = useState(0);
+  const [message, setMessage] = useState("Enter a contact number and start the Twilio bridge.");
+  const [directoryRefreshNonce, setDirectoryRefreshNonce] = useState(0);
   const audioContextRef = useRef(null);
   const activeToneRef = useRef(null);
   const ringingRef = useRef({ intervalId: null, burst: null });
   const customersQuery = useAsyncValue(
     () => repository.customers.list(),
-    [repository, customerRefreshNonce],
+    [repository, directoryRefreshNonce],
+  );
+  const techniciansQuery = useAsyncValue(
+    () => repository.technicians.list(),
+    [repository, directoryRefreshNonce],
   );
   const formattedNumber = useMemo(() => formatUsPhone(rawNumber), [rawNumber]);
   const formattedAgentPhone = useMemo(() => formatUsPhone(agentPhone), [agentPhone]);
@@ -171,12 +199,19 @@ export function PhonePage() {
   const e164AgentPhone = useMemo(() => toE164(agentPhone), [agentPhone]);
   const trimmedCustomerName = customerName.trim();
   const customerDirectory = customersQuery.data || [];
+  const technicianDirectory = techniciansQuery.data || [];
   const matchedCustomer = useMemo(
     () => findSavedCustomerByPhone(customerDirectory, e164Number || rawNumber),
     [customerDirectory, e164Number, rawNumber],
   );
-  const callCustomerName = matchedCustomer?.name || trimmedCustomerName;
+  const matchedTechnician = useMemo(
+    () => findSavedTechnicianByPhone(technicianDirectory, e164Number || rawNumber),
+    [technicianDirectory, e164Number, rawNumber],
+  );
+  const activeMatchedContact = contactType === "technician" ? matchedTechnician : matchedCustomer;
+  const callCustomerName = activeMatchedContact?.name || trimmedCustomerName;
   const callTargetLabel = callCustomerName || formattedNumber || e164Number || "No number entered";
+  const activeContactTypeLabel = getContactTypeLabel(contactType);
   const canCall = Boolean(e164Number) && status !== "Calling";
 
   function getAudioContext() {
@@ -347,6 +382,7 @@ export function PhonePage() {
     }
 
     const selectedAgentPhone = e164AgentPhone || null;
+    const isTechnicianCall = contactType === "technician";
 
     setStatus("Calling");
     startRinging();
@@ -357,28 +393,33 @@ export function PhonePage() {
     );
 
     try {
-      const shouldRefreshCustomersAfterCall = !matchedCustomer && Boolean(trimmedCustomerName);
+      const shouldRefreshDirectoryAfterCall = !activeMatchedContact;
       const result = await requestClickToCall({
-        ...(matchedCustomer?.customerId ? { customerId: matchedCustomer.customerId } : {}),
+        ...(matchedCustomer?.customerId && !isTechnicianCall ? { customerId: matchedCustomer.customerId } : {}),
+        contactType,
         customerName: callCustomerName || formattedNumber || e164Number,
         customerPhone: e164Number,
-        persistCustomerContact: !matchedCustomer && Boolean(trimmedCustomerName),
+        persistCustomerContact: !isTechnicianCall && !matchedCustomer,
+        persistTechnicianContact: isTechnicianCall && !matchedTechnician,
         ...(selectedAgentPhone ? { agentPhone: selectedAgentPhone } : {}),
         triggerSource: "manual_phone_dialer",
       });
       stopRinging();
       setStatus("Sent");
+      const savedContactStatus =
+        result.savedContactStatus ||
+        (isTechnicianCall ? result.technicianContactStatus : result.customerContactStatus);
       if (
-        shouldRefreshCustomersAfterCall ||
-        ["created", "matched", "ambiguous"].includes(result.customerContactStatus)
+        shouldRefreshDirectoryAfterCall ||
+        ["created", "matched", "ambiguous"].includes(savedContactStatus)
       ) {
         repository.clearRuntimeCaches?.();
-        setCustomerRefreshNonce((current) => current + 1);
+        setDirectoryRefreshNonce((current) => current + 1);
       }
       setMessage(
         result.message
-          ? `${result.message} Customer sees ${result.businessPhoneNumber || "the Twilio number"}.`
-          : `Twilio is calling ${formatUsPhone(result.agentPhone || selectedAgentPhone || "") || "the configured phone"}. Customer sees ${result.businessPhoneNumber || "the Twilio number"}.`,
+          ? `${result.message} ${isTechnicianCall ? "Technician" : "Customer"} sees ${result.businessPhoneNumber || "the Twilio number"}.`
+          : `Twilio is calling ${formatUsPhone(result.agentPhone || selectedAgentPhone || "") || "the configured phone"}. ${isTechnicianCall ? "Technician" : "Customer"} sees ${result.businessPhoneNumber || "the Twilio number"}.`,
       );
     } catch (error) {
       stopRinging();
@@ -392,6 +433,17 @@ export function PhonePage() {
     setStatus("Ready");
     setMessage("Ready for the next Twilio bridge call.");
   }
+
+  useEffect(() => {
+    if (matchedTechnician && !matchedCustomer && contactType !== "technician") {
+      setContactType("technician");
+      return;
+    }
+
+    if (matchedCustomer && !matchedTechnician && contactType !== "customer") {
+      setContactType("customer");
+    }
+  }, [contactType, matchedCustomer, matchedTechnician]);
 
   useEffect(() => {
     return () => {
@@ -416,8 +468,24 @@ export function PhonePage() {
               </p>
               <Badge tone={getStatusTone(status)}>{status}</Badge>
             </div>
+            <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+              {CONTACT_TYPE_OPTIONS.map((option) => (
+                <button
+                  className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold transition ${
+                    contactType === option.value
+                      ? "bg-emerald-500 text-white"
+                      : "text-slate-300 hover:bg-white/[0.07]"
+                  }`}
+                  key={option.value}
+                  onClick={() => setContactType(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <label className="mt-6 block text-sm font-semibold text-slate-300">
-              Customer number
+              Contact number
               <input
                 className="mt-2 min-h-[88px] w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-5 text-right text-3xl font-semibold tracking-normal text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300 sm:text-4xl"
                 inputMode="tel"
@@ -430,26 +498,45 @@ export function PhonePage() {
                 {e164Number || "US numbers only"}
               </span>
             </label>
-            {matchedCustomer ? (
-              <div className="mt-4 rounded-2xl border border-emerald-300/30 bg-emerald-400/10 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
-                  Saved customer
-                </p>
-                <p className="mt-2 text-xl font-semibold text-white">{matchedCustomer.name}</p>
-                <p className="mt-1 text-sm text-emerald-100/80">
-                  {[matchedCustomer.primaryPhone, matchedCustomer.customerSegment].filter(Boolean).join(" · ")}
-                </p>
+            {matchedCustomer || matchedTechnician ? (
+              <div className="mt-4 grid gap-3">
+                {matchedCustomer ? (
+                  <div className="rounded-2xl border border-emerald-300/30 bg-emerald-400/10 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                      Saved customer
+                    </p>
+                    <p className="mt-2 text-xl font-semibold text-white">{matchedCustomer.name}</p>
+                    <p className="mt-1 text-sm text-emerald-100/80">
+                      {[matchedCustomer.primaryPhone, matchedCustomer.customerSegment].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                ) : null}
+                {matchedTechnician ? (
+                  <div className="rounded-2xl border border-sky-300/30 bg-sky-400/10 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">
+                      Saved technician
+                    </p>
+                    <p className="mt-2 text-xl font-semibold text-white">{matchedTechnician.name}</p>
+                    <p className="mt-1 text-sm text-sky-100/80">
+                      {[matchedTechnician.primaryPhone, matchedTechnician.serviceArea].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <label className="mt-4 block text-sm font-semibold text-slate-300">
-              Customer name
+              {contactType === "technician" ? "Technician name" : "Customer name"}
               <input
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300 disabled:text-slate-400"
-                disabled={Boolean(matchedCustomer)}
+                disabled={Boolean(activeMatchedContact)}
                 onChange={(event) => setCustomerName(event.target.value)}
-                placeholder={customersQuery.isLoading ? "Loading saved customers" : "Optional"}
+                placeholder={
+                  customersQuery.isLoading || techniciansQuery.isLoading
+                    ? "Loading saved contacts"
+                    : "Optional"
+                }
                 type="text"
-                value={matchedCustomer ? matchedCustomer.name : customerName}
+                value={activeMatchedContact ? activeMatchedContact.name : customerName}
               />
             </label>
             <label className="mt-4 block text-sm font-semibold text-slate-300">
@@ -540,7 +627,10 @@ export function PhonePage() {
               </p>
               <p className="mt-2 text-2xl font-semibold text-white">{callTargetLabel}</p>
               <p className="mt-1 text-sm text-slate-400">
-                {matchedCustomer ? matchedCustomer.primaryPhone || e164Number : e164Number || formattedNumber}
+                {activeMatchedContact ? activeMatchedContact.primaryPhone || e164Number : e164Number || formattedNumber}
+              </p>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                {activeContactTypeLabel}
               </p>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-4">
@@ -565,10 +655,10 @@ export function PhonePage() {
             <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
               <p>
                 This screen posts to <span className="font-semibold text-white">POST /api/twilio/outbound/calls</span>,
-                then Twilio rings the configured office phone, or the selected override, before bridging the customer.
+                then Twilio rings the configured office phone, or the selected override, before bridging the saved contact.
               </p>
               <p>
-                The customer sees the configured Twilio business number, and the call can be recorded through the CRM callback path.
+                The contact sees the configured Twilio business number, and the call can be recorded through the CRM callback path.
               </p>
             </div>
           </Card>

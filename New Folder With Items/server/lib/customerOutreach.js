@@ -6,6 +6,13 @@ const PLACEHOLDER_CUSTOMER_NAMES = new Set([
   "unknown customer",
   "thumbtack customer",
 ]);
+const PLACEHOLDER_TECHNICIAN_NAMES = new Set([
+  ...PLACEHOLDER_CUSTOMER_NAMES,
+  "technician",
+  "the technician",
+  "unknown technician",
+  "new technician",
+]);
 
 function toNullableString(value) {
   const trimmed = String(value ?? "").trim();
@@ -58,6 +65,23 @@ export function hasMeaningfulCustomerName(customerName, customerPhone = null) {
   return !(nameDigits && phoneDigits && nameDigits === phoneDigits);
 }
 
+export function hasMeaningfulTechnicianName(technicianName, technicianPhone = null) {
+  const name = toNullableString(technicianName);
+
+  if (!name) {
+    return false;
+  }
+
+  if (PLACEHOLDER_TECHNICIAN_NAMES.has(name.toLowerCase())) {
+    return false;
+  }
+
+  const nameDigits = normalizePhoneLookup(name);
+  const phoneDigits = normalizePhoneLookup(technicianPhone);
+
+  return !(nameDigits && phoneDigits && nameDigits === phoneDigits);
+}
+
 function formatPhoneContactName(customerPhone) {
   const normalizedPhone = normalizePhoneNumber(customerPhone);
   const digits = normalizePhoneLookup(normalizedPhone);
@@ -67,6 +91,17 @@ function formatPhoneContactName(customerPhone) {
   }
 
   return normalizedPhone ? `Phone contact ${normalizedPhone}` : null;
+}
+
+function formatTechnicianPhoneContactName(technicianPhone) {
+  const normalizedPhone = normalizePhoneNumber(technicianPhone);
+  const digits = normalizePhoneLookup(normalizedPhone);
+
+  if (digits?.length === 10) {
+    return `Technician (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+
+  return normalizedPhone ? `Technician ${normalizedPhone}` : null;
 }
 
 function unwrapQueryResult(label, result) {
@@ -236,6 +271,140 @@ export async function ensureCustomerContact(client, payload = {}) {
     };
   } catch (error) {
     const retryLookup = await findCustomerOutreachProfile(client, { customerPhone });
+
+    if (retryLookup.status === "matched" || retryLookup.status === "ambiguous") {
+      return retryLookup;
+    }
+
+    throw error;
+  }
+}
+
+async function listTechnicianOutreachProfiles(client) {
+  const result = await client
+    .from("technicians")
+    .select("tech_id,name,primary_phone,email,service_area");
+
+  return unwrapQueryResult("technicians.listOutreachProfiles", result) || [];
+}
+
+export async function findTechnicianOutreachProfile(client, { technicianPhone = null } = {}) {
+  const normalizedTarget = normalizePhoneLookup(technicianPhone);
+
+  if (!normalizedTarget) {
+    return {
+      status: "missing_phone",
+      technician: null,
+    };
+  }
+
+  const technicians = await listTechnicianOutreachProfiles(client);
+  const matches = technicians.filter((technician) => {
+    const candidatePhone = normalizePhoneLookup(technician.primary_phone);
+    return candidatePhone && candidatePhone === normalizedTarget;
+  });
+
+  if (matches.length === 1) {
+    return {
+      status: "matched",
+      technician: matches[0],
+    };
+  }
+
+  if (matches.length > 1) {
+    return {
+      status: "ambiguous",
+      technician: null,
+    };
+  }
+
+  return {
+    status: "not_found",
+    technician: null,
+  };
+}
+
+function buildCapturedTechnicianNotes({ triggerSource, leadSource, sourceLeadId }) {
+  const parts = ["Automatically captured from initial technician call."];
+  const source = toNullableString(leadSource) || toNullableString(triggerSource);
+  const leadId = toNullableString(sourceLeadId);
+
+  if (source) {
+    parts.push(`Source: ${source}.`);
+  }
+
+  if (leadId) {
+    parts.push(`Lead ID: ${leadId}.`);
+  }
+
+  return parts.join(" ");
+}
+
+async function createCapturedTechnicianContact(client, payload) {
+  const result = await client
+    .from("technicians")
+    .insert({
+      name: payload.technicianName,
+      primary_phone: payload.technicianPhone,
+      email: null,
+      service_area: "Unassigned",
+      service_zip_codes: [],
+      skills: [],
+      availability_notes: buildCapturedTechnicianNotes(payload),
+      status_today: "unassigned",
+      jobs_completed_this_week: 0,
+      callback_rate_percent: 0,
+      payout_total: 0,
+      gas_reimbursement_total: 0,
+      score: 0,
+    })
+    .select("tech_id,name,primary_phone,email,service_area")
+    .single();
+
+  return unwrapQueryResult("technicians.createCapturedContact", result);
+}
+
+export async function ensureTechnicianContact(client, payload = {}) {
+  const technicianPhone = normalizePhoneNumber(payload.technicianPhone || payload.customerPhone);
+
+  if (!technicianPhone) {
+    return {
+      status: "skipped",
+      technician: null,
+    };
+  }
+
+  const existingLookup = await findTechnicianOutreachProfile(client, { technicianPhone });
+
+  if (existingLookup.status === "matched" || existingLookup.status === "ambiguous") {
+    return existingLookup;
+  }
+
+  const providedTechnicianName = toNullableString(payload.technicianName || payload.customerName);
+  const technicianName = hasMeaningfulTechnicianName(providedTechnicianName, technicianPhone)
+    ? providedTechnicianName
+    : payload.allowPlaceholderName === true
+      ? formatTechnicianPhoneContactName(technicianPhone)
+      : null;
+
+  if (!technicianName) {
+    return {
+      status: "skipped",
+      technician: null,
+    };
+  }
+
+  try {
+    return {
+      status: "created",
+      technician: await createCapturedTechnicianContact(client, {
+        ...payload,
+        technicianName,
+        technicianPhone,
+      }),
+    };
+  } catch (error) {
+    const retryLookup = await findTechnicianOutreachProfile(client, { technicianPhone });
 
     if (retryLookup.status === "matched" || retryLookup.status === "ambiguous") {
       return retryLookup;

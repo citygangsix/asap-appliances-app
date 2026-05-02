@@ -16,6 +16,7 @@ import {
   buildMissedCallSmsBody,
   createOutboundContactAttempt,
   ensureCustomerContact,
+  ensureTechnicianContact,
   findCustomerOutreachProfile,
   findLatestAutomatedCallAttemptByNumber,
   findLatestOutboundContactAttempt,
@@ -252,8 +253,21 @@ function resolveTriggerSource(payload) {
   return toNullableString(payload.triggerSource) || "manual_ui";
 }
 
+function resolveContactType(payload) {
+  return payload.contactType === "technician" || payload.persistTechnicianContact === true
+    ? "technician"
+    : "customer";
+}
+
 function shouldPersistCustomerContact(payload, triggerSource) {
   return payload.persistCustomerContact === true || triggerSource === "manual_phone_dialer";
+}
+
+function shouldPersistTechnicianContact(payload, triggerSource, contactType) {
+  return (
+    payload.persistTechnicianContact === true ||
+    (contactType === "technician" && triggerSource === "manual_phone_dialer")
+  );
 }
 
 function formatCallStatus(callStatus) {
@@ -783,6 +797,8 @@ export async function requestClickToCall(payload = {}) {
   const customerPhone = toNullableString(payload.customerPhone);
   const normalizedCustomerPhone = normalizeTwilioDialNumber(customerPhone);
   const customerName = toNullableString(payload.customerName) || "customer";
+  const contactType = resolveContactType(payload);
+  const contactLabel = contactType === "technician" ? "technician" : "customer";
   const { agentPhone, ignoredRequestedAgentPhone } = resolveClickToCallAgentPhone(
     config,
     payload.agentPhone,
@@ -801,7 +817,7 @@ export async function requestClickToCall(payload = {}) {
       ok: false,
       status: 400,
       dryRun,
-      message: "Click-to-call requires a customer phone number.",
+      message: `Click-to-call requires a ${contactLabel} phone number.`,
     };
   }
 
@@ -810,7 +826,7 @@ export async function requestClickToCall(payload = {}) {
       ok: false,
       status: 400,
       dryRun,
-      message: "Click-to-call requires a valid US customer phone number or an E.164 international number.",
+      message: `Click-to-call requires a valid US ${contactLabel} phone number or an E.164 international number.`,
     };
   }
 
@@ -895,6 +911,7 @@ export async function requestClickToCall(payload = {}) {
 
   const callPayload = {
     ...payload,
+    contactType,
     customerPhone: normalizedCustomerPhone,
     businessPhoneNumber: normalizedBusinessPhoneNumber,
   };
@@ -914,6 +931,7 @@ export async function requestClickToCall(payload = {}) {
         businessPhoneNumber: normalizedBusinessPhoneNumber,
         customerPhone: normalizedCustomerPhone,
         customerName,
+        contactType,
         bridgeUrl,
         statusCallbackUrl,
         recordingCallbackUrl,
@@ -925,14 +943,19 @@ export async function requestClickToCall(payload = {}) {
   }
 
   const client = getServerSupabaseClient();
-  const customerLookup = await findCustomerOutreachProfile(client, {
-    customerId: toNullableString(payload.customerId),
-    customerPhone: normalizedCustomerPhone,
-  });
+  const shouldUseCustomerCrm = contactType === "customer";
+  const customerLookup = shouldUseCustomerCrm
+    ? await findCustomerOutreachProfile(client, {
+        customerId: toNullableString(payload.customerId),
+        customerPhone: normalizedCustomerPhone,
+      })
+    : { status: "skipped", customer: null };
   let customerProfile = customerLookup.customer;
-  let resolvedCustomerId = toNullableString(payload.customerId) || customerProfile?.customer_id || null;
+  let resolvedCustomerId = shouldUseCustomerCrm
+    ? toNullableString(payload.customerId) || customerProfile?.customer_id || null
+    : null;
 
-  if (isCustomerOptedOut(customerProfile)) {
+  if (shouldUseCustomerCrm && isCustomerOptedOut(customerProfile)) {
     await createOutboundContactAttempt(client, {
       customerId: resolvedCustomerId,
       communicationId: null,
@@ -954,7 +977,7 @@ export async function requestClickToCall(payload = {}) {
     };
   }
 
-  if (isAutomated) {
+  if (shouldUseCustomerCrm && isAutomated) {
     const cooldownCutoff = customerProfile?.auto_contact_cooldown_until
       ? new Date(customerProfile.auto_contact_cooldown_until)
       : null;
@@ -1033,8 +1056,15 @@ export async function requestClickToCall(payload = {}) {
   });
 
   let customerContactStatus = customerLookup.status;
+  let technicianContactStatus = "skipped";
+  let technicianProfile = null;
+  let resolvedTechnicianId = null;
 
-  if (!resolvedCustomerId && shouldPersistCustomerContact(payload, triggerSource)) {
+  if (
+    shouldUseCustomerCrm &&
+    !resolvedCustomerId &&
+    shouldPersistCustomerContact(payload, triggerSource)
+  ) {
     try {
       const customerContact = await ensureCustomerContact(client, {
         customerName,
@@ -1051,6 +1081,29 @@ export async function requestClickToCall(payload = {}) {
     } catch (error) {
       customerContactStatus = "failed";
       console.error("Click-to-call contact capture failed.", error);
+    }
+  }
+
+  if (
+    contactType === "technician" &&
+    shouldPersistTechnicianContact(payload, triggerSource, contactType)
+  ) {
+    try {
+      const technicianContact = await ensureTechnicianContact(client, {
+        technicianName: customerName,
+        technicianPhone: normalizedCustomerPhone,
+        allowPlaceholderName: triggerSource === "manual_phone_dialer",
+        triggerSource,
+        leadSource: payload.leadSource,
+        sourceLeadId: payload.sourceLeadId,
+      });
+
+      technicianContactStatus = technicianContact.status;
+      technicianProfile = technicianContact.technician || null;
+      resolvedTechnicianId = technicianProfile?.tech_id || null;
+    } catch (error) {
+      technicianContactStatus = "failed";
+      console.error("Click-to-call technician contact capture failed.", error);
     }
   }
 
@@ -1108,8 +1161,12 @@ export async function requestClickToCall(payload = {}) {
     status: 200,
     dryRun: false,
     providerCallSid: twilioResponse?.sid || null,
+    contactType,
     customerId: resolvedCustomerId,
     customerContactStatus,
+    technicianId: resolvedTechnicianId,
+    technicianContactStatus,
+    savedContactStatus: contactType === "technician" ? technicianContactStatus : customerContactStatus,
     agentPhone: normalizedAgentPhone,
     ignoredRequestedAgentPhone,
     businessPhoneNumber: normalizedBusinessPhoneNumber,
