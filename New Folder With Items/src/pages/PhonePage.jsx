@@ -34,6 +34,14 @@ const CONTACT_TYPE_OPTIONS = [
   { value: "customer", label: "Customer" },
   { value: "technician", label: "Technician" },
 ];
+const CONTACT_LIST_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "customer", label: "Customers" },
+  { value: "technician", label: "Technicians" },
+];
+const RECENT_CALLS_STORAGE_KEY = "asap-phone-recent-calls";
+const MAX_RECENT_CALLS = 12;
+const MAX_VISIBLE_CONTACTS = 80;
 
 function onlyPhoneDigits(value) {
   return value.replace(/\D/g, "").slice(0, 11);
@@ -84,6 +92,10 @@ function getContactTypeLabel(contactType) {
   return contactType === "technician" ? "technician" : "customer";
 }
 
+function getContactTypeTitle(contactType) {
+  return contactType === "technician" ? "Technician" : "Customer";
+}
+
 function sanitizeDialValue(value) {
   return String(value).replace(/[^\d*#]/g, "").slice(0, 32);
 }
@@ -120,6 +132,105 @@ function formatUsPhone(value) {
   }
 
   return `(${nationalDigits.slice(0, 3)}) ${nationalDigits.slice(3, 6)}-${nationalDigits.slice(6, 10)}`;
+}
+
+function formatDateTimeLabel(isoValue) {
+  if (!isoValue) {
+    return "Just now";
+  }
+
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(isoValue));
+  } catch (error) {
+    return "Recent";
+  }
+}
+
+function readRecentCalls() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const parsedCalls = JSON.parse(window.localStorage.getItem(RECENT_CALLS_STORAGE_KEY) || "[]");
+    return Array.isArray(parsedCalls)
+      ? parsedCalls
+          .filter((call) => call?.phone)
+          .slice(0, MAX_RECENT_CALLS)
+      : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function writeRecentCalls(calls) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(RECENT_CALLS_STORAGE_KEY, JSON.stringify(calls));
+  } catch (error) {
+    // Local storage can be unavailable in private browser contexts.
+  }
+}
+
+function buildContactDirectory(customers, technicians) {
+  return [
+    ...customers.map((customer) => ({
+      id: `customer:${customer.customerId}`,
+      contactType: "customer",
+      name: customer.name,
+      primaryPhone: customer.primaryPhone || "",
+      secondaryPhone: customer.secondaryPhone || "",
+      email: customer.email || "",
+      label: customer.customerSegment || customer.serviceArea || "Customer",
+    })),
+    ...technicians.map((technician) => ({
+      id: `technician:${technician.techId}`,
+      contactType: "technician",
+      name: technician.name,
+      primaryPhone: technician.primaryPhone || "",
+      secondaryPhone: "",
+      email: technician.email || "",
+      label: technician.serviceArea || "Technician",
+    })),
+  ].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function contactMatchesSearch(contact, searchValue) {
+  const searchText = String(searchValue || "").trim().toLowerCase();
+
+  if (!searchText) {
+    return true;
+  }
+
+  const searchDigits = searchText.replace(/\D/g, "");
+  const contactPhones = [contact.primaryPhone, contact.secondaryPhone].filter(Boolean);
+
+  if (searchDigits) {
+    return contactPhones.some((phone) => {
+      const phoneDigits = normalizePhoneLookup(phone) || "";
+      return phoneDigits.includes(searchDigits);
+    });
+  }
+
+  return [contact.name, contact.label, contact.email]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(searchText));
+}
+
+function getCallOutcomeTone(outcome) {
+  if (outcome === "failed") {
+    return "rose";
+  }
+
+  return "emerald";
 }
 
 function getStatusTone(status) {
@@ -182,6 +293,10 @@ export function PhonePage() {
   const [status, setStatus] = useState("Ready");
   const [message, setMessage] = useState("Enter a contact number and start the Twilio bridge.");
   const [directoryRefreshNonce, setDirectoryRefreshNonce] = useState(0);
+  const [recentCalls, setRecentCalls] = useState(() => readRecentCalls());
+  const [contactSearch, setContactSearch] = useState("");
+  const [contactListFilter, setContactListFilter] = useState("all");
+  const [selectedContactId, setSelectedContactId] = useState(null);
   const audioContextRef = useRef(null);
   const activeToneRef = useRef(null);
   const ringingRef = useRef({ intervalId: null, burst: null });
@@ -208,6 +323,20 @@ export function PhonePage() {
     () => findSavedTechnicianByPhone(technicianDirectory, e164Number || rawNumber),
     [technicianDirectory, e164Number, rawNumber],
   );
+  const contactDirectory = useMemo(
+    () => buildContactDirectory(customerDirectory, technicianDirectory),
+    [customerDirectory, technicianDirectory],
+  );
+  const filteredContacts = useMemo(
+    () =>
+      contactDirectory
+        .filter((contact) => contactListFilter === "all" || contact.contactType === contactListFilter)
+        .filter((contact) => contactMatchesSearch(contact, contactSearch))
+        .slice(0, MAX_VISIBLE_CONTACTS),
+    [contactDirectory, contactListFilter, contactSearch],
+  );
+  const selectedContact =
+    contactDirectory.find((contact) => contact.id === selectedContactId) || null;
   const activeMatchedContact = contactType === "technician" ? matchedTechnician : matchedCustomer;
   const callCustomerName = activeMatchedContact?.name || trimmedCustomerName;
   const callTargetLabel = callCustomerName || formattedNumber || e164Number || "No number entered";
@@ -372,40 +501,104 @@ export function PhonePage() {
   function clearNumber() {
     stopRinging();
     setRawNumber("");
+    setCustomerName("");
     setStatus("Ready");
     setMessage("Ready for the next Twilio bridge call.");
   }
 
-  async function startCall() {
-    if (!canCall) {
+  function rememberRecentCall({ contactType: callContactType, name, phone, outcome }) {
+    const normalizedPhone = toE164(sanitizeDialValue(phone)) || phone;
+    const calledAt = new Date().toISOString();
+
+    setRecentCalls((currentCalls) => {
+      const targetPhone = normalizePhoneLookup(normalizedPhone);
+      const nextCalls = [
+        {
+          id: `${calledAt}:${callContactType}:${normalizedPhone}`,
+          contactType: callContactType,
+          name: name || formatUsPhone(normalizedPhone) || normalizedPhone,
+          phone: normalizedPhone,
+          outcome,
+          calledAt,
+        },
+        ...currentCalls.filter(
+          (call) =>
+            call.contactType !== callContactType ||
+            normalizePhoneLookup(call.phone) !== targetPhone,
+        ),
+      ].slice(0, MAX_RECENT_CALLS);
+
+      return nextCalls;
+    });
+  }
+
+  function loadDialTarget(target, nextMessage = null) {
+    const targetPhone = target.primaryPhone || target.phone || "";
+    const targetContactType = target.contactType || "customer";
+
+    setRawNumber(sanitizeDialValue(targetPhone));
+    setCustomerName(target.name || "");
+    setContactType(targetContactType);
+    setSelectedContactId(target.id || null);
+    setStatus("Ready");
+    setMessage(
+      nextMessage ||
+        `${target.name || formatUsPhone(targetPhone) || "Contact"} loaded in the dialer.`,
+    );
+  }
+
+  async function startCall(callOverride = {}) {
+    const draftRawNumber = callOverride.phone ? sanitizeDialValue(callOverride.phone) : rawNumber;
+    const draftE164Number = toE164(draftRawNumber);
+
+    if (!draftE164Number || status === "Calling") {
       return;
     }
 
     const selectedAgentPhone = e164AgentPhone || null;
-    const isTechnicianCall = contactType === "technician";
+    const draftContactType = callOverride.contactType || contactType;
+    const isTechnicianCall = draftContactType === "technician";
+    const draftFormattedNumber = formatUsPhone(draftRawNumber);
+    const draftMatchedCustomer = isTechnicianCall
+      ? null
+      : findSavedCustomerByPhone(customerDirectory, draftE164Number || draftRawNumber);
+    const draftMatchedTechnician = isTechnicianCall
+      ? findSavedTechnicianByPhone(technicianDirectory, draftE164Number || draftRawNumber)
+      : null;
+    const draftMatchedContact = isTechnicianCall ? draftMatchedTechnician : draftMatchedCustomer;
+    const draftName = draftMatchedContact?.name || String(callOverride.name || customerName).trim();
+    const draftTargetLabel = draftName || draftFormattedNumber || draftE164Number;
 
     setStatus("Calling");
     startRinging();
     setMessage(
       selectedAgentPhone
-        ? `Calling ${formatUsPhone(selectedAgentPhone)} first. Answer it to connect ${callTargetLabel}.`
-        : `Calling the configured office phone first. Answer it to connect ${callTargetLabel}.`,
+        ? `Calling ${formatUsPhone(selectedAgentPhone)} first. Answer it to connect ${draftTargetLabel}.`
+        : `Calling the configured office phone first. Answer it to connect ${draftTargetLabel}.`,
     );
 
     try {
-      const shouldRefreshDirectoryAfterCall = !activeMatchedContact;
+      const shouldRefreshDirectoryAfterCall = !draftMatchedContact;
       const result = await requestClickToCall({
-        ...(matchedCustomer?.customerId && !isTechnicianCall ? { customerId: matchedCustomer.customerId } : {}),
-        contactType,
-        customerName: callCustomerName || formattedNumber || e164Number,
-        customerPhone: e164Number,
-        persistCustomerContact: !isTechnicianCall && !matchedCustomer,
-        persistTechnicianContact: isTechnicianCall && !matchedTechnician,
+        ...(draftMatchedCustomer?.customerId && !isTechnicianCall
+          ? { customerId: draftMatchedCustomer.customerId }
+          : {}),
+        contactType: draftContactType,
+        customerName: draftName || draftFormattedNumber || draftE164Number,
+        customerPhone: draftE164Number,
+        persistCustomerContact: !isTechnicianCall && !draftMatchedCustomer,
+        persistTechnicianContact: isTechnicianCall && !draftMatchedTechnician,
         ...(selectedAgentPhone ? { agentPhone: selectedAgentPhone } : {}),
         triggerSource: "manual_phone_dialer",
       });
       stopRinging();
       setStatus("Sent");
+      rememberRecentCall({
+        contactType: draftContactType,
+        name: draftName,
+        phone: draftE164Number,
+        outcome: "sent",
+      });
       const savedContactStatus =
         result.savedContactStatus ||
         (isTechnicianCall ? result.technicianContactStatus : result.customerContactStatus);
@@ -424,8 +617,39 @@ export function PhonePage() {
     } catch (error) {
       stopRinging();
       setStatus("Failed");
+      rememberRecentCall({
+        contactType: draftContactType,
+        name: draftName,
+        phone: draftE164Number,
+        outcome: "failed",
+      });
       setMessage(error.message);
     }
+  }
+
+  function callRecentCall(call) {
+    loadDialTarget(
+      {
+        contactType: call.contactType,
+        name: call.name,
+        phone: call.phone,
+      },
+      `Calling ${call.name || formatUsPhone(call.phone)} again.`,
+    );
+    startCall({
+      contactType: call.contactType,
+      name: call.name,
+      phone: call.phone,
+    });
+  }
+
+  function callContact(contact) {
+    loadDialTarget(contact, `Calling ${contact.name || formatUsPhone(contact.primaryPhone)}.`);
+    startCall({
+      contactType: contact.contactType,
+      name: contact.name,
+      phone: contact.primaryPhone,
+    });
   }
 
   function resetCallState() {
@@ -433,6 +657,10 @@ export function PhonePage() {
     setStatus("Ready");
     setMessage("Ready for the next Twilio bridge call.");
   }
+
+  useEffect(() => {
+    writeRecentCalls(recentCalls);
+  }, [recentCalls]);
 
   useEffect(() => {
     if (matchedTechnician && !matchedCustomer && contactType !== "technician") {
@@ -602,7 +830,7 @@ export function PhonePage() {
             <button
               className="min-h-[60px] rounded-2xl bg-emerald-500 px-5 py-3 text-base font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               disabled={!canCall}
-              onClick={startCall}
+              onClick={() => startCall()}
               type="button"
             >
               Call from Twilio
@@ -651,16 +879,163 @@ export function PhonePage() {
           </Card>
 
           <Card className="border-white/10 bg-[#1c1e26] p-5 text-white sm:p-6">
-            <p className="section-title">Twilio bridge calling</p>
-            <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
-              <p>
-                This screen posts to <span className="font-semibold text-white">POST /api/twilio/outbound/calls</span>,
-                then Twilio rings the configured office phone, or the selected override, before bridging the saved contact.
-              </p>
-              <p>
-                The contact sees the configured Twilio business number, and the call can be recorded through the CRM callback path.
-              </p>
+            <div className="flex items-center justify-between gap-4">
+              <p className="section-title">Recent calls</p>
+              {recentCalls.length ? (
+                <button
+                  className="rounded-full border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-white/[0.07]"
+                  onClick={() => setRecentCalls([])}
+                  type="button"
+                >
+                  Clear
+                </button>
+              ) : null}
             </div>
+            {recentCalls.length ? (
+              <div className="mt-4 grid gap-3">
+                {recentCalls.map((call) => (
+                  <div
+                    className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:grid-cols-[1fr_auto] sm:items-center"
+                    key={call.id}
+                  >
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          className="text-left text-base font-semibold text-white underline decoration-white/20 underline-offset-4 transition hover:text-emerald-200"
+                          disabled={status === "Calling"}
+                          onClick={() => callRecentCall(call)}
+                          type="button"
+                        >
+                          {formatUsPhone(call.phone)}
+                        </button>
+                        <Badge tone={getCallOutcomeTone(call.outcome)}>
+                          {call.outcome === "failed" ? "Failed" : "Sent"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-400">
+                        {[call.name, getContactTypeTitle(call.contactType), formatDateTimeLabel(call.calledAt)]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                    <button
+                      className="min-h-[40px] rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                      disabled={status === "Calling"}
+                      onClick={() => callRecentCall(call)}
+                      type="button"
+                    >
+                      Call
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-400">
+                No recent calls.
+              </div>
+            )}
+          </Card>
+
+          <Card className="border-white/10 bg-[#1c1e26] p-5 text-white sm:p-6">
+            <div className="flex items-center justify-between gap-4">
+              <p className="section-title">Contacts</p>
+              <Badge tone="slate">{contactDirectory.length}</Badge>
+            </div>
+            <label className="mt-4 block text-sm font-semibold text-slate-300">
+              Search phone
+              <input
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
+                inputMode="tel"
+                onChange={(event) => setContactSearch(event.target.value)}
+                placeholder="Search by phone number"
+                type="search"
+                value={contactSearch}
+              />
+            </label>
+            <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+              {CONTACT_LIST_FILTERS.map((option) => (
+                <button
+                  className={`min-h-[40px] rounded-xl px-2 text-xs font-semibold transition ${
+                    contactListFilter === option.value
+                      ? "bg-sky-500 text-white"
+                      : "text-slate-300 hover:bg-white/[0.07]"
+                  }`}
+                  key={option.value}
+                  onClick={() => setContactListFilter(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
+              {filteredContacts.length ? (
+                filteredContacts.map((contact) => (
+                  <div
+                    className={`grid gap-3 rounded-2xl border p-4 sm:grid-cols-[1fr_auto] sm:items-center ${
+                      selectedContact?.id === contact.id
+                        ? "border-sky-300/40 bg-sky-400/10"
+                        : "border-white/10 bg-white/[0.04]"
+                    }`}
+                    key={contact.id}
+                  >
+                    <button
+                      className="text-left"
+                      onClick={() => {
+                        setSelectedContactId(contact.id);
+                        loadDialTarget(contact);
+                      }}
+                      type="button"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-white">{contact.name}</p>
+                        <Badge tone={contact.contactType === "technician" ? "blue" : "emerald"}>
+                          {getContactTypeTitle(contact.contactType)}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-400">
+                        {[formatUsPhone(contact.primaryPhone) || "No phone", contact.label]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </button>
+                    <button
+                      className="min-h-[40px] rounded-xl bg-sky-500 px-4 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                      disabled={status === "Calling" || !toE164(sanitizeDialValue(contact.primaryPhone))}
+                      onClick={() => callContact(contact)}
+                      type="button"
+                    >
+                      Call
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-400">
+                  No matching contacts.
+                </div>
+              )}
+            </div>
+            {selectedContact ? (
+              <div className="mt-4 rounded-2xl border border-white/10 bg-[#10131b] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Selected contact
+                    </p>
+                    <p className="mt-2 text-xl font-semibold text-white">{selectedContact.name}</p>
+                  </div>
+                  <Badge tone={selectedContact.contactType === "technician" ? "blue" : "emerald"}>
+                    {getContactTypeTitle(selectedContact.contactType)}
+                  </Badge>
+                </div>
+                <div className="mt-4 grid gap-2 text-sm text-slate-300">
+                  <p>{formatUsPhone(selectedContact.primaryPhone) || "No primary phone"}</p>
+                  {selectedContact.secondaryPhone ? <p>{formatUsPhone(selectedContact.secondaryPhone)}</p> : null}
+                  {selectedContact.email ? <p>{selectedContact.email}</p> : null}
+                  <p>{selectedContact.label}</p>
+                </div>
+              </div>
+            ) : null}
           </Card>
         </div>
       </div>
