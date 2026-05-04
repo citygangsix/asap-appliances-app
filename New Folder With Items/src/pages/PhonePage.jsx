@@ -395,6 +395,7 @@ export function PhonePage() {
   const audioContextRef = useRef(null);
   const activeToneRef = useRef(null);
   const ringingRef = useRef({ intervalId: null, burst: null });
+  const smsComposerRef = useRef(null);
   const customersQuery = useAsyncValue(
     () => repository.customers.list(),
     [repository, directoryRefreshNonce],
@@ -655,6 +656,26 @@ export function PhonePage() {
     );
   }
 
+  function focusSmsComposer() {
+    window.setTimeout(() => {
+      smsComposerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      smsComposerRef.current?.focus();
+    }, 50);
+  }
+
+  function loadTextTarget(target, nextMessage = null) {
+    const targetPhone = target.primaryPhone || target.phone || "";
+    const targetName = target.name || formatUsPhone(targetPhone) || "Contact";
+
+    loadDialTarget(
+      target,
+      nextMessage || `${targetName} loaded for texting. Write a message and press Send text.`,
+    );
+    setSmsStatus("Ready");
+    setSmsMessage(`${targetName} is ready for a Twilio text.`);
+    focusSmsComposer();
+  }
+
   async function startCall(callOverride = {}) {
     const draftRawNumber = callOverride.phone ? sanitizeDialValue(callOverride.phone) : rawNumber;
     const draftE164Number = toE164(draftRawNumber);
@@ -812,7 +833,7 @@ export function PhonePage() {
   }
 
   function textContact(contact) {
-    loadDialTarget(contact, `Texting ${contact.name || formatUsPhone(contact.primaryPhone)}.`);
+    loadTextTarget(contact, `Texting ${contact.name || formatUsPhone(contact.primaryPhone)}.`);
   }
 
   function resetCallState() {
@@ -1022,6 +1043,7 @@ export function PhonePage() {
               <Badge tone={getStatusTone(smsStatus)}>{smsStatus}</Badge>
             </div>
             <textarea
+              ref={smsComposerRef}
               className="mt-4 min-h-[132px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium leading-6 text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
               onChange={(event) => setSmsBody(event.target.value)}
               placeholder="Write a text to send from the Twilio phone"
@@ -1193,7 +1215,7 @@ export function PhonePage() {
                       <button
                         className="min-h-[40px] rounded-xl bg-indigo-500 px-4 text-sm font-semibold text-white transition hover:bg-indigo-400"
                         onClick={() =>
-                          loadDialTarget(
+                          loadTextTarget(
                             {
                               contactType: call.contactType,
                               name: call.name,

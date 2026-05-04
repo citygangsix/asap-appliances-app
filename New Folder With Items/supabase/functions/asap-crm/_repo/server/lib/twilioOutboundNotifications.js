@@ -45,9 +45,21 @@ async function parseTwilioResponse(response) {
       );
     }
 
-    throw new Error(
-      responseJson?.message || `Twilio request failed with status ${response.status}.`,
-    );
+    const providerMessage = toNullableString(responseJson?.message);
+    const providerCode = toNullableString(responseJson?.code);
+    const normalizedProviderMessage = providerMessage?.toLowerCase() || "";
+
+    if (
+      providerCode === "21608" ||
+      normalizedProviderMessage.includes("verified caller id") ||
+      normalizedProviderMessage.includes("verified phone number")
+    ) {
+      throw new Error(
+        "SignalWire/Twilio rejected this text because the destination number is not verified on the restricted provider account. Verify the destination number in the provider dashboard, or remove Trial Mode/fund the SignalWire Space, then try again.",
+      );
+    }
+
+    throw new Error(providerMessage || `Twilio request failed with status ${response.status}.`);
   }
 
   return responseJson;

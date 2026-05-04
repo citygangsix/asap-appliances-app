@@ -54,19 +54,27 @@ function resolveTriggerSource(payload) {
 }
 
 function shouldPersistCustomerContact(payload, triggerSource) {
-  return payload.persistCustomerContact === true || triggerSource === "manual_phone_dialer";
+  return (
+    payload.persistCustomerContact !== false &&
+    (payload.persistCustomerContact === true || triggerSource.startsWith("manual_phone"))
+  );
 }
 
 function shouldPersistTechnicianContact(payload, triggerSource, contactType) {
   return (
-    payload.persistTechnicianContact === true ||
-    (contactType === "technician" && triggerSource === "manual_phone_dialer")
+    payload.persistTechnicianContact !== false &&
+    (payload.persistTechnicianContact === true ||
+      (contactType === "technician" && triggerSource.startsWith("manual_phone")))
   );
 }
 
 function buildSmsPreview(body) {
   const trimmed = String(body ?? "").trim();
   return trimmed.length > 140 ? `${trimmed.slice(0, 137)}...` : trimmed;
+}
+
+function looksLikeLocalAttachmentReference(body) {
+  return /^file:\/\//iu.test(body) || /\/var\/mobile\/Library\/SMS\/Attachments\//iu.test(body);
 }
 
 async function createManualSmsCommunicationLog(client, config, payload) {
@@ -127,6 +135,16 @@ export async function requestManualOutboundSms(payload = {}) {
       status: 400,
       dryRun,
       message: "Text message body is required.",
+    };
+  }
+
+  if (looksLikeLocalAttachmentReference(body)) {
+    return {
+      ok: false,
+      status: 400,
+      dryRun,
+      message:
+        "That looks like a phone-local attachment path. The Phone CRM can send text, not local iPhone file links. Paste normal text or a public https link.",
     };
   }
 
@@ -233,6 +251,12 @@ export async function requestManualOutboundSms(payload = {}) {
       label: "manual-phone-crm-sms",
     });
   } catch (error) {
+    console.error("[manual-sms][provider-send]", {
+      contactType,
+      toNumber,
+      triggerSource,
+      message: error?.message || "Manual SMS failed.",
+    });
     await createOutboundContactAttempt(client, {
       customerId: resolvedCustomerId,
       communicationId: null,
@@ -304,6 +328,7 @@ export async function requestManualOutboundSms(payload = {}) {
     customerContactStatus,
     technicianId: resolvedTechnicianId,
     technicianContactStatus,
+    savedContactStatus: contactType === "technician" ? technicianContactStatus : customerContactStatus,
     message: communicationLogError
       ? `Text sent, but CRM logging needs attention: ${communicationLogError}`
       : `Text sent to ${toNumber}.`,
