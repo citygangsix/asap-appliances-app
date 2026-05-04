@@ -22,6 +22,8 @@ import {
   handleClickToCallStatusCallback,
   requestClickToCall,
 } from "./lib/twilioClickToCall.js";
+import { listActiveTwilioCalls } from "./lib/twilioActiveCalls.js";
+import { requestManualOutboundSms } from "./lib/twilioManualSms.js";
 import { handleThumbtackLeadRequest } from "./lib/thumbtackLeadBridge.js";
 import { logManualCall } from "./lib/manualCallLogs.js";
 import { persistRecordingStatusCallback } from "./lib/twilioVoiceRecordings.js";
@@ -40,6 +42,8 @@ const VOICE_WEBHOOK_PATH = "/api/twilio/voice";
 const CALL_STATUS_WEBHOOK_PATH = "/api/twilio/calls/status";
 const RECORDING_STATUS_WEBHOOK_PATH = "/api/twilio/recordings/status";
 const CLICK_TO_CALL_PATH = "/api/twilio/outbound/calls";
+const ACTIVE_CALLS_PATH = "/api/twilio/outbound/calls/active";
+const OUTBOUND_MESSAGES_PATH = "/api/twilio/outbound/messages";
 const CLICK_TO_CALL_BRIDGE_PATH = "/api/twilio/outbound/bridge";
 const CLICK_TO_CALL_STATUS_PATH = "/api/twilio/outbound/calls/status";
 const BROWSER_CALL_PATH = "/api/twilio/browser-call";
@@ -307,6 +311,17 @@ async function handleClickToCallRequest(request, response) {
   respondJson(response, result.status || (result.ok ? 200 : 500), result);
 }
 
+async function handleActiveCallsRequest(request, response) {
+  const result = await listActiveTwilioCalls();
+  respondJson(response, result.status || 200, result);
+}
+
+async function handleOutboundMessageRequest(request, response) {
+  const body = await readRequestBody(request);
+  const result = await requestManualOutboundSms(parseJsonBody(body));
+  respondJson(response, result.status || (result.ok ? 200 : 500), result);
+}
+
 async function handleBrowserCallRequest(request, response) {
   const body = await readRequestBody(request);
   const result = await requestBrowserCall(parseJsonBody(body));
@@ -463,6 +478,16 @@ async function routeRequest(request, response) {
     return;
   }
 
+  if (request.method === "GET" && requestUrl.pathname === ACTIVE_CALLS_PATH) {
+    await handleActiveCallsRequest(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === OUTBOUND_MESSAGES_PATH) {
+    await handleOutboundMessageRequest(request, response);
+    return;
+  }
+
   if (request.method === "POST" && requestUrl.pathname === BROWSER_CALL_PATH) {
     await handleBrowserCallRequest(request, response);
     return;
@@ -560,6 +585,8 @@ server.listen(port, () => {
   console.log(`[twilio-webhooks] call route: ${CALL_STATUS_WEBHOOK_PATH}`);
   console.log(`[twilio-webhooks] recording route: ${RECORDING_STATUS_WEBHOOK_PATH}`);
   console.log(`[twilio-webhooks] click-to-call route: ${CLICK_TO_CALL_PATH}`);
+  console.log(`[twilio-webhooks] active calls route: ${ACTIVE_CALLS_PATH}`);
+  console.log(`[twilio-webhooks] outbound messages route: ${OUTBOUND_MESSAGES_PATH}`);
   console.log(`[twilio-webhooks] click-to-call bridge route: ${CLICK_TO_CALL_BRIDGE_PATH}`);
   console.log(`[twilio-webhooks] click-to-call status route: ${CLICK_TO_CALL_STATUS_PATH}`);
   console.log(`[twilio-webhooks] browser call route: ${BROWSER_CALL_PATH}`);

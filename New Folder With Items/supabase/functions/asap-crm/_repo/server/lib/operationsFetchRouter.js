@@ -18,6 +18,8 @@ import {
   handleClickToCallStatusCallback,
   requestClickToCall,
 } from "./twilioClickToCall.js";
+import { listActiveTwilioCalls } from "./twilioActiveCalls.js";
+import { requestManualOutboundSms } from "./twilioManualSms.js";
 import { handleThumbtackLeadRequest } from "./thumbtackLeadBridge.js";
 import { logManualCall } from "./manualCallLogs.js";
 import { persistRecordingStatusCallback } from "./twilioVoiceRecordings.js";
@@ -35,6 +37,8 @@ const VOICE_WEBHOOK_PATH = "/api/twilio/voice";
 const CALL_STATUS_WEBHOOK_PATH = "/api/twilio/calls/status";
 const RECORDING_STATUS_WEBHOOK_PATH = "/api/twilio/recordings/status";
 const CLICK_TO_CALL_PATH = "/api/twilio/outbound/calls";
+const ACTIVE_CALLS_PATH = "/api/twilio/outbound/calls/active";
+const OUTBOUND_MESSAGES_PATH = "/api/twilio/outbound/messages";
 const CLICK_TO_CALL_BRIDGE_PATH = "/api/twilio/outbound/bridge";
 const CLICK_TO_CALL_STATUS_PATH = "/api/twilio/outbound/calls/status";
 const BROWSER_CALL_PATH = "/api/twilio/browser-call";
@@ -280,6 +284,16 @@ async function handleClickToCallRequest(request) {
   return respondJson(result.status || (result.ok ? 200 : 500), result);
 }
 
+async function handleActiveCallsRequest() {
+  const result = await listActiveTwilioCalls();
+  return respondJson(result.status || 200, result);
+}
+
+async function handleOutboundMessageRequest(request) {
+  const result = await requestManualOutboundSms(parseJsonBody(await request.text()));
+  return respondJson(result.status || (result.ok ? 200 : 500), result);
+}
+
 async function handleBrowserCallRequest(request) {
   const result = await requestBrowserCall(parseJsonBody(await request.text()));
   return respondJson(result.status || (result.ok ? 200 : 500), result);
@@ -426,6 +440,14 @@ export async function handleOperationsFetchRequest(request, options = {}) {
 
     if (request.method === "POST" && pathname === CLICK_TO_CALL_PATH) {
       return await handleClickToCallRequest(request);
+    }
+
+    if (request.method === "GET" && pathname === ACTIVE_CALLS_PATH) {
+      return await handleActiveCallsRequest();
+    }
+
+    if (request.method === "POST" && pathname === OUTBOUND_MESSAGES_PATH) {
+      return await handleOutboundMessageRequest(request);
     }
 
     if (request.method === "POST" && pathname === BROWSER_CALL_PATH) {
