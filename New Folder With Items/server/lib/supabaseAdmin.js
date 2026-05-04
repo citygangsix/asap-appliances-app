@@ -61,6 +61,36 @@ function readOptionalNumberEnv(key, fallback) {
   return readServerNumberEnv(key, fallback);
 }
 
+function normalizeSignalWireApiBaseUrl() {
+  let normalizedSpaceUrl = readOptionalEnv("SIGNALWIRE_SPACE_URL")?.trim().replace(/\/$/u, "");
+
+  if (!normalizedSpaceUrl) {
+    return null;
+  }
+
+  if (!/^https?:\/\//iu.test(normalizedSpaceUrl)) {
+    normalizedSpaceUrl = normalizedSpaceUrl.includes(".")
+      ? `https://${normalizedSpaceUrl}`
+      : `https://${normalizedSpaceUrl}.signalwire.com`;
+  }
+
+  let parsedSpaceUrl = null;
+
+  try {
+    parsedSpaceUrl = new URL(normalizedSpaceUrl);
+  } catch (error) {
+    return null;
+  }
+
+  const normalizedPathname = parsedSpaceUrl.pathname.replace(/\/$/u, "");
+
+  if (/\/api\/laml\/2010-04-01$/u.test(normalizedPathname)) {
+    return `${parsedSpaceUrl.origin}${normalizedPathname}`;
+  }
+
+  return `${parsedSpaceUrl.origin}/api/laml/2010-04-01`;
+}
+
 export function getTwilioServerConfig() {
   const phoneNumber = readRequiredEnv("TWILIO_PHONE_NUMBER");
   const lumiaInvoicePhoneNumber = readOptionalEnv("LUMIA_INVOICE_SMS_PHONE_NUMBER");
@@ -76,12 +106,13 @@ export function getTwilioServerConfig() {
   return {
     supabaseUrl: readRequiredSupabaseUrl(),
     supabaseServiceRoleKey: readRequiredSupabaseServiceRoleKey(),
-    accountSid: readRequiredEnv("TWILIO_ACCOUNT_SID"),
-    authToken: readRequiredEnv("TWILIO_AUTH_TOKEN"),
+    accountSid: readOptionalEnv("SIGNALWIRE_PROJECT_ID") || readRequiredEnv("TWILIO_ACCOUNT_SID"),
+    authToken: readOptionalEnv("SIGNALWIRE_API_TOKEN") || readRequiredEnv("TWILIO_AUTH_TOKEN"),
     signalWireSigningKey: readOptionalEnv("SIGNALWIRE_SIGNING_KEY"),
     apiKeySid: readOptionalEnv("TWILIO_API_KEY_SID"),
     apiKeySecret: readOptionalEnv("TWILIO_API_KEY_SECRET"),
     apiBaseUrl:
+      normalizeSignalWireApiBaseUrl() ||
       readOptionalEnv("TWILIO_API_BASE_URL")?.replace(/\/$/u, "") ||
       "https://api.twilio.com/2010-04-01",
     twimlAppSid: readOptionalEnv("TWILIO_TWIML_APP_SID"),

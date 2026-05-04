@@ -1032,12 +1032,192 @@ function buildTranscriptExcerpt(transcriptText, maxLength = 320) {
   return `${normalized.slice(0, maxLength - 3)}...`;
 }
 
+const HIRING_LOCATION_CITIES = [
+  "Boca Raton",
+  "Boynton Beach",
+  "Broward",
+  "Clearwater",
+  "Coral Springs",
+  "Dallas",
+  "Deerfield Beach",
+  "Delray Beach",
+  "Fort Lauderdale",
+  "Fort Myers",
+  "Fort Pierce",
+  "Hialeah",
+  "Hollywood",
+  "Homestead",
+  "Irving",
+  "Kissimmee",
+  "Lakeland",
+  "Margate",
+  "Miami",
+  "Miramar",
+  "Naples",
+  "North Miami",
+  "Ocala",
+  "Orlando",
+  "Palm Beach",
+  "Pembroke Pines",
+  "Plantation",
+  "Plano",
+  "Pompano",
+  "Pompano Beach",
+  "Port St. Lucie",
+  "St. Petersburg",
+  "Tallahassee",
+  "Tampa",
+  "West Palm Beach",
+];
+
+function splitTranscriptSentences(transcriptText) {
+  const normalizedTranscript = normalizeOptionalString(transcriptText).replace(/\s+/gu, " ");
+
+  if (!normalizedTranscript) {
+    return [];
+  }
+
+  return normalizedTranscript
+    .split(/(?<=[.!?])\s+/u)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function findFirstSentence(sentences, pattern) {
+  return sentences.find((sentence) => pattern.test(sentence)) || "";
+}
+
+function findSentences(sentences, pattern, limit = 2) {
+  return sentences.filter((sentence) => pattern.test(sentence)).slice(0, limit);
+}
+
+function joinSentenceSummary(sentences, fallback = "") {
+  const uniqueSentences = [];
+  const seen = new Set();
+
+  for (const sentence of sentences) {
+    const normalized = sentence.toLowerCase();
+
+    if (!sentence || seen.has(normalized)) {
+      continue;
+    }
+
+    uniqueSentences.push(sentence);
+    seen.add(normalized);
+  }
+
+  return uniqueSentences.join(" ") || fallback;
+}
+
+function extractHiringLocation(sentences, transcriptText) {
+  const transcript = normalizeOptionalString(transcriptText);
+  const matchedCity = HIRING_LOCATION_CITIES.find((city) => {
+    const escapedCity = city.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    return new RegExp(`\\b${escapedCity}\\b`, "iu").test(transcript);
+  });
+  const locationSentence = findFirstSentence(
+    sentences,
+    /\b(live|lives|living|from|based|located|area|cover|coverage|service|work\s+(?:in|around|near)|close\s+to\s+where\s+you\s+live)\b/iu,
+  );
+
+  return {
+    city: matchedCity || "",
+    serviceArea: matchedCity ? locationSentence || matchedCity : locationSentence,
+  };
+}
+
+function extractHiringFactsFromTranscript(transcriptText) {
+  const sentences = splitTranscriptSentences(transcriptText);
+  const excerpt = buildTranscriptExcerpt(transcriptText);
+  const location = extractHiringLocation(sentences, transcriptText);
+  const currentJobStatus = joinSentenceSummary(
+    findSentences(
+      sentences,
+      /\b(current(?:ly)?|right\s+now|job|working|work\s+for|employed|side\s+(?:work|jobs?)|contract|notice|after\s+(?:my\s+)?(?:job|work|shift)|before\s+(?:my\s+)?(?:job|work|shift)|for\s+a\s+living)\b/iu,
+      2,
+    ),
+  );
+  const applianceExperienceSummary = joinSentenceSummary(
+    findSentences(
+      sentences,
+      /\b(appliance|washer|dryer|refrigerator|fridge|freezer|dishwasher|oven|stove|range|cooktop|microwave|sealed\s+system|diagnostic|repair)\b/iu,
+      2,
+    ),
+  );
+  const otherWorkExperienceSummary = joinSentenceSummary(
+    findSentences(
+      sentences,
+      /\b(hvac|a\/c|ac\b|air\s+conditioning|electrical|plumb(?:ing)?|install(?:ation|s)?|maintenance|warranty|sales|dispatch|construction|handyman)\b/iu,
+      2,
+    ),
+  );
+  const yearsExperience = findFirstSentence(
+    sentences,
+    /\b(\d+\s*(?:to|-)?\s*\d*\s*years?|years?\s+of\s+experience|experience\s+(?:in|with|doing)|background)\b/iu,
+  );
+  const experienceSummary = joinSentenceSummary(
+    [yearsExperience, applianceExperienceSummary || otherWorkExperienceSummary].filter(Boolean),
+    excerpt,
+  );
+  const toolsVehicleSentences = findSentences(
+    sentences,
+    /\b(tools?|tool\s+bag|meter|multimeter|gauges?|vehicle|car|truck|van|suv|transportation|drive|driving|gas|mileage)\b/iu,
+    2,
+  );
+  const toolsVehicleSummary = joinSentenceSummary(toolsVehicleSentences);
+  const toolsStatus = /\b(have|has|got|own)\s+(?:my\s+|his\s+|her\s+|their\s+)?(?:own\s+)?tools?\b/iu.test(
+    toolsVehicleSummary,
+  )
+    ? "yes"
+    : /\b(no|don'?t|doesn'?t|without)\s+tools?\b/iu.test(toolsVehicleSummary)
+      ? "no"
+      : "unclear";
+  const vehicleStatus = /\b(have|has|got|own|reliable)\s+(?:my\s+|his\s+|her\s+|their\s+)?(?:own\s+)?(?:vehicle|car|truck|van|suv|transportation)\b/iu.test(
+    toolsVehicleSummary,
+  )
+    ? "yes"
+    : /\b(no|don'?t|doesn'?t|without)\s+(?:vehicle|car|truck|van|transportation)\b/iu.test(
+          toolsVehicleSummary,
+        )
+      ? "no"
+      : "unclear";
+  const payoutExpectationSummary = joinSentenceSummary(
+    findSentences(
+      sentences,
+      /\b(pay|paid|payout|diagnostic|installation|install|commission|per\s+(?:call|job)|daily|cash|zelle|gas|mileage|\$\d+)/iu,
+      2,
+    ),
+  );
+  const availabilitySummary = joinSentenceSummary(
+    findSentences(
+      sentences,
+      /\b(available|availability|start|after\s+\d|before\s+\d|morning|afternoon|evening|weekend|weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday|notice)\b/iu,
+      2,
+    ),
+  );
+
+  return {
+    city: location.city,
+    serviceArea: location.serviceArea,
+    currentJobStatus,
+    toolsStatus,
+    vehicleStatus,
+    toolsVehicleSummary,
+    payoutExpectationSummary,
+    availabilitySummary,
+    experienceSummary,
+    applianceExperienceSummary,
+    otherWorkExperienceSummary,
+  };
+}
+
 function buildLocalHeuristicAnalysis(transcriptText) {
   const classification = classifyTranscriptAudienceForCrm(transcriptText);
   const conversationType = classification.conversationType || "other";
   const isHiringConversation = conversationType === "hiring";
   const isServiceConversation = conversationType === "service";
   const excerpt = buildTranscriptExcerpt(transcriptText);
+  const hiringFacts = isHiringConversation ? extractHiringFactsFromTranscript(transcriptText) : {};
 
   return {
     headline: isHiringConversation
@@ -1069,21 +1249,21 @@ function buildLocalHeuristicAnalysis(transcriptText) {
       source: "",
       stage: "contacted",
       trade: isHiringConversation ? "Appliance repair" : "",
-      city: "",
-      service_area: "",
+      city: hiringFacts.city || "",
+      service_area: hiringFacts.serviceArea || "",
       is_hired: false,
       start_date: "",
-      availability_summary: "",
+      availability_summary: hiringFacts.availabilitySummary || "",
       availability_days: [],
       availability_time_preferences: [],
-      current_job_status: "",
-      tools_status: "unclear",
-      vehicle_status: "unclear",
-      tools_vehicle_summary: "",
-      payout_expectation_summary: "",
-      experience_summary: isHiringConversation ? excerpt : "",
-      appliance_experience_summary: "",
-      other_work_experience_summary: "",
+      current_job_status: hiringFacts.currentJobStatus || "",
+      tools_status: hiringFacts.toolsStatus || "unclear",
+      vehicle_status: hiringFacts.vehicleStatus || "unclear",
+      tools_vehicle_summary: hiringFacts.toolsVehicleSummary || "",
+      payout_expectation_summary: hiringFacts.payoutExpectationSummary || "",
+      experience_summary: isHiringConversation ? hiringFacts.experienceSummary || excerpt : "",
+      appliance_experience_summary: hiringFacts.applianceExperienceSummary || "",
+      other_work_experience_summary: hiringFacts.otherWorkExperienceSummary || "",
       next_step: "Review the transcript and update candidate details manually.",
     },
   };

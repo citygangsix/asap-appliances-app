@@ -28,21 +28,6 @@ const HIRING_AVAILABILITY_TIME_PREFERENCES = new Set([
   "overnights",
   "anytime",
 ]);
-const LEGACY_HIRING_CANDIDATE_DETAIL_COLUMNS = new Set([
-  "current_job_status",
-  "tools_status",
-  "vehicle_status",
-  "tools_vehicle_summary",
-  "appliance_experience_summary",
-  "other_work_experience_summary",
-]);
-
-function stripLegacyHiringCandidateDetailColumns(payload) {
-  return Object.fromEntries(
-    Object.entries(payload).filter(([key]) => !LEGACY_HIRING_CANDIDATE_DETAIL_COLUMNS.has(key)),
-  );
-}
-
 function normalizeOptionalString(value) {
   const trimmed = String(value || "").trim();
   return trimmed || null;
@@ -460,7 +445,7 @@ function buildCandidatePayload({ existingCandidate, intelligence, targets, paylo
     normalizeOptionalString(payload.ParentCallSid) ||
     normalizeOptionalString(existingCandidate?.provider_call_sid);
 
-  return stripLegacyHiringCandidateDetailColumns({
+  return {
     name:
       coalesceString(
         candidateName && !["mike", "michael"].includes(candidateName.toLowerCase())
@@ -540,7 +525,7 @@ function buildCandidatePayload({ existingCandidate, intelligence, targets, paylo
       hiredCriteria: hiringCandidate.hiredCriteria || [],
     },
     last_contact_at: intelligence?.transcribedAt || new Date().toISOString(),
-  });
+  };
 }
 
 export async function upsertHiringCandidateFromCall(client, payload, intelligence, targets) {

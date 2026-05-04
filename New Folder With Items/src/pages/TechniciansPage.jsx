@@ -90,6 +90,203 @@ function formatManualOutreachOutcome(value) {
   }
 }
 
+const CANDIDATE_FACT_GROUPS = [
+  {
+    id: "location",
+    label: "Where they are",
+    toneClass: "border-emerald-200 bg-emerald-50 text-emerald-900",
+    value(candidate) {
+      return [candidate.city, candidate.serviceArea].filter(Boolean).join(" · ");
+    },
+    detail(candidate) {
+      return candidate.serviceArea && candidate.city
+        ? "City and work coverage captured from the call."
+        : "Ask where they live and what areas they can cover.";
+    },
+  },
+  {
+    id: "currentWork",
+    label: "Where they work now",
+    toneClass: "border-sky-200 bg-sky-50 text-sky-950",
+    value(candidate) {
+      return candidate.currentJobStatus;
+    },
+    detail() {
+      return "Current job, side work, hours, or notice needed.";
+    },
+  },
+  {
+    id: "jobHistory",
+    label: "Job history",
+    toneClass: "border-indigo-200 bg-indigo-50 text-indigo-950",
+    value(candidate) {
+      return [candidate.experienceSummary, candidate.otherWorkExperienceSummary].filter(Boolean).join(" ");
+    },
+    detail(candidate) {
+      return candidate.applianceExperienceSummary || "Work background and useful adjacent trades.";
+    },
+  },
+  {
+    id: "applianceExperience",
+    label: "Appliance experience",
+    toneClass: "border-violet-200 bg-violet-50 text-violet-950",
+    value(candidate) {
+      return candidate.applianceExperienceSummary || candidate.trade;
+    },
+    detail() {
+      return "Repairs, diagnostics, sealed systems, laundry, cooking, refrigeration.";
+    },
+  },
+  {
+    id: "toolsVehicle",
+    label: "Tools / vehicle",
+    toneClass: "border-amber-200 bg-amber-50 text-amber-950",
+    value(candidate) {
+      const statuses = [
+        candidate.toolsStatus ? `Tools: ${candidate.toolsStatus}` : null,
+        candidate.vehicleStatus ? `Vehicle: ${candidate.vehicleStatus}` : null,
+      ].filter(Boolean);
+
+      return [statuses.join(" · "), candidate.toolsVehicleSummary].filter(Boolean).join(" — ");
+    },
+    detail() {
+      return "Field readiness, transportation, mileage, and equipment.";
+    },
+  },
+  {
+    id: "availabilityPay",
+    label: "Availability / pay",
+    toneClass: "border-rose-200 bg-rose-50 text-rose-950",
+    value(candidate) {
+      return [candidate.availabilitySummary, candidate.payoutExpectationSummary].filter(Boolean).join(" ");
+    },
+    detail(candidate) {
+      return [
+        candidate.availabilityDays?.join(", "),
+        candidate.availabilityTimePreferences?.join(", "),
+      ]
+        .filter(Boolean)
+        .join(" · ") || "Schedule and payout expectations.";
+    },
+  },
+];
+
+const TRANSCRIPT_HIGHLIGHT_RULES = [
+  {
+    id: "location",
+    label: "Location",
+    className: "bg-emerald-100 text-emerald-950",
+    pattern: /\b(live|lives|living|from|based|located|area|cover|coverage|service|fort|miami|palm|broward|dallas|plano|tampa|orlando|pompano|hollywood|hialeah)\b/iu,
+  },
+  {
+    id: "currentWork",
+    label: "Current work",
+    className: "bg-sky-100 text-sky-950",
+    pattern: /\b(current(?:ly)?|right now|job|working|employed|side work|contract|notice|shift|for a living)\b/iu,
+  },
+  {
+    id: "experience",
+    label: "Experience",
+    className: "bg-indigo-100 text-indigo-950",
+    pattern: /\b(experience|years?|background|appliance|repair|washer|dryer|refrigerator|fridge|oven|stove|dishwasher|diagnostic|sealed system)\b/iu,
+  },
+  {
+    id: "toolsVehicle",
+    label: "Tools / vehicle",
+    className: "bg-amber-100 text-amber-950",
+    pattern: /\b(tools?|tool bag|meter|multimeter|vehicle|car|truck|van|transportation|drive|gas|mileage)\b/iu,
+  },
+  {
+    id: "payAvailability",
+    label: "Pay / availability",
+    className: "bg-rose-100 text-rose-950",
+    pattern: /\b(pay|paid|payout|diagnostic|installation|commission|available|availability|start|morning|afternoon|evening|weekend|weekday|\$\d+)/iu,
+  },
+];
+
+function normalizeFactValue(value) {
+  return String(value || "").trim();
+}
+
+function CandidateFactBoard({ candidate }) {
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="section-title">Candidate facts</p>
+          <h3 className="mt-2 text-base font-semibold text-slate-900">At-a-glance from the conversation</h3>
+        </div>
+        <Badge tone="indigo">{formatStatusLabel(candidate.stage)}</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {CANDIDATE_FACT_GROUPS.map((group) => {
+          const value = normalizeFactValue(group.value(candidate));
+          const detail = normalizeFactValue(group.detail(candidate));
+
+          return (
+            <div
+              key={group.id}
+              className={`rounded-xl border p-4 ${value ? group.toneClass : "border-dashed border-slate-200 bg-white text-slate-500"}`}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] opacity-70">{group.label}</p>
+              <p className="mt-3 text-sm font-semibold leading-6">
+                {value || "Not captured yet"}
+              </p>
+              <p className="mt-2 text-xs leading-5 opacity-75">{detail}</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function getTranscriptHighlightRule(chunk) {
+  return TRANSCRIPT_HIGHLIGHT_RULES.find((rule) => rule.pattern.test(chunk)) || null;
+}
+
+function splitTranscriptForHighlights(transcriptText) {
+  return String(transcriptText || "").match(/[^\n.!?]+[.!?]?|\n+/gu) || [];
+}
+
+function HighlightedTranscript({ transcriptText }) {
+  const chunks = splitTranscriptForHighlights(transcriptText);
+
+  if (!chunks.length) {
+    return <p className="mt-3 text-sm leading-6 text-slate-500">Transcript not available.</p>;
+  }
+
+  return (
+    <>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {TRANSCRIPT_HIGHLIGHT_RULES.map((rule) => (
+          <span key={rule.id} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${rule.className}`}>
+            {rule.label}
+          </span>
+        ))}
+      </div>
+      <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+        {chunks.map((chunk, index) => {
+          const rule = getTranscriptHighlightRule(chunk);
+
+          if (!rule || /^\n+$/u.test(chunk)) {
+            return <span key={`${chunk}-${index}`}>{chunk}</span>;
+          }
+
+          return (
+            <mark
+              key={`${chunk}-${index}`}
+              className={`rounded px-1 py-0.5 font-medium ${rule.className}`}
+            >
+              {chunk}
+            </mark>
+          );
+        })}
+      </p>
+    </>
+  );
+}
+
 async function requestManualCallLog(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/manual/calls/log"), {
     method: "POST",
@@ -588,6 +785,7 @@ export function TechniciansPage() {
                 })}
               </div>
             </div>
+            <CandidateFactBoard candidate={selectedCandidate} />
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Start date</p>
@@ -710,9 +908,7 @@ export function TechniciansPage() {
 
             <div className="mt-4 rounded-2xl border border-[#e1e6ef] bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Transcript</p>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                {selectedCandidate.transcriptText || "Transcript not available."}
-              </p>
+              <HighlightedTranscript transcriptText={selectedCandidate.transcriptText} />
             </div>
 
             <div className="mt-4 text-sm text-slate-500">
