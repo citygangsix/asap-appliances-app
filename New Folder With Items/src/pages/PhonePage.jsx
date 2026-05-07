@@ -37,13 +37,6 @@ const DTMF_FREQUENCIES = {
   "0": [941, 1336],
   "#": [941, 1477],
 };
-const AGENT_PHONE_PRESETS = [
-  {
-    id: "assistant-1545",
-    label: "561-564-1545",
-    phone: "+15615641545",
-  },
-];
 const CONTACT_TYPE_OPTIONS = [
   { value: "customer", label: "Customer" },
   { value: "technician", label: "Technician" },
@@ -358,7 +351,6 @@ export function PhonePage() {
   const [rawNumber, setRawNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [contactType, setContactType] = useState("customer");
-  const [agentPhone, setAgentPhone] = useState("");
   const [status, setStatus] = useState("Ready");
   const [message, setMessage] = useState("Enter a contact number and start the Twilio bridge.");
   const [smsBody, setSmsBody] = useState("");
@@ -394,9 +386,7 @@ export function PhonePage() {
     };
   }, [repository, directoryRefreshNonce]);
   const formattedNumber = useMemo(() => formatUsPhone(rawNumber), [rawNumber]);
-  const formattedAgentPhone = useMemo(() => formatUsPhone(agentPhone), [agentPhone]);
   const e164Number = useMemo(() => toE164(rawNumber), [rawNumber]);
-  const e164AgentPhone = useMemo(() => toE164(agentPhone), [agentPhone]);
   const trimmedCustomerName = customerName.trim();
   const customerDirectory = directoryQuery.data?.customers || [];
   const technicianDirectory = directoryQuery.data?.technicians || [];
@@ -725,7 +715,7 @@ export function PhonePage() {
       return;
     }
 
-    const selectedAgentPhone = e164AgentPhone || null;
+    const selectedAgentPhone = null;
     const draftContactType = callOverride.contactType || contactType;
     const isTechnicianCall = draftContactType === "technician";
     const isCandidateCall = draftContactType === "candidate";
@@ -971,7 +961,6 @@ export function PhonePage() {
   return (
     <PageScaffold
       title="Phone"
-      subtitle="Default dashboard landing screen for the fastest Twilio bridge call."
       contentClassName="bg-[#11141c] p-4 sm:p-6 lg:p-8"
     >
       <div
@@ -1043,48 +1032,6 @@ export function PhonePage() {
                 ) : null}
               </div>
             ) : null}
-            <label className="mt-4 block text-sm font-semibold text-slate-300">
-              {getContactTypeTitle(contactType)} name
-              <input
-                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300 disabled:text-slate-400"
-                disabled={Boolean(activeDirectoryContact || activeMatchedContact)}
-                onChange={(event) => setCustomerName(event.target.value)}
-                placeholder={
-                  directoryQuery.isLoading
-                    ? "Loading saved contacts"
-                    : "Optional"
-                }
-                type="text"
-                value={(activeDirectoryContact || activeMatchedContact)?.name || customerName}
-              />
-            </label>
-            <label className="mt-4 block text-sm font-semibold text-slate-300">
-              Ring this phone first
-              <input
-                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
-                inputMode="tel"
-                onChange={(event) => setAgentPhone(event.target.value)}
-                placeholder="Server default office phone"
-                type="tel"
-                value={formattedAgentPhone}
-              />
-            </label>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {AGENT_PHONE_PRESETS.map((option) => (
-                <button
-                  className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                    e164AgentPhone === option.phone
-                      ? "border-emerald-300 bg-emerald-400/15 text-emerald-100"
-                      : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.09]"
-                  }`}
-                  key={option.id}
-                  onClick={() => setAgentPhone(option.phone)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="mt-5 grid grid-cols-3 gap-3">
