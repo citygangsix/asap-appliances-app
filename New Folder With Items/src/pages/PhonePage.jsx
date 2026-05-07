@@ -20,6 +20,7 @@ import {
   toE164,
 } from "../lib/domain/contacts";
 import { getOperationsRepository } from "../lib/repositories";
+import { requestLiveHiringCandidates } from "../lib/repositories/liveHiringCandidates";
 
 const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 const DTMF_FREQUENCIES = {
@@ -46,11 +47,14 @@ const AGENT_PHONE_PRESETS = [
 const CONTACT_TYPE_OPTIONS = [
   { value: "customer", label: "Customer" },
   { value: "technician", label: "Technician" },
+  { value: "candidate", label: "Candidate" },
 ];
 const CONTACT_LIST_FILTERS = [
   { value: "all", label: "All" },
   { value: "customer", label: "Customers" },
   { value: "technician", label: "Technicians" },
+  { value: "candidate", label: "Candidates" },
+  { value: "review", label: "Review" },
 ];
 const ACTIVE_CALLS_REFRESH_INTERVAL_MS = 5000;
 const RECENT_CALLS_STORAGE_KEY = "asap-phone-recent-calls";
@@ -284,6 +288,8 @@ async function requestOutboundTextMessage(payload) {
 function InteractionSummaryCard({ contact, mode, callStatus, smsStatus, onClose }) {
   const modeLabel = mode === "call" ? "Phone call" : "Text conversation";
   const statusLabel = mode === "call" ? callStatus : smsStatus;
+  const fields = contact.cardFields?.length ? contact.cardFields : contact.detailRows;
+  const isReviewContact = contact.contactType === "review";
 
   return (
     <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 right-4 z-30 md:left-[calc(272px+1rem)]">
@@ -291,7 +297,9 @@ function InteractionSummaryCard({ contact, mode, callStatus, smsStatus, onClose 
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="break-words text-lg font-semibold text-slate-950">{contact.name}</p>
+              <p className="break-words text-lg font-semibold text-slate-950">
+                {contact.cardTitle || contact.typeLabel}: {contact.name}
+              </p>
               <Badge tone={getContactTypeTone(contact.contactType)}>{contact.typeLabel}</Badge>
               <Badge tone={contact.statusTone}>{contact.statusLabel}</Badge>
             </div>
@@ -309,8 +317,8 @@ function InteractionSummaryCard({ contact, mode, callStatus, smsStatus, onClose 
             </button>
           </div>
         </div>
-        <div className="mt-4 grid max-h-40 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-4">
-          {contact.detailRows.map((row) => (
+        <div className="mt-4 grid max-h-44 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-4">
+          {fields.map((row) => (
             <div className="rounded-xl bg-slate-50 px-3 py-2" key={`${contact.id}:${row.label}`}>
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 {row.label}
@@ -319,6 +327,25 @@ function InteractionSummaryCard({ contact, mode, callStatus, smsStatus, onClose 
             </div>
           ))}
         </div>
+        {isReviewContact ? (
+          <div className="mt-4 grid gap-2 sm:grid-cols-4">
+            {["Customer", "Technician", "Candidate"].map((label) => (
+              <button
+                className="min-h-10 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+                key={label}
+                type="button"
+              >
+                Convert to {label}
+              </button>
+            ))}
+            <button
+              className="min-h-10 rounded-xl border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+              type="button"
+            >
+              Ignore / Archive
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -350,21 +377,29 @@ export function PhonePage() {
   const activeToneRef = useRef(null);
   const ringingRef = useRef({ intervalId: null, burst: null });
   const smsComposerRef = useRef(null);
-  const customersQuery = useAsyncValue(
-    () => repository.customers.list(),
-    [repository, directoryRefreshNonce],
-  );
-  const techniciansQuery = useAsyncValue(
-    () => repository.technicians.list(),
-    [repository, directoryRefreshNonce],
-  );
+  const directoryQuery = useAsyncValue(async () => {
+    const [customers, techniciansPageData, communicationsPageData, liveHiringCandidates] = await Promise.all([
+      repository.customers.list(),
+      repository.getTechniciansPageData(),
+      repository.getCommunicationsPageData(),
+      requestLiveHiringCandidates().catch(() => null),
+    ]);
+
+    return {
+      customers,
+      technicians: techniciansPageData?.technicians || [],
+      hiringCandidates: liveHiringCandidates?.candidates || techniciansPageData?.hiringCandidates || [],
+      communicationRecords: communicationsPageData?.communicationRecords || [],
+      unmatchedInboundRecords: communicationsPageData?.unmatchedInboundRecords || [],
+    };
+  }, [repository, directoryRefreshNonce]);
   const formattedNumber = useMemo(() => formatUsPhone(rawNumber), [rawNumber]);
   const formattedAgentPhone = useMemo(() => formatUsPhone(agentPhone), [agentPhone]);
   const e164Number = useMemo(() => toE164(rawNumber), [rawNumber]);
   const e164AgentPhone = useMemo(() => toE164(agentPhone), [agentPhone]);
   const trimmedCustomerName = customerName.trim();
-  const customerDirectory = customersQuery.data || [];
-  const technicianDirectory = techniciansQuery.data || [];
+  const customerDirectory = directoryQuery.data?.customers || [];
+  const technicianDirectory = directoryQuery.data?.technicians || [];
   const matchedCustomer = useMemo(
     () => findSavedCustomerByPhone(customerDirectory, e164Number || rawNumber),
     [customerDirectory, e164Number, rawNumber],
@@ -374,8 +409,15 @@ export function PhonePage() {
     [technicianDirectory, e164Number, rawNumber],
   );
   const contactDirectory = useMemo(
-    () => buildContactDirectory(customerDirectory, technicianDirectory),
-    [customerDirectory, technicianDirectory],
+    () =>
+      buildContactDirectory(
+        customerDirectory,
+        technicianDirectory,
+        directoryQuery.data?.hiringCandidates || [],
+        directoryQuery.data?.communicationRecords || [],
+        directoryQuery.data?.unmatchedInboundRecords || [],
+      ),
+    [customerDirectory, directoryQuery.data, technicianDirectory],
   );
   const filteredContacts = useMemo(
     () =>
@@ -406,15 +448,14 @@ export function PhonePage() {
       return null;
     }
 
-    return (
-      contactDirectory.find(
-        (contact) =>
-          contact.contactType === contactType &&
-          [contact.primaryPhone, contact.secondaryPhone]
-            .map(normalizePhoneLookup)
-            .some((phone) => phone && phone === activePhone),
-      ) || null
+    const phoneMatches = contactDirectory.filter((contact) =>
+      [contact.primaryPhone, contact.secondaryPhone]
+        .map(normalizePhoneLookup)
+        .some((phone) => phone && phone === activePhone),
     );
+    const exactTypeMatch = phoneMatches.find((contact) => contact.contactType === contactType);
+
+    return exactTypeMatch || phoneMatches.sort((left, right) => (right.priority || 0) - (left.priority || 0))[0] || null;
   }, [activeMatchedContact, contactDirectory, contactType, e164Number, rawNumber]);
   const interactionContact = useMemo(() => {
     if (activeDirectoryContact) {
@@ -431,7 +472,7 @@ export function PhonePage() {
       phone: e164Number || rawNumber,
     });
   }, [activeDirectoryContact, contactType, e164Number, rawNumber, trimmedCustomerName]);
-  const callCustomerName = activeMatchedContact?.name || trimmedCustomerName;
+  const callCustomerName = activeDirectoryContact?.name || activeMatchedContact?.name || trimmedCustomerName;
   const callTargetLabel = callCustomerName || formattedNumber || e164Number || "No number entered";
   const activeContactTypeLabel = getContactTypeLabel(contactType);
   const canCall = Boolean(e164Number) && status !== "Calling";
@@ -687,6 +728,9 @@ export function PhonePage() {
     const selectedAgentPhone = e164AgentPhone || null;
     const draftContactType = callOverride.contactType || contactType;
     const isTechnicianCall = draftContactType === "technician";
+    const isCandidateCall = draftContactType === "candidate";
+    const isReviewCall = draftContactType === "review";
+    const requestContactType = isTechnicianCall ? "technician" : "customer";
     const draftFormattedNumber = formatUsPhone(draftRawNumber);
     const draftMatchedCustomer = isTechnicianCall
       ? null
@@ -694,8 +738,12 @@ export function PhonePage() {
     const draftMatchedTechnician = isTechnicianCall
       ? findSavedTechnicianByPhone(technicianDirectory, draftE164Number || draftRawNumber)
       : null;
-    const draftMatchedContact = isTechnicianCall ? draftMatchedTechnician : draftMatchedCustomer;
-    const draftName = draftMatchedContact?.name || String(callOverride.name || customerName).trim();
+    const draftMatchedContact =
+      isTechnicianCall ? draftMatchedTechnician : isCandidateCall || isReviewCall ? null : draftMatchedCustomer;
+    const draftName =
+      draftMatchedContact?.name ||
+      activeDirectoryContact?.name ||
+      String(callOverride.name || customerName).trim();
     const draftTargetLabel = draftName || draftFormattedNumber || draftE164Number;
 
     setInteractionContext("call");
@@ -710,16 +758,20 @@ export function PhonePage() {
     try {
       const shouldRefreshDirectoryAfterCall = !draftMatchedContact;
       const result = await requestClickToCall({
-        ...(draftMatchedCustomer?.customerId && !isTechnicianCall
+        ...(draftMatchedCustomer?.customerId && !isTechnicianCall && !isCandidateCall && !isReviewCall
           ? { customerId: draftMatchedCustomer.customerId }
           : {}),
-        contactType: draftContactType,
+        contactType: requestContactType,
         customerName: draftName || draftFormattedNumber || draftE164Number,
         customerPhone: draftE164Number,
-        persistCustomerContact: !isTechnicianCall && !draftMatchedCustomer,
+        persistCustomerContact: !isTechnicianCall && !isCandidateCall && !isReviewCall && !draftMatchedCustomer,
         persistTechnicianContact: isTechnicianCall && !draftMatchedTechnician,
         ...(selectedAgentPhone ? { agentPhone: selectedAgentPhone } : {}),
-        triggerSource: "manual_phone_dialer",
+        triggerSource: isCandidateCall
+          ? "manual_hiring_ui"
+          : isReviewCall
+            ? "manual_review_contact_ui"
+            : "manual_phone_dialer",
       });
       stopRinging();
       setStatus("Sent");
@@ -741,8 +793,8 @@ export function PhonePage() {
       }
       setMessage(
         result.message
-          ? `${result.message} ${isTechnicianCall ? "Technician" : "Customer"} sees ${result.businessPhoneNumber || "the Twilio number"}.`
-          : `Twilio is calling ${formatUsPhone(result.agentPhone || selectedAgentPhone || "") || "the configured phone"}. ${isTechnicianCall ? "Technician" : "Customer"} sees ${result.businessPhoneNumber || "the Twilio number"}.`,
+          ? `${result.message} ${getContactTypeTitle(draftContactType)} sees ${result.businessPhoneNumber || "the Twilio number"}.`
+          : `Twilio is calling ${formatUsPhone(result.agentPhone || selectedAgentPhone || "") || "the configured phone"}. ${getContactTypeTitle(draftContactType)} sees ${result.businessPhoneNumber || "the Twilio number"}.`,
       );
       refreshActiveCalls();
     } catch (error) {
@@ -766,8 +818,13 @@ export function PhonePage() {
     }
 
     const isTechnicianText = contactType === "technician";
-    const draftMatchedContact = isTechnicianText ? matchedTechnician : matchedCustomer;
-    const draftName = draftMatchedContact?.name || trimmedCustomerName || formattedNumber || e164Number;
+    const isCandidateText = contactType === "candidate";
+    const isReviewText = contactType === "review";
+    const requestContactType = isTechnicianText ? "technician" : "customer";
+    const draftMatchedContact =
+      isTechnicianText ? matchedTechnician : isCandidateText || isReviewText ? null : matchedCustomer;
+    const draftName =
+      draftMatchedContact?.name || activeDirectoryContact?.name || trimmedCustomerName || formattedNumber || e164Number;
     const shouldRefreshDirectoryAfterText = !draftMatchedContact;
 
     setInteractionContext("text");
@@ -776,17 +833,21 @@ export function PhonePage() {
 
     try {
       const result = await requestOutboundTextMessage({
-        ...(matchedCustomer?.customerId && !isTechnicianText
+        ...(matchedCustomer?.customerId && !isTechnicianText && !isCandidateText && !isReviewText
           ? { customerId: matchedCustomer.customerId }
           : {}),
-        contactType,
+        contactType: requestContactType,
         customerName: draftName,
         customerPhone: e164Number,
         toNumber: e164Number,
         body,
-        persistCustomerContact: !isTechnicianText && !matchedCustomer,
+        persistCustomerContact: !isTechnicianText && !isCandidateText && !isReviewText && !matchedCustomer,
         persistTechnicianContact: isTechnicianText && !matchedTechnician,
-        triggerSource: "manual_phone_dialer",
+        triggerSource: isCandidateText
+          ? "manual_hiring_ui"
+          : isReviewText
+            ? "manual_review_contact_ui"
+            : "manual_phone_dialer",
       });
       const savedContactStatus =
         result.savedContactStatus ||
@@ -857,8 +918,11 @@ export function PhonePage() {
       return;
     }
 
+    const requestedContactType = params.get("contactType");
     const target = {
-      contactType: params.get("contactType") === "technician" ? "technician" : "customer",
+      contactType: ["customer", "technician", "candidate", "review"].includes(requestedContactType)
+        ? requestedContactType
+        : "customer",
       name: params.get("name") || "",
       phone,
     };
@@ -923,7 +987,7 @@ export function PhonePage() {
               </p>
               <Badge tone={getStatusTone(status)}>{status}</Badge>
             </div>
-            <div className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+            <div className="mt-6 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
               {CONTACT_TYPE_OPTIONS.map((option) => (
                 <button
                   className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold transition ${
@@ -980,18 +1044,18 @@ export function PhonePage() {
               </div>
             ) : null}
             <label className="mt-4 block text-sm font-semibold text-slate-300">
-              {contactType === "technician" ? "Technician name" : "Customer name"}
+              {getContactTypeTitle(contactType)} name
               <input
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300 disabled:text-slate-400"
-                disabled={Boolean(activeMatchedContact)}
+                disabled={Boolean(activeDirectoryContact || activeMatchedContact)}
                 onChange={(event) => setCustomerName(event.target.value)}
                 placeholder={
-                  customersQuery.isLoading || techniciansQuery.isLoading
+                  directoryQuery.isLoading
                     ? "Loading saved contacts"
                     : "Optional"
                 }
                 type="text"
-                value={activeMatchedContact ? activeMatchedContact.name : customerName}
+                value={(activeDirectoryContact || activeMatchedContact)?.name || customerName}
               />
             </label>
             <label className="mt-4 block text-sm font-semibold text-slate-300">
@@ -1288,21 +1352,21 @@ export function PhonePage() {
 
           <Card className="border-white/10 bg-[#1c1e26] p-5 text-white sm:p-6">
             <div className="flex items-center justify-between gap-4">
-              <p className="section-title">Contacts</p>
+              <p className="section-title">People</p>
               <Badge tone="slate">{contactDirectory.length}</Badge>
             </div>
             <label className="mt-4 block text-sm font-semibold text-slate-300">
-              Search phone
+              Search people
               <input
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
                 inputMode="tel"
                 onChange={(event) => setContactSearch(event.target.value)}
-                placeholder="Search by phone number"
+                placeholder="Search by name, phone, area, status, or transcript"
                 type="search"
                 value={contactSearch}
               />
             </label>
-            <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+            <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1 sm:grid-cols-5">
               {CONTACT_LIST_FILTERS.map((option) => (
                 <button
                   className={`min-h-[40px] rounded-xl px-2 text-xs font-semibold transition ${
@@ -1339,7 +1403,7 @@ export function PhonePage() {
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-white">{contact.name}</p>
-                        <Badge tone={contact.contactType === "technician" ? "blue" : "emerald"}>
+                        <Badge tone={getContactTypeTone(contact.contactType)}>
                           {getContactTypeTitle(contact.contactType)}
                         </Badge>
                       </div>
@@ -1384,7 +1448,7 @@ export function PhonePage() {
                     </p>
                     <p className="mt-2 text-xl font-semibold text-white">{selectedContact.name}</p>
                   </div>
-                  <Badge tone={selectedContact.contactType === "technician" ? "blue" : "emerald"}>
+                  <Badge tone={getContactTypeTone(selectedContact.contactType)}>
                     {getContactTypeTitle(selectedContact.contactType)}
                   </Badge>
                 </div>

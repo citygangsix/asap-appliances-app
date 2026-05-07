@@ -54,15 +54,42 @@ export function formatUsPhone(value) {
 }
 
 export function getContactTypeLabel(contactType) {
-  return contactType === "technician" ? "technician" : "customer";
+  const labels = {
+    customer: "customer",
+    technician: "technician",
+    candidate: "candidate",
+    review: "review contact",
+    vendor: "vendor",
+    archived: "archived",
+  };
+
+  return labels[contactType] || "customer";
 }
 
 export function getContactTypeTitle(contactType) {
-  return contactType === "technician" ? "Technician" : "Customer";
+  const titles = {
+    customer: "Customer",
+    technician: "Technician",
+    candidate: "Candidate / New Hire",
+    review: "Review Contact",
+    vendor: "Vendor",
+    archived: "Archived",
+  };
+
+  return titles[contactType] || "Customer";
 }
 
 export function getContactTypeTone(contactType) {
-  return contactType === "technician" ? "blue" : "emerald";
+  const tones = {
+    customer: "emerald",
+    technician: "blue",
+    candidate: "amber",
+    review: "slate",
+    vendor: "teal",
+    archived: "slate",
+  };
+
+  return tones[contactType] || "emerald";
 }
 
 function joinDetails(values, separator = " · ") {
@@ -87,8 +114,33 @@ function formatOptionalCurrency(value) {
   return typeof value === "number" ? formatCurrency(value) : null;
 }
 
+function getCustomerActiveJob(customer) {
+  return customer.activeJob || customer.jobs?.find((job) => !["completed", "canceled"].includes(job.lifecycleStatus)) || null;
+}
+
+function getCustomerPriority(customer) {
+  return getCustomerActiveJob(customer) ? 100 : 70;
+}
+
+function getContactPriority(contact) {
+  const priorities = {
+    customer: contact.raw && getCustomerPriority(contact.raw) === 100 ? 100 : 70,
+    technician: 90,
+    candidate: 80,
+    review: 10,
+    vendor: 5,
+    archived: 0,
+  };
+
+  return contact.priority ?? priorities[contact.contactType] ?? 0;
+}
+
+function createCardField(label, value) {
+  return createDetailRow(label, value);
+}
+
 function buildCustomerDetailRows(customer) {
-  const activeJob = customer.activeJob || null;
+  const activeJob = getCustomerActiveJob(customer);
 
   return compactRows([
     createDetailRow("Primary phone", formatUsPhone(customer.primaryPhone) || customer.primaryPhone),
@@ -106,6 +158,28 @@ function buildCustomerDetailRows(customer) {
     ),
     createDetailRow("Latest communication", customer.latestCommunication || customer.lastContactLabel),
     createDetailRow("Notes", customer.notes),
+  ]);
+}
+
+function buildCustomerCardFields(customer) {
+  const activeJob = getCustomerActiveJob(customer);
+  const latestCommunication = customer.communicationRecords?.[0] || null;
+
+  return compactRows([
+    createCardField("Phone", formatUsPhone(customer.primaryPhone) || customer.primaryPhone),
+    createCardField("Balance Due", formatOptionalCurrency(customer.openBalance)),
+    createCardField(
+      "Active Job Status",
+      activeJob ? joinDetails([activeJob.applianceLabel, formatStatusLabel(activeJob.lifecycleStatus)]) : null,
+    ),
+    createCardField("Appliance", activeJob?.applianceLabel),
+    createCardField("Service Address", activeJob?.serviceAddress),
+    createCardField("ETA / Scheduled", activeJob?.etaLabel || activeJob?.scheduledStartLabel),
+    createCardField("Last Note", activeJob?.internalNotes || customer.notes),
+    createCardField(
+      "Last Transcript Summary",
+      latestCommunication?.callHighlights || customer.latestCommunication || latestCommunication?.previewText,
+    ),
   ]);
 }
 
@@ -128,6 +202,109 @@ function buildTechnicianDetailRows(technician) {
   ]);
 }
 
+function buildTechnicianCardFields(technician) {
+  return compactRows([
+    createCardField("Phone", formatUsPhone(technician.primaryPhone) || technician.primaryPhone),
+    createCardField("Type", "Technician"),
+    createCardField("Coverage Area", technician.serviceArea),
+    createCardField("Skills", technician.skills?.join(", ")),
+    createCardField("Availability", technician.availabilityLabel),
+    createCardField("Current Status", formatStatusLabel(technician.statusToday || "unassigned")),
+    createCardField(
+      "Payout Terms",
+      typeof technician.payoutTotal === "number" ? `${formatCurrency(technician.payoutTotal)} current payout total` : null,
+    ),
+    createCardField(
+      "Tools / Vehicle",
+      technician.toolsVehicleSummary || technician.vehicleStatus || technician.toolsStatus,
+    ),
+    createCardField("Transcript Highlights", technician.callHighlights || technician.notes),
+  ]);
+}
+
+function buildHiringCandidateDetailRows(candidate) {
+  return compactRows([
+    createDetailRow("Primary phone", formatUsPhone(candidate.primaryPhone) || candidate.primaryPhone),
+    createDetailRow("Email", candidate.email),
+    createDetailRow("Stage", formatStatusLabel(candidate.stage || "contacted")),
+    createDetailRow("Source", candidate.source),
+    createDetailRow("Trade", candidate.trade),
+    createDetailRow("City", candidate.city),
+    createDetailRow("Service area", candidate.serviceArea),
+    createDetailRow("Availability", candidate.availabilitySummary),
+    createDetailRow("Current work", candidate.currentJobStatus),
+    createDetailRow("Experience", candidate.applianceExperienceSummary || candidate.experienceSummary),
+    createDetailRow("Tools / vehicle", candidate.toolsVehicleSummary),
+    createDetailRow("Payout expectation", candidate.payoutExpectationSummary),
+    createDetailRow("Next step", candidate.nextStep),
+    createDetailRow("Call highlights", candidate.callHighlights),
+    createDetailRow("Transcript", candidate.transcriptText),
+  ]);
+}
+
+function buildHiringCandidateCardFields(candidate, isHired) {
+  return compactRows([
+    createCardField("Phone", formatUsPhone(candidate.primaryPhone) || candidate.primaryPhone),
+    createCardField("Type", isHired ? "Technician" : "Candidate"),
+    createCardField("Coverage Area", joinDetails([candidate.city, candidate.serviceArea])),
+    createCardField("Skills", candidate.applianceExperienceSummary || candidate.trade || candidate.experienceSummary),
+    createCardField("Availability", candidate.availabilitySummary),
+    createCardField("Hiring Stage", formatStatusLabel(candidate.stage || "contacted")),
+    createCardField("Payout Terms", candidate.payoutExpectationSummary),
+    createCardField("Tools / Vehicle", candidate.toolsVehicleSummary),
+    createCardField("Transcript Highlights", candidate.callHighlights || candidate.englishKeyDetails),
+  ]);
+}
+
+function getExternalCommunicationPhone(entry) {
+  if (!entry) {
+    return "";
+  }
+
+  return entry.direction === "outbound"
+    ? entry.toNumber || entry.fromNumber || ""
+    : entry.fromNumber || entry.toNumber || "";
+}
+
+function isContactIntelligenceEntry(entry) {
+  return (
+    ["call", "text"].includes(entry?.communicationChannel) &&
+    Boolean(getExternalCommunicationPhone(entry)) &&
+    (entry.transcriptionStatus === "completed" ||
+      Boolean(entry.transcriptText || entry.callHighlights || entry.previewText))
+  );
+}
+
+function inferReviewContactSuggestion(entry) {
+  if (entry?.customerId || entry?.customer) {
+    return "Customer";
+  }
+
+  const transcript = [entry?.transcriptText, entry?.callHighlights, entry?.previewText]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const hiringPatterns = [
+    "hiring",
+    "candidate",
+    "indeed",
+    "ziprecruiter",
+    "resume",
+    "applicant",
+    "onboard",
+    "payout",
+    "tools",
+    "vehicle",
+    "appliance repair work",
+  ];
+
+  return hiringPatterns.some((pattern) => transcript.includes(pattern)) ? "Candidate" : "Customer";
+}
+
+function getContactPhoneKeys(contact) {
+  return [contact.primaryPhone, contact.secondaryPhone].map(normalizePhoneLookup).filter(Boolean);
+}
+
 function buildSearchText(contact) {
   return [
     contact.name,
@@ -147,10 +324,12 @@ function buildSearchText(contact) {
 
 function buildCustomerContact(customer) {
   const detailRows = buildCustomerDetailRows(customer);
+  const activeJob = getCustomerActiveJob(customer);
   const contact = {
     id: `customer:${customer.customerId}`,
     sourceId: customer.customerId,
     contactType: "customer",
+    priority: getCustomerPriority(customer),
     typeLabel: "Customer",
     name: customer.name,
     primaryPhone: customer.primaryPhone || "",
@@ -162,10 +341,12 @@ function buildCustomerContact(customer) {
     statusLabel: formatStatusLabel(customer.communicationStatus || "clear"),
     statusTone: getStatusTone(customer.communicationStatus || "clear"),
     detailRows,
+    cardFields: buildCustomerCardFields(customer),
+    cardTitle: "Customer",
     summaryLine: joinDetails([
       customer.customerSegment || "Customer",
       customer.serviceArea,
-      customer.activeJob?.jobId || customer.activeJobId,
+      activeJob?.jobId || customer.activeJobId,
     ]),
     raw: customer,
   };
@@ -182,6 +363,7 @@ function buildTechnicianContact(technician) {
     id: `technician:${technician.techId}`,
     sourceId: technician.techId,
     contactType: "technician",
+    priority: 90,
     typeLabel: "Technician",
     name: technician.name,
     primaryPhone: technician.primaryPhone || "",
@@ -193,6 +375,8 @@ function buildTechnicianContact(technician) {
     statusLabel: formatStatusLabel(technician.statusToday || "unassigned"),
     statusTone: getStatusTone(technician.statusToday || "unassigned"),
     detailRows,
+    cardFields: buildTechnicianCardFields(technician),
+    cardTitle: "Technician",
     summaryLine: joinDetails([
       technician.serviceArea,
       technician.availabilityLabel,
@@ -207,25 +391,167 @@ function buildTechnicianContact(technician) {
   };
 }
 
-export function buildContactDirectory(customers = [], technicians = []) {
-  return [
+function buildHiringCandidateContact(candidate) {
+  const detailRows = buildHiringCandidateDetailRows(candidate);
+  const isHired = candidate.stage === "onboarded" || Boolean(candidate.promotedTechId);
+  const contactType = isHired ? "technician" : "candidate";
+  const contact = {
+    id: `candidate:${candidate.candidateId}`,
+    sourceId: candidate.candidateId,
+    contactType,
+    priority: isHired ? 90 : 80,
+    typeLabel: isHired ? "Technician" : "Candidate / New Hire",
+    name: candidate.name,
+    primaryPhone: candidate.primaryPhone || "",
+    secondaryPhone: "",
+    email: candidate.email || "",
+    label: candidate.trade || candidate.source || "Hiring lead",
+    locationLabel: joinDetails([candidate.city, candidate.serviceArea]),
+    status: candidate.stage || "contacted",
+    statusLabel: formatStatusLabel(candidate.stage || "contacted"),
+    statusTone: isHired ? "emerald" : "indigo",
+    detailRows,
+    cardFields: buildHiringCandidateCardFields(candidate, isHired),
+    cardTitle: isHired ? "Technician" : "Candidate",
+    summaryLine: joinDetails([
+      candidate.trade || "Hiring lead",
+      candidate.city,
+      candidate.source,
+      isHired ? "Moved to technicians" : null,
+    ]),
+    raw: candidate,
+  };
+
+  return {
+    ...contact,
+    searchText: buildSearchText(contact),
+  };
+}
+
+function buildReviewContact(entry, sourceLabel) {
+  const suggestedType = inferReviewContactSuggestion(entry);
+  const primaryPhone = getExternalCommunicationPhone(entry);
+  const displayPhone = formatUsPhone(primaryPhone) || primaryPhone;
+  const name = entry.customer?.name || displayPhone || "Review contact";
+  const status = entry.communicationStatus || entry.resolutionStatus || "clear";
+  const summary = entry.callHighlights || entry.previewText || entry.transcriptText;
+  const detailRows = compactRows([
+    createDetailRow("Primary phone", displayPhone),
+    createDetailRow("Contact source", sourceLabel),
+    createDetailRow("Suggested type", suggestedType),
+    createDetailRow("Status", formatStatusLabel(status)),
+    createDetailRow("Occurred", entry.occurredAtLabel),
+    createDetailRow("Summary", summary),
+    createDetailRow("Transcript", entry.transcriptText),
+    createDetailRow("Follow-up", entry.callSummarySections?.followUpActions),
+  ]);
+  const contact = {
+    id: `call:${entry.communicationId || entry.unmatchedCommunicationId || entry.providerCallSid || primaryPhone}`,
+    sourceId: entry.communicationId || entry.unmatchedCommunicationId || entry.providerCallSid || null,
+    contactType: "review",
+    priority: 10,
+    typeLabel: "Review Contact",
+    name,
+    primaryPhone,
+    secondaryPhone: "",
+    email: "",
+    label: sourceLabel,
+    locationLabel: "",
+    status,
+    statusLabel: formatStatusLabel(status),
+    statusTone: getStatusTone(status),
+    detailRows,
+    cardFields: compactRows([
+      createCardField("Phone", displayPhone),
+      createCardField("Suggested Type", suggestedType),
+      createCardField("Source", sourceLabel),
+      createCardField("Last Transcript Summary", summary),
+    ]),
+    cardTitle: "Review Contact",
+    suggestedType,
+    summaryLine: joinDetails([sourceLabel, suggestedType ? `Suggested: ${suggestedType}` : null, summary]),
+    raw: entry,
+  };
+
+  return {
+    ...contact,
+    searchText: buildSearchText(contact),
+  };
+}
+
+export function buildContactDirectory(
+  customers = [],
+  technicians = [],
+  hiringCandidates = [],
+  communicationRecords = [],
+  unmatchedInboundRecords = [],
+) {
+  const candidateContacts = hiringCandidates.map(buildHiringCandidateContact);
+  const savedContacts = [
     ...customers.map(buildCustomerContact),
     ...technicians.map(buildTechnicianContact),
-  ].sort((left, right) => left.name.localeCompare(right.name));
+    ...candidateContacts,
+  ];
+  const reviewContacts = [
+    ...communicationRecords
+      .filter(isContactIntelligenceEntry)
+      .map((entry) =>
+        buildReviewContact(
+          entry,
+          entry.communicationChannel === "text" ? "Review text" : "Transcribed CRM call",
+        ),
+      ),
+    ...unmatchedInboundRecords
+      .filter(isContactIntelligenceEntry)
+      .map((entry) =>
+        buildReviewContact(
+          entry,
+          entry.communicationChannel === "text" ? "Unmatched review text" : "Unmatched transcribed call",
+        ),
+      ),
+  ];
+  const contactsWithoutPhone = [];
+  const contactsByPhone = new Map();
+
+  [...savedContacts, ...reviewContacts].forEach((contact) => {
+    const phoneKeys = getContactPhoneKeys(contact);
+
+    if (!phoneKeys.length) {
+      contactsWithoutPhone.push(contact);
+      return;
+    }
+
+    const existingContact = phoneKeys.map((phone) => contactsByPhone.get(phone)).find(Boolean);
+
+    if (!existingContact || getContactPriority(contact) > getContactPriority(existingContact)) {
+      phoneKeys.forEach((phone) => contactsByPhone.set(phone, contact));
+    }
+  });
+
+  return [...new Set(contactsByPhone.values()), ...contactsWithoutPhone].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
 }
 
 export function buildManualContactSummary({ contactType = "customer", name = "", phone = "" }) {
-  const typeLabel = getContactTypeTitle(contactType);
+  const normalizedContactType = ["customer", "technician", "candidate", "review"].includes(contactType)
+    ? contactType
+    : "customer";
+  const typeLabel = getContactTypeTitle(normalizedContactType);
   const displayPhone = formatUsPhone(phone) || phone;
   const displayName = name || displayPhone || "Unsaved contact";
   const detailRows = compactRows([
     createDetailRow("Primary phone", displayPhone),
-    createDetailRow("Saved record", "Not saved yet"),
+    createDetailRow(
+      "Saved record",
+      normalizedContactType === "review" ? "Needs review before conversion" : "Not saved yet",
+    ),
   ]);
   const contact = {
-    id: `draft:${contactType}:${normalizePhoneLookup(phone) || displayName}`,
+    id: `draft:${normalizedContactType}:${normalizePhoneLookup(phone) || displayName}`,
     sourceId: null,
-    contactType,
+    contactType: normalizedContactType,
+    priority: normalizedContactType === "review" ? 10 : 0,
     typeLabel,
     name: displayName,
     primaryPhone: phone || "",
@@ -237,7 +563,20 @@ export function buildManualContactSummary({ contactType = "customer", name = "",
     statusLabel: "Ready",
     statusTone: "slate",
     detailRows,
-    summaryLine: `${typeLabel} contact not in the saved directory yet`,
+    cardFields: compactRows([
+      createCardField("Phone", displayPhone),
+      createCardField(
+        normalizedContactType === "candidate" ? "Hiring Stage" : normalizedContactType === "review" ? "Suggested Type" : "Type",
+        typeLabel,
+      ),
+      createCardField("Saved Record", normalizedContactType === "review" ? "Review before converting" : "Not saved yet"),
+    ]),
+    cardTitle: typeLabel,
+    suggestedType: normalizedContactType === "review" ? "Customer" : null,
+    summaryLine:
+      normalizedContactType === "review"
+        ? "Unknown contact waiting for review"
+        : `${typeLabel} contact not in the saved directory yet`,
     raw: null,
   };
 

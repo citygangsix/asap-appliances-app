@@ -11,11 +11,16 @@ import {
   getContactTypeTone,
 } from "../lib/domain/contacts";
 import { getOperationsRepository } from "../lib/repositories";
+import { requestLiveHiringCandidates } from "../lib/repositories/liveHiringCandidates";
 
 const CONTACT_FILTERS = [
-  { value: "all", label: "All contacts" },
+  { value: "all", label: "All" },
   { value: "customer", label: "Customers" },
   { value: "technician", label: "Technicians" },
+  { value: "candidate", label: "Candidates / New Hires" },
+  { value: "review", label: "Review Contacts" },
+  { value: "vendor", label: "Vendors" },
+  { value: "archived", label: "Archived" },
 ];
 
 function buildPhoneRoute(contact, mode) {
@@ -32,11 +37,15 @@ function buildPhoneRoute(contact, mode) {
 function getContactCounts(contacts) {
   const customers = contacts.filter((contact) => contact.contactType === "customer");
   const technicians = contacts.filter((contact) => contact.contactType === "technician");
+  const candidates = contacts.filter((contact) => contact.contactType === "candidate");
+  const reviewContacts = contacts.filter((contact) => contact.contactType === "review");
 
   return {
     total: contacts.length,
     customers: customers.length,
     technicians: technicians.length,
+    candidates: candidates.length,
+    reviewContacts: reviewContacts.length,
     customerFollowUps: customers.filter((contact) => contact.status !== "clear").length,
     activeTechnicians: technicians.filter((contact) => ["en_route", "onsite", "late"].includes(contact.status)).length,
   };
@@ -112,6 +121,26 @@ function ContactDetailPanel({ contact }) {
         </Link>
       </div>
 
+      {contact.contactType === "review" ? (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {["Customer", "Technician", "Candidate"].map((label) => (
+            <button
+              className="min-h-10 rounded-xl border border-[#cfd6e2] bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              key={label}
+              type="button"
+            >
+              Convert to {label}
+            </button>
+          ))}
+          <button
+            className="min-h-10 rounded-xl border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+            type="button"
+          >
+            Ignore / Archive
+          </button>
+        </div>
+      ) : null}
+
       <div className="mt-6 grid gap-3">
         {contact.detailRows.map((row) => (
           <div
@@ -135,11 +164,32 @@ export function ContactsPage() {
   const [searchValue, setSearchValue] = useState("");
   const [contactFilter, setContactFilter] = useState("all");
   const [selectedContactId, setSelectedContactId] = useState(null);
-  const customersQuery = useAsyncValue(() => repository.customers.list(), [repository, refreshNonce]);
-  const techniciansQuery = useAsyncValue(() => repository.technicians.list(), [repository, refreshNonce]);
+  const directoryQuery = useAsyncValue(async () => {
+    const [customers, techniciansPageData, communicationsPageData, liveHiringCandidates] = await Promise.all([
+      repository.customers.list(),
+      repository.getTechniciansPageData(),
+      repository.getCommunicationsPageData(),
+      requestLiveHiringCandidates().catch(() => null),
+    ]);
+
+    return {
+      customers,
+      technicians: techniciansPageData?.technicians || [],
+      hiringCandidates: liveHiringCandidates?.candidates || techniciansPageData?.hiringCandidates || [],
+      communicationRecords: communicationsPageData?.communicationRecords || [],
+      unmatchedInboundRecords: communicationsPageData?.unmatchedInboundRecords || [],
+    };
+  }, [repository, refreshNonce]);
   const contactDirectory = useMemo(
-    () => buildContactDirectory(customersQuery.data || [], techniciansQuery.data || []),
-    [customersQuery.data, techniciansQuery.data],
+    () =>
+      buildContactDirectory(
+        directoryQuery.data?.customers || [],
+        directoryQuery.data?.technicians || [],
+        directoryQuery.data?.hiringCandidates || [],
+        directoryQuery.data?.communicationRecords || [],
+        directoryQuery.data?.unmatchedInboundRecords || [],
+      ),
+    [directoryQuery.data],
   );
   const filteredContacts = useMemo(
     () =>
@@ -151,8 +201,8 @@ export function ContactsPage() {
   const selectedContact =
     filteredContacts.find((contact) => contact.id === selectedContactId) || filteredContacts[0] || null;
   const counts = useMemo(() => getContactCounts(contactDirectory), [contactDirectory]);
-  const pageError = customersQuery.error || techniciansQuery.error;
-  const isLoading = customersQuery.isLoading || techniciansQuery.isLoading;
+  const pageError = directoryQuery.error;
+  const isLoading = directoryQuery.isLoading;
   const tabs = CONTACT_FILTERS.map((filter) => ({
     id: filter.value,
     label: filter.label,
@@ -186,12 +236,12 @@ export function ContactsPage() {
   if (isLoading && contactDirectory.length === 0) {
     return (
       <PageScaffold
-        title="Contacts"
-        subtitle="All customers and technicians in one searchable CRM directory."
+        title="People"
+        subtitle="Customers, technicians, candidates, vendors, and review contacts in one CRM directory."
         actions={actions}
         tabs={tabs}
       >
-        <PageStateNotice title="Loading contacts" message="Fetching customer and technician records." />
+        <PageStateNotice title="Loading people" message="Fetching CRM people records and review contacts." />
       </PageScaffold>
     );
   }
@@ -199,48 +249,48 @@ export function ContactsPage() {
   if (pageError && contactDirectory.length === 0) {
     return (
       <PageScaffold
-        title="Contacts"
-        subtitle="All customers and technicians in one searchable CRM directory."
+        title="People"
+        subtitle="Customers, technicians, candidates, vendors, and review contacts in one CRM directory."
         actions={actions}
         tabs={tabs}
       >
-        <PageStateNotice title="Contacts unavailable" message={pageError.message} />
+        <PageStateNotice title="People unavailable" message={pageError.message} />
       </PageScaffold>
     );
   }
 
   return (
     <PageScaffold
-      title="Contacts"
-      subtitle="All customers and technicians in one searchable CRM directory."
+      title="People"
+      subtitle="Customers, technicians, candidates, vendors, and review contacts in one CRM directory."
       actions={actions}
       tabs={tabs}
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <SummaryTile
-          label="All contacts"
+          label="All people"
           value={counts.total}
-          detail={`${counts.customers} customers and ${counts.technicians} technicians`}
+          detail={`${counts.customers} customers, ${counts.technicians} technicians, ${counts.candidates} candidates`}
         />
         <SummaryTile
-          label="Customer follow-up"
-          value={counts.customerFollowUps}
-          detail="Customers with callbacks, unread messages, or unresolved communication"
+          label="Review contacts"
+          value={counts.reviewContacts}
+          detail="Unknown calls and texts waiting to be converted or archived"
         />
         <SummaryTile
-          label="Active technicians"
-          value={counts.activeTechnicians}
-          detail="Technicians en route, onsite, or running late today"
+          label="Candidates / New Hires"
+          value={counts.candidates}
+          detail="Recruiting leads that have not moved into the technician roster yet"
         />
       </div>
 
       <Card className="p-5">
         <label className="block text-sm font-semibold text-slate-600">
-          Search contacts
+          Search people
           <input
             className="mt-2 w-full rounded-2xl border border-[#cfd6e2] bg-white px-4 py-3 text-base font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-500"
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Search by name, phone, area, skill, status, or email"
+            placeholder="Search by name, phone, area, skill, status, transcript, or email"
             type="search"
             value={searchValue}
           />
@@ -251,7 +301,7 @@ export function ContactsPage() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="section-title">Directory</p>
+            <p className="section-title">People</p>
             <Badge tone="slate">{filteredContacts.length} shown</Badge>
           </div>
           {filteredContacts.length ? (

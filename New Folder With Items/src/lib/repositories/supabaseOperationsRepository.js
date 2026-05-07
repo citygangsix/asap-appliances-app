@@ -1298,14 +1298,16 @@ export const supabaseOperationsRepository = {
     return readWithFallback(
       async () => {
         const client = getSupabaseClient();
-        const [technicians, hiringCandidates] = await Promise.all([
+        const [technicians, hiringCandidates, jobRecords] = await Promise.all([
           loadLiveTechnicianRoster(client),
           loadLiveHiringCandidates(client),
+          loadLiveHomeJobs(client),
         ]);
 
         return buildTechniciansPageData({
           technicians,
           hiringCandidates,
+          jobRecords,
         });
       },
       () => mockOperationsRepository.getTechniciansPageData(),

@@ -56,7 +56,8 @@ function App() {
         <Route index element={<Navigate replace to="/dashboard/phone" />} />
         <Route path="home" element={<HomePage />} />
         <Route path="jobs" element={<JobsPage />} />
-        <Route path="contacts" element={<ContactsPage />} />
+        <Route path="people" element={<ContactsPage />} />
+        <Route path="contacts" element={<Navigate replace to="/dashboard/people" />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="dispatch" element={<Navigate replace to="/dashboard/phone" />} />
         <Route path="dispatch-board" element={<DispatchPage />} />

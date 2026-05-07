@@ -4,15 +4,6 @@
 /** @type {RouteMeta[]} */
 export const ROUTES = [
   {
-    routeId: "phone",
-    path: "/dashboard/phone",
-    label: "Phone",
-    icon: "☎",
-    group: "Main",
-    eyebrow: "Quick Twilio access",
-    alert: "Type a number and start a call",
-  },
-  {
     routeId: "home",
     path: "/dashboard/home",
     label: "Overview",
@@ -31,13 +22,22 @@ export const ROUTES = [
     alert: "Separate state tracking for every service job",
   },
   {
-    routeId: "contacts",
-    path: "/dashboard/contacts",
-    label: "Contacts",
+    routeId: "phone",
+    path: "/dashboard/phone",
+    label: "Phone",
+    icon: "☎",
+    group: "Main",
+    eyebrow: "Quick Twilio access",
+    alert: "Type a number and start a call",
+  },
+  {
+    routeId: "people",
+    path: "/dashboard/people",
+    label: "People",
     icon: "☷",
     group: "Main",
     eyebrow: "People directory",
-    alert: "Customers and technicians in one contact view",
+    alert: "Customers, technicians, candidates, and review contacts",
   },
   {
     routeId: "customers",
