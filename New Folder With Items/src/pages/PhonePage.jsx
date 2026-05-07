@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { PageScaffold } from "../components/layout/PageScaffold";
 import { Badge, Card } from "../components/ui";
 import { useAsyncValue } from "../hooks/useAsyncValue";
@@ -6,6 +7,18 @@ import {
   getLocalOperationsServerHeaders,
   getLocalOperationsServerUrl,
 } from "../lib/config/localOperationsServer";
+import {
+  buildContactDirectory,
+  buildManualContactSummary,
+  contactMatchesSearch,
+  formatUsPhone,
+  getContactTypeLabel,
+  getContactTypeTitle,
+  getContactTypeTone,
+  normalizePhoneLookup,
+  sanitizeDialValue,
+  toE164,
+} from "../lib/domain/contacts";
 import { getOperationsRepository } from "../lib/repositories";
 
 const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
@@ -58,20 +71,6 @@ const SMS_TEMPLATES = [
   },
 ];
 
-function onlyPhoneDigits(value) {
-  return value.replace(/\D/g, "").slice(0, 11);
-}
-
-function normalizePhoneLookup(value) {
-  const digits = String(value ?? "").replace(/\D/g, "");
-
-  if (!digits) {
-    return null;
-  }
-
-  return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
-}
-
 function findSavedCustomerByPhone(customers, phoneNumber) {
   const targetPhone = normalizePhoneLookup(phoneNumber);
 
@@ -101,52 +100,6 @@ function findSavedTechnicianByPhone(technicians, phoneNumber) {
       return technicianPhone && technicianPhone === targetPhone;
     }) || null
   );
-}
-
-function getContactTypeLabel(contactType) {
-  return contactType === "technician" ? "technician" : "customer";
-}
-
-function getContactTypeTitle(contactType) {
-  return contactType === "technician" ? "Technician" : "Customer";
-}
-
-function sanitizeDialValue(value) {
-  return String(value).replace(/[^\d*#]/g, "").slice(0, 32);
-}
-
-function toE164(value) {
-  if (/[*#]/u.test(value)) {
-    return "";
-  }
-
-  const digits = onlyPhoneDigits(value);
-  if (digits.length === 10) {
-    return `+1${digits}`;
-  }
-  if (digits.length === 11 && digits.startsWith("1")) {
-    return `+${digits}`;
-  }
-  return "";
-}
-
-function formatUsPhone(value) {
-  if (/[*#]/u.test(value)) {
-    return value;
-  }
-
-  const digits = onlyPhoneDigits(value);
-  const nationalDigits = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
-
-  if (nationalDigits.length <= 3) {
-    return nationalDigits;
-  }
-
-  if (nationalDigits.length <= 6) {
-    return `(${nationalDigits.slice(0, 3)}) ${nationalDigits.slice(3)}`;
-  }
-
-  return `(${nationalDigits.slice(0, 3)}) ${nationalDigits.slice(3, 6)}-${nationalDigits.slice(6, 10)}`;
 }
 
 function formatDateTimeLabel(isoValue) {
@@ -193,51 +146,6 @@ function writeRecentCalls(calls) {
   } catch (error) {
     // Local storage can be unavailable in private browser contexts.
   }
-}
-
-function buildContactDirectory(customers, technicians) {
-  return [
-    ...customers.map((customer) => ({
-      id: `customer:${customer.customerId}`,
-      contactType: "customer",
-      name: customer.name,
-      primaryPhone: customer.primaryPhone || "",
-      secondaryPhone: customer.secondaryPhone || "",
-      email: customer.email || "",
-      label: customer.customerSegment || customer.serviceArea || "Customer",
-    })),
-    ...technicians.map((technician) => ({
-      id: `technician:${technician.techId}`,
-      contactType: "technician",
-      name: technician.name,
-      primaryPhone: technician.primaryPhone || "",
-      secondaryPhone: "",
-      email: technician.email || "",
-      label: technician.serviceArea || "Technician",
-    })),
-  ].sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function contactMatchesSearch(contact, searchValue) {
-  const searchText = String(searchValue || "").trim().toLowerCase();
-
-  if (!searchText) {
-    return true;
-  }
-
-  const searchDigits = searchText.replace(/\D/g, "");
-  const contactPhones = [contact.primaryPhone, contact.secondaryPhone].filter(Boolean);
-
-  if (searchDigits) {
-    return contactPhones.some((phone) => {
-      const phoneDigits = normalizePhoneLookup(phone) || "";
-      return phoneDigits.includes(searchDigits);
-    });
-  }
-
-  return [contact.name, contact.label, contact.email]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(searchText));
 }
 
 function getCallOutcomeTone(outcome) {
@@ -373,8 +281,53 @@ async function requestOutboundTextMessage(payload) {
   return responseJson;
 }
 
+function InteractionSummaryCard({ contact, mode, callStatus, smsStatus, onClose }) {
+  const modeLabel = mode === "call" ? "Phone call" : "Text conversation";
+  const statusLabel = mode === "call" ? callStatus : smsStatus;
+
+  return (
+    <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 right-4 z-30 md:left-[calc(272px+1rem)]">
+      <div className="mx-auto max-w-5xl rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-950/20 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="break-words text-lg font-semibold text-slate-950">{contact.name}</p>
+              <Badge tone={getContactTypeTone(contact.contactType)}>{contact.typeLabel}</Badge>
+              <Badge tone={contact.statusTone}>{contact.statusLabel}</Badge>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">{contact.summaryLine}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge tone={mode === "call" ? "emerald" : "blue"}>{modeLabel}</Badge>
+            <Badge tone={getStatusTone(statusLabel)}>{statusLabel}</Badge>
+            <button
+              className="inline-flex min-h-9 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              onClick={onClose}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 grid max-h-40 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-4">
+          {contact.detailRows.map((row) => (
+            <div className="rounded-xl bg-slate-50 px-3 py-2" key={`${contact.id}:${row.label}`}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                {row.label}
+              </p>
+              <p className="mt-1 break-words text-sm font-semibold leading-5 text-slate-800">{row.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PhonePage() {
   const repository = getOperationsRepository();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [rawNumber, setRawNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [contactType, setContactType] = useState("customer");
@@ -392,6 +345,7 @@ export function PhonePage() {
   const [contactSearch, setContactSearch] = useState("");
   const [contactListFilter, setContactListFilter] = useState("all");
   const [selectedContactId, setSelectedContactId] = useState(null);
+  const [interactionContext, setInteractionContext] = useState(null);
   const audioContextRef = useRef(null);
   const activeToneRef = useRef(null);
   const ringingRef = useRef({ intervalId: null, burst: null });
@@ -434,12 +388,56 @@ export function PhonePage() {
   const selectedContact =
     contactDirectory.find((contact) => contact.id === selectedContactId) || null;
   const activeMatchedContact = contactType === "technician" ? matchedTechnician : matchedCustomer;
+  const activeDirectoryContact = useMemo(() => {
+    const activeSourceId = activeMatchedContact?.customerId || activeMatchedContact?.techId || null;
+    const activePhone = normalizePhoneLookup(e164Number || rawNumber);
+
+    if (activeSourceId) {
+      const matchedById = contactDirectory.find(
+        (contact) => contact.contactType === contactType && contact.sourceId === activeSourceId,
+      );
+
+      if (matchedById) {
+        return matchedById;
+      }
+    }
+
+    if (!activePhone) {
+      return null;
+    }
+
+    return (
+      contactDirectory.find(
+        (contact) =>
+          contact.contactType === contactType &&
+          [contact.primaryPhone, contact.secondaryPhone]
+            .map(normalizePhoneLookup)
+            .some((phone) => phone && phone === activePhone),
+      ) || null
+    );
+  }, [activeMatchedContact, contactDirectory, contactType, e164Number, rawNumber]);
+  const interactionContact = useMemo(() => {
+    if (activeDirectoryContact) {
+      return activeDirectoryContact;
+    }
+
+    if (!rawNumber && !trimmedCustomerName) {
+      return null;
+    }
+
+    return buildManualContactSummary({
+      contactType,
+      name: trimmedCustomerName,
+      phone: e164Number || rawNumber,
+    });
+  }, [activeDirectoryContact, contactType, e164Number, rawNumber, trimmedCustomerName]);
   const callCustomerName = activeMatchedContact?.name || trimmedCustomerName;
   const callTargetLabel = callCustomerName || formattedNumber || e164Number || "No number entered";
   const activeContactTypeLabel = getContactTypeLabel(contactType);
   const canCall = Boolean(e164Number) && status !== "Calling";
   const canSendText = Boolean(e164Number) && smsBody.trim().length > 0 && smsStatus !== "Sending";
   const liveCallCount = activeCalls.length || (status === "Calling" ? 1 : 0);
+  const shouldShowInteractionSummary = Boolean(interactionContext && interactionContact);
 
   const refreshActiveCalls = useCallback(async () => {
     try {
@@ -612,6 +610,7 @@ export function PhonePage() {
     setRawNumber("");
     setCustomerName("");
     setStatus("Ready");
+    setInteractionContext(null);
     setMessage("Ready for the next Twilio bridge call.");
   }
 
@@ -671,6 +670,7 @@ export function PhonePage() {
       target,
       nextMessage || `${targetName} loaded for texting. Write a message and press Send text.`,
     );
+    setInteractionContext("text");
     setSmsStatus("Ready");
     setSmsMessage(`${targetName} is ready for a Twilio text.`);
     focusSmsComposer();
@@ -698,6 +698,7 @@ export function PhonePage() {
     const draftName = draftMatchedContact?.name || String(callOverride.name || customerName).trim();
     const draftTargetLabel = draftName || draftFormattedNumber || draftE164Number;
 
+    setInteractionContext("call");
     setStatus("Calling");
     startRinging();
     setMessage(
@@ -769,6 +770,7 @@ export function PhonePage() {
     const draftName = draftMatchedContact?.name || trimmedCustomerName || formattedNumber || e164Number;
     const shouldRefreshDirectoryAfterText = !draftMatchedContact;
 
+    setInteractionContext("text");
     setSmsStatus("Sending");
     setSmsMessage(`Sending text to ${draftName}.`);
 
@@ -839,8 +841,39 @@ export function PhonePage() {
   function resetCallState() {
     stopRinging();
     setStatus("Ready");
+    setInteractionContext(null);
     setMessage("Ready for the next Twilio bridge call.");
   }
+
+  useEffect(() => {
+    if (!location.search) {
+      return;
+    }
+
+    const params = new URLSearchParams(location.search);
+    const phone = params.get("phone");
+
+    if (!phone) {
+      return;
+    }
+
+    const target = {
+      contactType: params.get("contactType") === "technician" ? "technician" : "customer",
+      name: params.get("name") || "",
+      phone,
+    };
+    const mode = params.get("mode") === "text" ? "text" : "call";
+    const targetName = target.name || formatUsPhone(target.phone) || "Contact";
+
+    if (mode === "text") {
+      loadTextTarget(target, `Texting ${targetName}.`);
+    } else {
+      loadDialTarget(target, `${targetName} loaded in the dialer.`);
+      setInteractionContext("call");
+    }
+
+    navigate(location.pathname, { replace: true });
+  }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
     writeRecentCalls(recentCalls);
@@ -877,7 +910,11 @@ export function PhonePage() {
       subtitle="Default dashboard landing screen for the fastest Twilio bridge call."
       contentClassName="bg-[#11141c] p-4 sm:p-6 lg:p-8"
     >
-      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,430px)_1fr]">
+      <div
+        className={`mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,430px)_1fr] ${
+          shouldShowInteractionSummary ? "pb-56 sm:pb-44" : ""
+        }`}
+      >
         <Card className="border-white/10 bg-[#1c1e26] p-4 text-white shadow-2xl shadow-black/20 sm:p-6">
           <div className="rounded-3xl border border-white/10 bg-[#10131b] p-5">
             <div className="flex items-center justify-between gap-4">
@@ -1045,7 +1082,17 @@ export function PhonePage() {
             <textarea
               ref={smsComposerRef}
               className="mt-4 min-h-[132px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium leading-6 text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
-              onChange={(event) => setSmsBody(event.target.value)}
+              onChange={(event) => {
+                setSmsBody(event.target.value);
+                if (e164Number) {
+                  setInteractionContext("text");
+                }
+              }}
+              onFocus={() => {
+                if (e164Number) {
+                  setInteractionContext("text");
+                }
+              }}
               placeholder="Write a text to send from the Twilio phone"
               value={smsBody}
             />
@@ -1352,6 +1399,15 @@ export function PhonePage() {
           </Card>
         </div>
       </div>
+      {shouldShowInteractionSummary ? (
+        <InteractionSummaryCard
+          callStatus={status}
+          contact={interactionContact}
+          mode={interactionContext}
+          onClose={() => setInteractionContext(null)}
+          smsStatus={smsStatus}
+        />
+      ) : null}
     </PageScaffold>
   );
 }

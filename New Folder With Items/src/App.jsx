@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { CommunicationsPage } from "./pages/CommunicationsPage";
+import { ContactsPage } from "./pages/ContactsPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { DispatchPage } from "./pages/DispatchPage";
 import { HomePage } from "./pages/HomePage";
@@ -55,6 +56,7 @@ function App() {
         <Route index element={<Navigate replace to="/dashboard/phone" />} />
         <Route path="home" element={<HomePage />} />
         <Route path="jobs" element={<JobsPage />} />
+        <Route path="contacts" element={<ContactsPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="dispatch" element={<Navigate replace to="/dashboard/phone" />} />
         <Route path="dispatch-board" element={<DispatchPage />} />

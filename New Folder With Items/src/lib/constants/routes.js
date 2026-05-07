@@ -31,6 +31,15 @@ export const ROUTES = [
     alert: "Separate state tracking for every service job",
   },
   {
+    routeId: "contacts",
+    path: "/dashboard/contacts",
+    label: "Contacts",
+    icon: "☷",
+    group: "Main",
+    eyebrow: "People directory",
+    alert: "Customers and technicians in one contact view",
+  },
+  {
     routeId: "customers",
     path: "/dashboard/customers",
     label: "Customers",
