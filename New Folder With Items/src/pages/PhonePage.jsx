@@ -52,6 +52,7 @@ const ACTIVE_CALLS_REFRESH_INTERVAL_MS = 5000;
 const RECENT_CALLS_STORAGE_KEY = "asap-phone-recent-calls";
 const MAX_RECENT_CALLS = 12;
 const MAX_VISIBLE_CONTACTS = 80;
+const SUMMARY_CARD_PEEK_WIDTH = 72;
 const SMS_TEMPLATES = [
   {
     label: "Missed call",
@@ -401,16 +402,258 @@ async function requestOutboundTextMessage(payload) {
   return responseJson;
 }
 
+function clampNumber(value, minimum, maximum) {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
 function InteractionSummaryCard({ contact, mode, callStatus, smsStatus, onClose }) {
+  const cardRef = useRef(null);
+  const dragRef = useRef(null);
+  const [dockSide, setDockSide] = useState(null);
+  const [dragOffsetX, setDragOffsetX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const modeLabel = mode === "call" ? "Phone call" : "Text conversation";
   const statusLabel = mode === "call" ? callStatus : smsStatus;
   const summaryRows =
     contact.summaryRows?.length ? contact.summaryRows : contact.cardFields?.length ? contact.cardFields : contact.detailRows;
   const isReviewContact = contact.contactType === "review";
+  const cardWidth =
+    cardRef.current?.offsetWidth ||
+    (typeof window === "undefined" ? 360 : Math.max(window.innerWidth - 32, SUMMARY_CARD_PEEK_WIDTH));
+  const dockDistance = Math.max(0, cardWidth - SUMMARY_CARD_PEEK_WIDTH);
+  const dockBaseOffset = dockSide === "right" ? dockDistance : dockSide === "left" ? -dockDistance : 0;
+  const translateX = dockBaseOffset + dragOffsetX;
+
+  useEffect(() => {
+    setDockSide(null);
+    setDragOffsetX(0);
+  }, [contact.id, mode]);
+
+  useEffect(() => {
+    if (!isDragging) {
+      return undefined;
+    }
+
+    function handleWindowMouseMove(event) {
+      updateDragPosition(event.clientX, event.clientY, event);
+    }
+
+    function handleWindowMouseUp(event) {
+      finishDragAt(event.clientX);
+    }
+
+    function handleWindowTouchMove(event) {
+      const touch = event.touches[0];
+
+      if (touch) {
+        updateDragPosition(touch.clientX, touch.clientY, event);
+      }
+    }
+
+    function handleWindowTouchEnd(event) {
+      const touch = event.changedTouches[0];
+      finishDragAt(touch?.clientX ?? dragRef.current?.startX ?? 0);
+    }
+
+    window.addEventListener("mousemove", handleWindowMouseMove);
+    window.addEventListener("mouseup", handleWindowMouseUp);
+    window.addEventListener("touchmove", handleWindowTouchMove, { passive: false });
+    window.addEventListener("touchend", handleWindowTouchEnd);
+    window.addEventListener("touchcancel", handleWindowTouchEnd);
+
+    return () => {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+      window.removeEventListener("touchmove", handleWindowTouchMove);
+      window.removeEventListener("touchend", handleWindowTouchEnd);
+      window.removeEventListener("touchcancel", handleWindowTouchEnd);
+    };
+  }, [isDragging]);
+
+  function getDockOffset(side, width) {
+    const distance = Math.max(0, width - SUMMARY_CARD_PEEK_WIDTH);
+
+    if (side === "right") {
+      return distance;
+    }
+
+    if (side === "left") {
+      return -distance;
+    }
+
+    return 0;
+  }
+
+  function shouldSkipDragStart(target) {
+    return target instanceof Element && Boolean(target.closest("button, a, input, textarea, select"));
+  }
+
+  function beginDrag({ clientX, clientY, pointerId }) {
+    if (dragRef.current) {
+      return;
+    }
+
+    const width =
+      cardRef.current?.offsetWidth ||
+      (typeof window === "undefined" ? 360 : Math.max(window.innerWidth - 32, SUMMARY_CARD_PEEK_WIDTH));
+
+    dragRef.current = {
+      dockSideAtStart: dockSide,
+      moved: false,
+      pointerId,
+      startX: clientX,
+      startY: clientY,
+      width,
+    };
+    setIsDragging(true);
+  }
+
+  function updateDragPosition(clientX, clientY, originalEvent) {
+    const drag = dragRef.current;
+
+    if (!drag) {
+      return;
+    }
+
+    const deltaX = clientX - drag.startX;
+    const deltaY = clientY - drag.startY;
+
+    if (!drag.moved && Math.abs(deltaX) < 6 && Math.abs(deltaY) < 6) {
+      return;
+    }
+
+    drag.moved = true;
+
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      originalEvent?.preventDefault?.();
+    }
+
+    const maxOffset = Math.max(0, drag.width - SUMMARY_CARD_PEEK_WIDTH);
+    const baseOffset = getDockOffset(drag.dockSideAtStart, drag.width);
+    const nextOffset = clampNumber(baseOffset + deltaX, -maxOffset, maxOffset);
+
+    setDragOffsetX(nextOffset - baseOffset);
+  }
+
+  function finishDragAt(clientX) {
+    const drag = dragRef.current;
+
+    if (!drag) {
+      return;
+    }
+
+    const maxOffset = Math.max(0, drag.width - SUMMARY_CARD_PEEK_WIDTH);
+    const baseOffset = getDockOffset(drag.dockSideAtStart, drag.width);
+    const finalOffset = clampNumber(baseOffset + clientX - drag.startX, -maxOffset, maxOffset);
+    const threshold = Math.min(140, Math.max(72, maxOffset * 0.32));
+
+    if (finalOffset > threshold) {
+      setDockSide("right");
+    } else if (finalOffset < -threshold) {
+      setDockSide("left");
+    } else {
+      setDockSide(null);
+    }
+
+    setDragOffsetX(0);
+    setIsDragging(false);
+    dragRef.current = null;
+  }
+
+  function handlePointerDown(event) {
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    if (shouldSkipDragStart(event.target)) {
+      return;
+    }
+
+    beginDrag({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: event.pointerId,
+    });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handlePointerMove(event) {
+    const drag = dragRef.current;
+
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    updateDragPosition(event.clientX, event.clientY, event);
+  }
+
+  function finishPointerDrag(event) {
+    const drag = dragRef.current;
+
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    finishDragAt(event.clientX);
+  }
+
+  function handleMouseDown(event) {
+    if (event.button !== 0 || shouldSkipDragStart(event.target)) {
+      return;
+    }
+
+    beginDrag({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: "mouse",
+    });
+  }
+
+  function handleTouchStart(event) {
+    if (shouldSkipDragStart(event.target)) {
+      return;
+    }
+
+    const touch = event.touches[0];
+
+    if (!touch) {
+      return;
+    }
+
+    beginDrag({
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      pointerId: touch.identifier,
+    });
+  }
 
   return (
     <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 right-4 z-30 md:left-[calc(272px+1rem)]">
-      <div className="mx-auto max-w-5xl rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-950/20 sm:p-5">
+      <div
+        className={`relative mx-auto max-w-5xl touch-pan-y rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-950/20 transition-transform sm:p-5 ${
+          isDragging ? "cursor-grabbing duration-0" : "cursor-grab duration-300 ease-out"
+        }`}
+        onMouseDown={handleMouseDown}
+        onPointerCancel={finishPointerDrag}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointerDrag}
+        onTouchStart={handleTouchStart}
+        ref={cardRef}
+        style={{ transform: `translate3d(${translateX}px, 0, 0)` }}
+      >
+        {dockSide ? (
+          <button
+            aria-label="Show summary card"
+            className={`absolute top-1/2 z-10 flex h-16 w-10 -translate-y-1/2 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-lg shadow-slate-950/25 transition hover:bg-slate-800 ${
+              dockSide === "right" ? "left-2" : "right-2"
+            }`}
+            onClick={() => setDockSide(null)}
+            type="button"
+          >
+            {dockSide === "right" ? "<" : ">"}
+          </button>
+        ) : null}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -426,11 +669,20 @@ function InteractionSummaryCard({ contact, mode, callStatus, smsStatus, onClose 
             <Badge tone={mode === "call" ? "emerald" : "blue"}>{modeLabel}</Badge>
             <Badge tone={getStatusTone(statusLabel)}>{statusLabel}</Badge>
             <button
-              className="inline-flex min-h-9 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              aria-label="Dock summary card"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-sm font-black text-slate-600 transition hover:bg-slate-50"
+              onClick={() => setDockSide("right")}
+              type="button"
+            >
+              &gt;
+            </button>
+            <button
+              aria-label="Close summary card"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-sm font-black text-slate-600 transition hover:bg-slate-50"
               onClick={onClose}
               type="button"
             >
-              Close
+              X
             </button>
           </div>
         </div>
