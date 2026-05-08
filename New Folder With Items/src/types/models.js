@@ -36,6 +36,7 @@
  * @property {"normal"|"high"|"escalated"} priority
  * @property {string} internalNotes
  * @property {string} [scheduledStartAt]
+ * @property {string|null} [onsiteAt]
  * @property {string|null} [completedAt]
  * @property {string|null} [dispatchConfirmationRequestedAt]
  * @property {string|null} [dispatchConfirmationReceivedAt]

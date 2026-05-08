@@ -79,6 +79,7 @@ export function mapJobRowToDomain(row, relations = {}) {
     technicianConfirmationResponse: row.technician_confirmation_response,
     paymentCollectedBeforeTechLeft: row.payment_collected_before_tech_left,
     scheduledStartAt: row.scheduled_start_at,
+    onsiteAt: row.onsite_at,
     completedAt: row.completed_at,
   };
 }

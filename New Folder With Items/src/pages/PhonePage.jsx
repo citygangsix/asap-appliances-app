@@ -280,7 +280,8 @@ async function requestOutboundTextMessage(payload) {
 function InteractionSummaryCard({ contact, mode, callStatus, smsStatus, onClose }) {
   const modeLabel = mode === "call" ? "Phone call" : "Text conversation";
   const statusLabel = mode === "call" ? callStatus : smsStatus;
-  const fields = contact.cardFields?.length ? contact.cardFields : contact.detailRows;
+  const summaryRows =
+    contact.summaryRows?.length ? contact.summaryRows : contact.cardFields?.length ? contact.cardFields : contact.detailRows;
   const isReviewContact = contact.contactType === "review";
 
   return (
@@ -309,8 +310,11 @@ function InteractionSummaryCard({ contact, mode, callStatus, smsStatus, onClose 
             </button>
           </div>
         </div>
-        <div className="mt-4 grid max-h-44 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-4">
-          {fields.map((row) => (
+        <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+          Quick summary
+        </p>
+        <div className="mt-2 grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-4">
+          {summaryRows.map((row) => (
             <div className="rounded-xl bg-slate-50 px-3 py-2" key={`${contact.id}:${row.label}`}>
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                 {row.label}
@@ -502,7 +506,9 @@ export function PhonePage() {
     (smsE164Number ? formatUsPhone(smsE164Number) || smsE164Number : "Choose a recipient");
   const canSendText = Boolean(smsE164Number) && smsBody.trim().length > 0 && smsStatus !== "Sending";
   const liveCallCount = activeCalls.length || (status === "Calling" ? 1 : 0);
-  const shouldShowInteractionSummary = Boolean(interactionContext && interactionContact);
+  const activeInteractionContact =
+    interactionContext === "text" && smsDraftContact ? smsDraftContact : interactionContact;
+  const shouldShowInteractionSummary = Boolean(interactionContext && activeInteractionContact);
 
   const refreshActiveCalls = useCallback(async () => {
     try {
@@ -1521,7 +1527,7 @@ export function PhonePage() {
       {shouldShowInteractionSummary ? (
         <InteractionSummaryCard
           callStatus={status}
-          contact={interactionContact}
+          contact={activeInteractionContact}
           mode={interactionContext}
           onClose={() => setInteractionContext(null)}
           smsStatus={smsStatus}

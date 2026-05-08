@@ -114,6 +114,23 @@ function formatOptionalCurrency(value) {
   return typeof value === "number" ? formatCurrency(value) : null;
 }
 
+function formatDateTimeLabel(value) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch (error) {
+    return null;
+  }
+}
+
 function getCustomerActiveJob(customer) {
   return customer.activeJob || customer.jobs?.find((job) => !["completed", "canceled"].includes(job.lifecycleStatus)) || null;
 }
@@ -137,6 +154,117 @@ function getContactPriority(contact) {
 
 function createCardField(label, value) {
   return createDetailRow(label, value);
+}
+
+function getRepairStatusSummary(job) {
+  if (!job) {
+    return "No active repair found";
+  }
+
+  return joinDetails([
+    formatStatusLabel(job.lifecycleStatus),
+    job.dispatchStatus && !["assigned", "unassigned"].includes(job.dispatchStatus)
+      ? formatStatusLabel(job.dispatchStatus)
+      : null,
+    job.partsStatus && job.partsStatus !== "none_needed"
+      ? `Parts: ${formatStatusLabel(job.partsStatus)}`
+      : null,
+    job.paymentStatus && job.paymentStatus !== "none_due"
+      ? `Payment: ${formatStatusLabel(job.paymentStatus)}`
+      : null,
+  ]);
+}
+
+function getVisitTimeSummary(job) {
+  if (!job) {
+    return null;
+  }
+
+  const onsiteLabel = formatDateTimeLabel(job.onsiteAt);
+  const completedLabel = formatDateTimeLabel(job.completedAt);
+
+  if (job.lifecycleStatus === "completed" && completedLabel) {
+    return `Completed ${completedLabel}`;
+  }
+
+  if (onsiteLabel) {
+    return `Went onsite ${onsiteLabel}`;
+  }
+
+  if (job.scheduledStartLabel) {
+    return `Scheduled ${job.scheduledStartLabel}`;
+  }
+
+  if (job.etaLabel && job.etaLabel !== "Not set") {
+    return `ETA ${job.etaLabel}`;
+  }
+
+  return null;
+}
+
+function buildCustomerSummaryRows(customer) {
+  const activeJob = getCustomerActiveJob(customer);
+  const latestCommunication = customer.communicationRecords?.[0] || null;
+
+  return compactRows([
+    createCardField("Person", customer.name),
+    createCardField("Phone", formatUsPhone(customer.primaryPhone) || customer.primaryPhone),
+    createCardField("Repair Status", getRepairStatusSummary(activeJob)),
+    createCardField(
+      "Service / Appliance",
+      activeJob ? joinDetails([activeJob.applianceLabel, activeJob.issueSummary], " - ") : customer.customerSegment,
+    ),
+    createCardField("Visit Time", getVisitTimeSummary(activeJob)),
+    createCardField("Address", activeJob?.serviceAddress || joinDetails([customer.city, customer.serviceArea])),
+    createCardField("Technician", activeJob?.technician?.name || (activeJob ? "Unassigned" : null)),
+    createCardField(
+      "Latest Note",
+      activeJob?.internalNotes ||
+        latestCommunication?.callHighlights ||
+        latestCommunication?.previewText ||
+        customer.notes ||
+        customer.latestCommunication,
+    ),
+  ]);
+}
+
+function buildTechnicianSummaryRows(technician) {
+  return compactRows([
+    createCardField("Person", technician.name),
+    createCardField("Phone", formatUsPhone(technician.primaryPhone) || technician.primaryPhone),
+    createCardField("Work Status", formatStatusLabel(technician.statusToday || "unassigned")),
+    createCardField("Service Area", technician.serviceArea),
+    createCardField("Skills", technician.skills?.slice(0, 4).join(", ")),
+    createCardField("Availability", technician.availabilityLabel),
+    createCardField("Jobs This Week", technician.jobsCompletedThisWeek),
+    createCardField("Payout", formatOptionalCurrency(technician.payoutTotal)),
+  ]);
+}
+
+function buildHiringCandidateSummaryRows(candidate, isHired) {
+  return compactRows([
+    createCardField("Person", candidate.name),
+    createCardField("Phone", formatUsPhone(candidate.primaryPhone) || candidate.primaryPhone),
+    createCardField("Hiring Status", isHired ? "Moved to technicians" : formatStatusLabel(candidate.stage || "contacted")),
+    createCardField("Trade", candidate.trade || "Appliance repair"),
+    createCardField("Experience", candidate.applianceExperienceSummary || candidate.experienceSummary),
+    createCardField("Availability", candidate.availabilitySummary),
+    createCardField("Tools / Vehicle", candidate.toolsVehicleSummary),
+    createCardField("Next Step", candidate.nextStep),
+  ]);
+}
+
+function buildReviewSummaryRows(entry, sourceLabel, suggestedType, displayPhone, summary, status) {
+  return compactRows([
+    createCardField("Person", entry.customer?.name || displayPhone || "Unknown contact"),
+    createCardField("Phone", displayPhone),
+    createCardField("Source", sourceLabel),
+    createCardField("Suggested Type", suggestedType),
+    createCardField("Status", formatStatusLabel(status)),
+    createCardField("Occurred", entry.occurredAtLabel),
+    createCardField("Summary", summary),
+    createCardField("Follow-up", entry.callSummarySections?.followUpActions),
+  ]);
 }
 
 function buildCustomerDetailRows(customer) {
@@ -342,6 +470,7 @@ function buildCustomerContact(customer) {
     statusTone: getStatusTone(customer.communicationStatus || "clear"),
     detailRows,
     cardFields: buildCustomerCardFields(customer),
+    summaryRows: buildCustomerSummaryRows(customer),
     cardTitle: "Customer",
     summaryLine: joinDetails([
       customer.customerSegment || "Customer",
@@ -376,6 +505,7 @@ function buildTechnicianContact(technician) {
     statusTone: getStatusTone(technician.statusToday || "unassigned"),
     detailRows,
     cardFields: buildTechnicianCardFields(technician),
+    summaryRows: buildTechnicianSummaryRows(technician),
     cardTitle: "Technician",
     summaryLine: joinDetails([
       technician.serviceArea,
@@ -412,6 +542,7 @@ function buildHiringCandidateContact(candidate) {
     statusTone: isHired ? "emerald" : "indigo",
     detailRows,
     cardFields: buildHiringCandidateCardFields(candidate, isHired),
+    summaryRows: buildHiringCandidateSummaryRows(candidate, isHired),
     cardTitle: isHired ? "Technician" : "Candidate",
     summaryLine: joinDetails([
       candidate.trade || "Hiring lead",
@@ -467,6 +598,7 @@ function buildReviewContact(entry, sourceLabel) {
       createCardField("Source", sourceLabel),
       createCardField("Last Transcript Summary", summary),
     ]),
+    summaryRows: buildReviewSummaryRows(entry, sourceLabel, suggestedType, displayPhone, summary, status),
     cardTitle: "Review Contact",
     suggestedType,
     summaryLine: joinDetails([sourceLabel, suggestedType ? `Suggested: ${suggestedType}` : null, summary]),
@@ -570,6 +702,13 @@ export function buildManualContactSummary({ contactType = "customer", name = "",
         typeLabel,
       ),
       createCardField("Saved Record", normalizedContactType === "review" ? "Review before converting" : "Not saved yet"),
+    ]),
+    summaryRows: compactRows([
+      createCardField("Person", displayName),
+      createCardField("Phone", displayPhone),
+      createCardField("Type", typeLabel),
+      createCardField("Saved Record", normalizedContactType === "review" ? "Review before converting" : "Not saved yet"),
+      createCardField("Next Step", "Confirm the details while you talk or text."),
     ]),
     cardTitle: typeLabel,
     suggestedType: normalizedContactType === "review" ? "Customer" : null,
