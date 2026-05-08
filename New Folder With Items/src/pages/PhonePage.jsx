@@ -291,6 +291,7 @@ function InCallScreen({ targetName, targetPhone, status, onEnd, onShowKeypad }) 
           return (
             <div className="text-center" key={control.key}>
               <button
+                aria-label={control.label}
                 className={`mx-auto flex h-24 w-24 items-center justify-center rounded-full transition disabled:opacity-45 ${buttonClass}`}
                 disabled={control.disabled}
                 onClick={
@@ -493,6 +494,8 @@ export function PhonePage() {
   const [contactListFilter, setContactListFilter] = useState("all");
   const [selectedContactId, setSelectedContactId] = useState(null);
   const [interactionContext, setInteractionContext] = useState(null);
+  const [activeCallTarget, setActiveCallTarget] = useState(null);
+  const [showCallKeypad, setShowCallKeypad] = useState(false);
   const audioContextRef = useRef(null);
   const activeToneRef = useRef(null);
   const ringingRef = useRef({ intervalId: null, burst: null });
@@ -623,7 +626,10 @@ export function PhonePage() {
   }, [activeDirectoryContact, contactType, e164Number, rawNumber, trimmedCustomerName]);
   const callCustomerName = activeDirectoryContact?.name || activeMatchedContact?.name || trimmedCustomerName;
   const callTargetLabel = callCustomerName || formattedNumber || e164Number || "No number entered";
-  const canCall = Boolean(e164Number) && status !== "Calling";
+  const isActiveCallSession =
+    Boolean(activeCallTarget) && (status === "Calling" || status === "Sent" || status === "Failed");
+  const shouldShowInCallScreen = isActiveCallSession && !showCallKeypad;
+  const canCall = Boolean(e164Number) && !isActiveCallSession && status !== "Calling";
   const smsTargetLabel =
     smsDraftContact?.name ||
     (smsE164Number ? formatUsPhone(smsE164Number) || smsE164Number : "Choose a recipient");
@@ -805,6 +811,8 @@ export function PhonePage() {
     setCustomerName("");
     setStatus("Ready");
     setInteractionContext(null);
+    setActiveCallTarget(null);
+    setShowCallKeypad(false);
   }
 
   function focusTextRecipientSearch() {
@@ -894,6 +902,8 @@ export function PhonePage() {
     setContactType(targetContactType);
     setSelectedContactId(target.id || null);
     setStatus("Ready");
+    setActiveCallTarget(null);
+    setShowCallKeypad(false);
   }
 
   function focusSmsComposer() {
@@ -921,7 +931,7 @@ export function PhonePage() {
     const draftRawNumber = callOverride.phone ? sanitizeDialValue(callOverride.phone) : rawNumber;
     const draftE164Number = toE164(draftRawNumber);
 
-    if (!draftE164Number || status === "Calling") {
+    if (!draftE164Number || status === "Calling" || isActiveCallSession) {
       return;
     }
 
@@ -942,10 +952,17 @@ export function PhonePage() {
       isTechnicianCall ? draftMatchedTechnician : isCandidateCall || isReviewCall ? null : draftMatchedCustomer;
     const draftName =
       draftMatchedContact?.name ||
+      String(callOverride.name || "").trim() ||
       activeDirectoryContact?.name ||
-      String(callOverride.name || customerName).trim();
+      customerName.trim();
 
     setInteractionContext("call");
+    setActiveCallTarget({
+      contactType: draftContactType,
+      name: draftName,
+      phone: draftE164Number,
+    });
+    setShowCallKeypad(false);
     setStatus("Calling");
     startRinging();
 
@@ -1100,6 +1117,8 @@ export function PhonePage() {
     stopRinging();
     setStatus("Ready");
     setInteractionContext(null);
+    setActiveCallTarget(null);
+    setShowCallKeypad(false);
   }
 
   useEffect(() => {
@@ -1174,7 +1193,27 @@ export function PhonePage() {
         }`}
       >
         <Card className="border-white/10 bg-[#1c1e26] p-4 text-white shadow-2xl shadow-black/20 sm:p-6">
-          <div className="rounded-3xl border border-white/10 bg-[#10131b] p-5">
+          {shouldShowInCallScreen ? (
+            <InCallScreen
+              onEnd={resetCallState}
+              onShowKeypad={() => setShowCallKeypad(true)}
+              status={status}
+              targetName={activeCallTarget?.name}
+              targetPhone={activeCallTarget?.phone}
+            />
+          ) : (
+            <>
+              {isActiveCallSession ? (
+                <button
+                  className="mb-4 flex min-h-[52px] w-full items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left text-sm font-semibold text-slate-200 transition hover:bg-white/[0.11]"
+                  onClick={() => setShowCallKeypad(false)}
+                  type="button"
+                >
+                  <span>Return to call screen</span>
+                  <Badge tone={getStatusTone(status)}>{status}</Badge>
+                </button>
+              ) : null}
+              <div className="rounded-3xl border border-white/10 bg-[#10131b] p-5">
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">
                 Dialer
@@ -1270,22 +1309,43 @@ export function PhonePage() {
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3">
-            <button
-              className="min-h-[60px] rounded-2xl bg-emerald-500 px-5 py-3 text-base font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-              disabled={!canCall}
-              onClick={() => startCall()}
-              type="button"
-            >
-              Call from Twilio
-            </button>
-            <button
-              className="min-h-[60px] rounded-2xl bg-slate-700 px-5 py-3 text-base font-semibold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-              disabled={status === "Ready" && !rawNumber}
-              onClick={resetCallState}
-              type="button"
-            >
-              {status === "Calling" ? "Cancel" : "Reset"}
-            </button>
+            {isActiveCallSession ? (
+              <>
+                <button
+                  className="min-h-[60px] rounded-2xl bg-slate-700 px-5 py-3 text-base font-semibold text-white transition hover:bg-slate-600"
+                  onClick={() => setShowCallKeypad(false)}
+                  type="button"
+                >
+                  Call screen
+                </button>
+                <button
+                  className="min-h-[60px] rounded-2xl bg-red-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-red-500"
+                  onClick={resetCallState}
+                  type="button"
+                >
+                  End
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="min-h-[60px] rounded-2xl bg-emerald-500 px-5 py-3 text-base font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                  disabled={!canCall}
+                  onClick={() => startCall()}
+                  type="button"
+                >
+                  Call from Twilio
+                </button>
+                <button
+                  className="min-h-[60px] rounded-2xl bg-slate-700 px-5 py-3 text-base font-semibold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+                  disabled={status === "Ready" && !rawNumber}
+                  onClick={resetCallState}
+                  type="button"
+                >
+                  Reset
+                </button>
+              </>
+            )}
           </div>
 
           <button
@@ -1400,6 +1460,8 @@ export function PhonePage() {
               <p className="mt-3 text-sm leading-6 text-slate-300">{smsMessage}</p>
             </div>
           ) : null}
+            </>
+          )}
         </Card>
 
         <div className="space-y-6">
@@ -1485,7 +1547,7 @@ export function PhonePage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           className="text-left text-base font-semibold text-white underline decoration-white/20 underline-offset-4 transition hover:text-emerald-200"
-                          disabled={status === "Calling"}
+                          disabled={isActiveCallSession}
                           onClick={() => callRecentCall(call)}
                           type="button"
                         >
@@ -1504,7 +1566,7 @@ export function PhonePage() {
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
                       <button
                         className="min-h-[40px] rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                        disabled={status === "Calling"}
+                        disabled={isActiveCallSession}
                         onClick={() => callRecentCall(call)}
                         type="button"
                       >
@@ -1600,7 +1662,7 @@ export function PhonePage() {
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
                       <button
                         className="min-h-[40px] rounded-xl bg-sky-500 px-4 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                        disabled={status === "Calling" || !toE164(sanitizeDialValue(contact.primaryPhone))}
+                        disabled={isActiveCallSession || !toE164(sanitizeDialValue(contact.primaryPhone))}
                         onClick={() => callContact(contact)}
                         type="button"
                       >
