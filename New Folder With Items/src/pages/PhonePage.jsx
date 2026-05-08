@@ -12,7 +12,6 @@ import {
   buildManualContactSummary,
   contactMatchesSearch,
   formatUsPhone,
-  getContactTypeLabel,
   getContactTypeTitle,
   getContactTypeTone,
   normalizePhoneLookup,
@@ -352,7 +351,9 @@ export function PhonePage() {
   const [customerName, setCustomerName] = useState("");
   const [contactType, setContactType] = useState("customer");
   const [status, setStatus] = useState("Ready");
-  const [message, setMessage] = useState("Enter a contact number and start the Twilio bridge.");
+  const [isTextComposerOpen, setIsTextComposerOpen] = useState(false);
+  const [smsRecipientQuery, setSmsRecipientQuery] = useState("");
+  const [smsDraftContact, setSmsDraftContact] = useState(null);
   const [smsBody, setSmsBody] = useState("");
   const [smsStatus, setSmsStatus] = useState("Ready");
   const [smsMessage, setSmsMessage] = useState("Write a text message to send from the Twilio phone.");
@@ -368,6 +369,7 @@ export function PhonePage() {
   const audioContextRef = useRef(null);
   const activeToneRef = useRef(null);
   const ringingRef = useRef({ intervalId: null, burst: null });
+  const smsRecipientSearchRef = useRef(null);
   const smsComposerRef = useRef(null);
   const directoryQuery = useAsyncValue(async () => {
     const [customers, techniciansPageData, communicationsPageData, liveHiringCandidates] = await Promise.all([
@@ -409,6 +411,36 @@ export function PhonePage() {
       ),
     [customerDirectory, directoryQuery.data, technicianDirectory],
   );
+  const smsQueryPhone = useMemo(
+    () => toE164(sanitizeDialValue(smsRecipientQuery)),
+    [smsRecipientQuery],
+  );
+  const smsDraftContactPhone = smsDraftContact?.primaryPhone || smsDraftContact?.phone || "";
+  const smsE164Number = useMemo(() => {
+    const selectedPhone = toE164(sanitizeDialValue(smsDraftContactPhone));
+
+    if (selectedPhone) {
+      return selectedPhone;
+    }
+
+    if (smsQueryPhone) {
+      return smsQueryPhone;
+    }
+
+    return smsRecipientQuery.trim() ? "" : e164Number;
+  }, [e164Number, smsDraftContactPhone, smsQueryPhone, smsRecipientQuery]);
+  const smsRecipientMatches = useMemo(() => {
+    if (!isTextComposerOpen) {
+      return [];
+    }
+
+    const query = smsRecipientQuery.trim();
+
+    return contactDirectory
+      .filter((contact) => !query || contactMatchesSearch(contact, query))
+      .filter((contact) => toE164(sanitizeDialValue(contact.primaryPhone)))
+      .slice(0, 6);
+  }, [contactDirectory, isTextComposerOpen, smsRecipientQuery]);
   const filteredContacts = useMemo(
     () =>
       contactDirectory
@@ -464,9 +496,11 @@ export function PhonePage() {
   }, [activeDirectoryContact, contactType, e164Number, rawNumber, trimmedCustomerName]);
   const callCustomerName = activeDirectoryContact?.name || activeMatchedContact?.name || trimmedCustomerName;
   const callTargetLabel = callCustomerName || formattedNumber || e164Number || "No number entered";
-  const activeContactTypeLabel = getContactTypeLabel(contactType);
   const canCall = Boolean(e164Number) && status !== "Calling";
-  const canSendText = Boolean(e164Number) && smsBody.trim().length > 0 && smsStatus !== "Sending";
+  const smsTargetLabel =
+    smsDraftContact?.name ||
+    (smsE164Number ? formatUsPhone(smsE164Number) || smsE164Number : "Choose a recipient");
+  const canSendText = Boolean(smsE164Number) && smsBody.trim().length > 0 && smsStatus !== "Sending";
   const liveCallCount = activeCalls.length || (status === "Calling" ? 1 : 0);
   const shouldShowInteractionSummary = Boolean(interactionContext && interactionContact);
 
@@ -642,7 +676,58 @@ export function PhonePage() {
     setCustomerName("");
     setStatus("Ready");
     setInteractionContext(null);
-    setMessage("Ready for the next Twilio bridge call.");
+  }
+
+  function focusTextRecipientSearch() {
+    window.setTimeout(() => {
+      smsRecipientSearchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      smsRecipientSearchRef.current?.focus();
+    }, 50);
+  }
+
+  function openTextComposer() {
+    const targetContact = activeDirectoryContact || selectedContact || null;
+    const targetPhone = targetContact?.primaryPhone || e164Number || rawNumber;
+
+    setIsTextComposerOpen(true);
+    setSmsDraftContact(targetContact);
+    setSmsRecipientQuery(targetContact?.name || formatUsPhone(targetPhone) || targetPhone || "");
+    setSmsStatus("Ready");
+    setSmsMessage("Choose a contact or enter a phone number, then write your text.");
+
+    if (targetPhone) {
+      setInteractionContext("text");
+    }
+
+    focusTextRecipientSearch();
+  }
+
+  function updateSmsRecipientQuery(value) {
+    const nextPhone = toE164(sanitizeDialValue(value));
+
+    setSmsRecipientQuery(value);
+    setSmsDraftContact(null);
+    setSelectedContactId(null);
+
+    if (nextPhone) {
+      setRawNumber(sanitizeDialValue(value));
+      setCustomerName("");
+      setInteractionContext("text");
+    }
+  }
+
+  function chooseSmsRecipient(contact) {
+    const targetPhone = contact.primaryPhone || contact.phone || "";
+
+    setSmsDraftContact(contact);
+    setSmsRecipientQuery(contact.name || formatUsPhone(targetPhone) || targetPhone || "");
+    setIsTextComposerOpen(true);
+    setSelectedContactId(contact.id || null);
+    loadDialTarget(contact);
+    setInteractionContext("text");
+    setSmsStatus("Ready");
+    setSmsMessage(`${contact.name || formatUsPhone(targetPhone) || "Contact"} is ready for a Twilio text.`);
+    focusSmsComposer();
   }
 
   function rememberRecentCall({ contactType: callContactType, name, phone, outcome }) {
@@ -671,7 +756,7 @@ export function PhonePage() {
     });
   }
 
-  function loadDialTarget(target, nextMessage = null) {
+  function loadDialTarget(target) {
     const targetPhone = target.primaryPhone || target.phone || "";
     const targetContactType = target.contactType || "customer";
 
@@ -680,10 +765,6 @@ export function PhonePage() {
     setContactType(targetContactType);
     setSelectedContactId(target.id || null);
     setStatus("Ready");
-    setMessage(
-      nextMessage ||
-        `${target.name || formatUsPhone(targetPhone) || "Contact"} loaded in the dialer.`,
-    );
   }
 
   function focusSmsComposer() {
@@ -693,14 +774,14 @@ export function PhonePage() {
     }, 50);
   }
 
-  function loadTextTarget(target, nextMessage = null) {
+  function loadTextTarget(target) {
     const targetPhone = target.primaryPhone || target.phone || "";
     const targetName = target.name || formatUsPhone(targetPhone) || "Contact";
 
-    loadDialTarget(
-      target,
-      nextMessage || `${targetName} loaded for texting. Write a message and press Send text.`,
-    );
+    loadDialTarget(target);
+    setIsTextComposerOpen(true);
+    setSmsDraftContact(target);
+    setSmsRecipientQuery(target.name || formatUsPhone(targetPhone) || targetPhone || "");
     setInteractionContext("text");
     setSmsStatus("Ready");
     setSmsMessage(`${targetName} is ready for a Twilio text.`);
@@ -734,16 +815,10 @@ export function PhonePage() {
       draftMatchedContact?.name ||
       activeDirectoryContact?.name ||
       String(callOverride.name || customerName).trim();
-    const draftTargetLabel = draftName || draftFormattedNumber || draftE164Number;
 
     setInteractionContext("call");
     setStatus("Calling");
     startRinging();
-    setMessage(
-      selectedAgentPhone
-        ? `Calling ${formatUsPhone(selectedAgentPhone)} first. Answer it to connect ${draftTargetLabel}.`
-        : `Calling the configured office phone first. Answer it to connect ${draftTargetLabel}.`,
-    );
 
     try {
       const shouldRefreshDirectoryAfterCall = !draftMatchedContact;
@@ -781,11 +856,6 @@ export function PhonePage() {
         repository.clearRuntimeCaches?.();
         setDirectoryRefreshNonce((current) => current + 1);
       }
-      setMessage(
-        result.message
-          ? `${result.message} ${getContactTypeTitle(draftContactType)} sees ${result.businessPhoneNumber || "the Twilio number"}.`
-          : `Twilio is calling ${formatUsPhone(result.agentPhone || selectedAgentPhone || "") || "the configured phone"}. ${getContactTypeTitle(draftContactType)} sees ${result.businessPhoneNumber || "the Twilio number"}.`,
-      );
       refreshActiveCalls();
     } catch (error) {
       stopRinging();
@@ -796,25 +866,36 @@ export function PhonePage() {
         phone: draftE164Number,
         outcome: "failed",
       });
-      setMessage(error.message);
     }
   }
 
   async function sendTextMessage(textOverride = null) {
     const body = String(textOverride ?? smsBody).trim();
+    const draftE164Number = smsE164Number;
 
-    if (!e164Number || !body || smsStatus === "Sending") {
+    if (!draftE164Number || !body || smsStatus === "Sending") {
       return;
     }
 
-    const isTechnicianText = contactType === "technician";
-    const isCandidateText = contactType === "candidate";
-    const isReviewText = contactType === "review";
+    const draftContactType = smsDraftContact?.contactType || contactType;
+    const isTechnicianText = draftContactType === "technician";
+    const isCandidateText = draftContactType === "candidate";
+    const isReviewText = draftContactType === "review";
     const requestContactType = isTechnicianText ? "technician" : "customer";
+    const draftMatchedCustomer = isTechnicianText
+      ? null
+      : findSavedCustomerByPhone(customerDirectory, draftE164Number);
+    const draftMatchedTechnician = isTechnicianText
+      ? findSavedTechnicianByPhone(technicianDirectory, draftE164Number)
+      : null;
     const draftMatchedContact =
-      isTechnicianText ? matchedTechnician : isCandidateText || isReviewText ? null : matchedCustomer;
+      smsDraftContact ||
+      (isTechnicianText ? draftMatchedTechnician : isCandidateText || isReviewText ? null : draftMatchedCustomer);
     const draftName =
-      draftMatchedContact?.name || activeDirectoryContact?.name || trimmedCustomerName || formattedNumber || e164Number;
+      draftMatchedContact?.name ||
+      trimmedCustomerName ||
+      formatUsPhone(draftE164Number) ||
+      draftE164Number;
     const shouldRefreshDirectoryAfterText = !draftMatchedContact;
 
     setInteractionContext("text");
@@ -823,16 +904,16 @@ export function PhonePage() {
 
     try {
       const result = await requestOutboundTextMessage({
-        ...(matchedCustomer?.customerId && !isTechnicianText && !isCandidateText && !isReviewText
-          ? { customerId: matchedCustomer.customerId }
+        ...(draftMatchedCustomer?.customerId && !isTechnicianText && !isCandidateText && !isReviewText
+          ? { customerId: draftMatchedCustomer.customerId }
           : {}),
         contactType: requestContactType,
         customerName: draftName,
-        customerPhone: e164Number,
-        toNumber: e164Number,
+        customerPhone: draftE164Number,
+        toNumber: draftE164Number,
         body,
-        persistCustomerContact: !isTechnicianText && !isCandidateText && !isReviewText && !matchedCustomer,
-        persistTechnicianContact: isTechnicianText && !matchedTechnician,
+        persistCustomerContact: !isTechnicianText && !isCandidateText && !isReviewText && !draftMatchedCustomer,
+        persistTechnicianContact: isTechnicianText && !draftMatchedTechnician,
         triggerSource: isCandidateText
           ? "manual_hiring_ui"
           : isReviewText
@@ -861,14 +942,11 @@ export function PhonePage() {
   }
 
   function callRecentCall(call) {
-    loadDialTarget(
-      {
-        contactType: call.contactType,
-        name: call.name,
-        phone: call.phone,
-      },
-      `Calling ${call.name || formatUsPhone(call.phone)} again.`,
-    );
+    loadDialTarget({
+      contactType: call.contactType,
+      name: call.name,
+      phone: call.phone,
+    });
     startCall({
       contactType: call.contactType,
       name: call.name,
@@ -877,7 +955,7 @@ export function PhonePage() {
   }
 
   function callContact(contact) {
-    loadDialTarget(contact, `Calling ${contact.name || formatUsPhone(contact.primaryPhone)}.`);
+    loadDialTarget(contact);
     startCall({
       contactType: contact.contactType,
       name: contact.name,
@@ -886,14 +964,13 @@ export function PhonePage() {
   }
 
   function textContact(contact) {
-    loadTextTarget(contact, `Texting ${contact.name || formatUsPhone(contact.primaryPhone)}.`);
+    loadTextTarget(contact);
   }
 
   function resetCallState() {
     stopRinging();
     setStatus("Ready");
     setInteractionContext(null);
-    setMessage("Ready for the next Twilio bridge call.");
   }
 
   useEffect(() => {
@@ -917,12 +994,11 @@ export function PhonePage() {
       phone,
     };
     const mode = params.get("mode") === "text" ? "text" : "call";
-    const targetName = target.name || formatUsPhone(target.phone) || "Contact";
 
     if (mode === "text") {
-      loadTextTarget(target, `Texting ${targetName}.`);
+      loadTextTarget(target);
     } else {
-      loadDialTarget(target, `${targetName} loaded in the dialer.`);
+      loadDialTarget(target);
       setInteractionContext("call");
     }
 
@@ -1083,52 +1159,118 @@ export function PhonePage() {
             </button>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-white/10 bg-[#10131b] p-5">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">
-                Text message
-              </p>
-              <Badge tone={getStatusTone(smsStatus)}>{smsStatus}</Badge>
+          <button
+            className="mt-5 flex min-h-[64px] w-full items-center justify-between gap-4 rounded-2xl border border-sky-300/30 bg-sky-500 px-5 py-4 text-left text-base font-semibold text-white transition hover:bg-sky-400"
+            onClick={() => {
+              if (isTextComposerOpen) {
+                setIsTextComposerOpen(false);
+                return;
+              }
+
+              openTextComposer();
+            }}
+            type="button"
+          >
+            <span>Text message</span>
+            <Badge tone={getStatusTone(smsStatus)}>{smsStatus}</Badge>
+          </button>
+
+          {isTextComposerOpen ? (
+            <div className="mt-3 rounded-3xl border border-white/10 bg-[#10131b] p-5">
+              <label className="block text-sm font-semibold text-slate-300">
+                Recipient
+                <input
+                  ref={smsRecipientSearchRef}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-base font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
+                  inputMode="tel"
+                  onChange={(event) => updateSmsRecipientQuery(event.target.value)}
+                  placeholder="Search contacts or enter phone"
+                  type="search"
+                  value={smsRecipientQuery}
+                />
+              </label>
+
+              {smsRecipientMatches.length ? (
+                <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto pr-1">
+                  {smsRecipientMatches.map((contact) => (
+                    <button
+                      className={`rounded-2xl border p-3 text-left transition ${
+                        smsDraftContact?.id === contact.id
+                          ? "border-sky-300/50 bg-sky-400/10"
+                          : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
+                      }`}
+                      key={contact.id}
+                      onClick={() => chooseSmsRecipient(contact)}
+                      type="button"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-white">{contact.name}</p>
+                        <Badge tone={getContactTypeTone(contact.contactType)}>
+                          {getContactTypeTitle(contact.contactType)}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-400">
+                        {[formatUsPhone(contact.primaryPhone) || contact.primaryPhone, contact.label]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  To
+                </p>
+                <p className="mt-1 text-base font-semibold text-white">{smsTargetLabel}</p>
+                {smsE164Number ? (
+                  <p className="mt-1 text-sm text-slate-400">
+                    {formatUsPhone(smsE164Number) || smsE164Number}
+                  </p>
+                ) : null}
+              </div>
+
+              <textarea
+                ref={smsComposerRef}
+                className="mt-4 min-h-[132px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium leading-6 text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
+                onChange={(event) => {
+                  setSmsBody(event.target.value);
+                  if (smsE164Number) {
+                    setInteractionContext("text");
+                  }
+                }}
+                onFocus={() => {
+                  if (smsE164Number) {
+                    setInteractionContext("text");
+                  }
+                }}
+                placeholder="Write a text to send from the Twilio phone"
+                value={smsBody}
+              />
+              <div className="mt-3 flex flex-wrap gap-2">
+                {SMS_TEMPLATES.map((template) => (
+                  <button
+                    className="rounded-full border border-white/10 px-3 py-2 text-left text-xs font-semibold text-slate-300 transition hover:bg-white/[0.07]"
+                    key={template.label}
+                    onClick={() => setSmsBody(template.body)}
+                    type="button"
+                  >
+                    {template.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                className="mt-4 min-h-[54px] w-full rounded-2xl bg-sky-500 px-5 py-3 text-base font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                disabled={!canSendText}
+                onClick={() => sendTextMessage()}
+                type="button"
+              >
+                Send text from Twilio
+              </button>
+              <p className="mt-3 text-sm leading-6 text-slate-300">{smsMessage}</p>
             </div>
-            <textarea
-              ref={smsComposerRef}
-              className="mt-4 min-h-[132px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium leading-6 text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-300"
-              onChange={(event) => {
-                setSmsBody(event.target.value);
-                if (e164Number) {
-                  setInteractionContext("text");
-                }
-              }}
-              onFocus={() => {
-                if (e164Number) {
-                  setInteractionContext("text");
-                }
-              }}
-              placeholder="Write a text to send from the Twilio phone"
-              value={smsBody}
-            />
-            <div className="mt-3 flex flex-wrap gap-2">
-              {SMS_TEMPLATES.map((template) => (
-                <button
-                  className="rounded-full border border-white/10 px-3 py-2 text-left text-xs font-semibold text-slate-300 transition hover:bg-white/[0.07]"
-                  key={template.label}
-                  onClick={() => setSmsBody(template.body)}
-                  type="button"
-                >
-                  {template.label}
-                </button>
-              ))}
-            </div>
-            <button
-              className="mt-4 min-h-[54px] w-full rounded-2xl bg-sky-500 px-5 py-3 text-base font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-              disabled={!canSendText}
-              onClick={() => sendTextMessage()}
-              type="button"
-            >
-              Send text from Twilio
-            </button>
-            <p className="mt-3 text-sm leading-6 text-slate-300">{smsMessage}</p>
-          </div>
+          ) : null}
         </Card>
 
         <div className="space-y-6">
@@ -1191,37 +1333,6 @@ export function PhonePage() {
           </Card>
 
           <Card className="border-white/10 bg-[#1c1e26] p-5 text-white sm:p-6">
-            <p className="section-title">Call state</p>
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Call target
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-white">{callTargetLabel}</p>
-              <p className="mt-1 text-sm text-slate-400">
-                {activeMatchedContact ? activeMatchedContact.primaryPhone || e164Number : e164Number || formattedNumber}
-              </p>
-              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                {activeContactTypeLabel}
-              </p>
-            </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-4">
-              {["Ready", "Calling", "Sent", "Failed"].map((state) => (
-                <div
-                  className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
-                    status === state
-                      ? "border-indigo-400 bg-indigo-500/20 text-white"
-                      : "border-white/10 bg-white/[0.04] text-slate-400"
-                  }`}
-                  key={state}
-                >
-                  {state}
-                </div>
-              ))}
-            </div>
-            <p className="mt-5 text-sm leading-6 text-slate-300">{message}</p>
-          </Card>
-
-          <Card className="border-white/10 bg-[#1c1e26] p-5 text-white sm:p-6">
             <div className="flex items-center justify-between gap-4">
               <p className="section-title">Recent calls</p>
               {recentCalls.length ? (
@@ -1273,14 +1384,11 @@ export function PhonePage() {
                       <button
                         className="min-h-[40px] rounded-xl bg-indigo-500 px-4 text-sm font-semibold text-white transition hover:bg-indigo-400"
                         onClick={() =>
-                          loadTextTarget(
-                            {
-                              contactType: call.contactType,
-                              name: call.name,
-                              phone: call.phone,
-                            },
-                            `Texting ${call.name || formatUsPhone(call.phone)}.`,
-                          )
+                          loadTextTarget({
+                            contactType: call.contactType,
+                            name: call.name,
+                            phone: call.phone,
+                          })
                         }
                         type="button"
                       >
