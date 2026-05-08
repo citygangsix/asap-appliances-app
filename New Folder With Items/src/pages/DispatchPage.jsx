@@ -7,7 +7,8 @@ import { PageScaffold } from "../components/layout/PageScaffold";
 import { PageStateNotice } from "../components/layout/PageStateNotice";
 import { useAsyncValue } from "../hooks/useAsyncValue";
 import { getOperationsRepository } from "../lib/repositories";
-import { extractZipCode, findBestTechnicianForZip } from "../lib/domain/technicianCoverage";
+import { buildMasterDispatchRecommendation } from "../lib/domain/masterDispatch";
+import { extractZipCode } from "../lib/domain/technicianCoverage";
 import {
   buildDefaultVehicleProfile,
   buildDispatchMapPoints,
@@ -32,6 +33,55 @@ const DISPATCH_ACTION_TONES = {
 
 const ASSIGNMENT_FIELD_CLASS =
   "rounded-xl border border-[#cfd6e2] bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500";
+
+function formatCandidateMiles(candidate) {
+  return Number.isFinite(candidate.directMiles) ? formatMiles(candidate.directMiles) : "Unknown";
+}
+
+function MasterDispatchCandidateCard({ candidate, label, selected, onStage }) {
+  const isFarCandidate = ["Far but possible", "Last-resort distance"].includes(candidate.distanceLabel);
+
+  return (
+    <div
+      className={`rounded-2xl border p-4 ${
+        selected ? "border-indigo-300 bg-indigo-50/80" : "border-[#dce2ec] bg-white"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={label === "Primary" ? "indigo" : isFarCandidate ? "amber" : "slate"}>
+              {label}
+            </Badge>
+            {candidate.isCurrentWorkerStale ? <Badge tone="rose">No response</Badge> : null}
+            {candidate.exactZipMatch ? <Badge tone="emerald">ZIP owner</Badge> : null}
+          </div>
+          <p className="mt-3 font-semibold text-slate-950">{candidate.technician.name}</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {candidate.distanceLabel} · {formatCandidateMiles(candidate)} · Score {candidate.score}
+          </p>
+        </div>
+        <button
+          className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl border border-[#cfd6e2] bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          onClick={() => onStage(candidate)}
+          type="button"
+        >
+          Stage
+        </button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {candidate.reasons.slice(0, 4).map((reason) => (
+          <span
+            className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
+            key={`${candidate.techId}-${reason}`}
+          >
+            {reason}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 async function requestDispatchEtaNotifications(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/workflows/dispatch"), {
@@ -205,13 +255,17 @@ export function DispatchPage() {
   const selectedAssignmentJobZipCode = selectedAssignmentJob
     ? extractZipCode(selectedAssignmentJob.serviceAddress)
     : null;
-  const recommendedAssignmentTech = useMemo(
+  const masterDispatchRecommendation = useMemo(
     () =>
-      selectedAssignmentJobZipCode
-        ? findBestTechnicianForZip(selectedAssignmentJobZipCode, technicians)
-        : null,
-    [selectedAssignmentJobZipCode, technicians],
+      buildMasterDispatchRecommendation({
+        job: selectedAssignmentJob,
+        jobs: jobRecords,
+        technicians,
+        routePlans,
+      }),
+    [selectedAssignmentJob, jobRecords, technicians, routePlans],
   );
+  const recommendedAssignmentTech = masterDispatchRecommendation?.primary?.technician || null;
   const isAssignmentUnchanged = (selectedAssignmentJob?.techId || "") === selectedAssignmentTechId;
   const escalationJobs = useMemo(() => {
     const orderedJobs = [...attentionJobs, ...jobRecords];
@@ -243,6 +297,16 @@ export function DispatchPage() {
     setActiveRouteTechId(techId);
     setAssignmentFeedback({
       message: "Route recommendation staged. Review the assignment panel, then save when ready.",
+      tone: "emerald",
+    });
+  };
+
+  const stageMasterDispatchCandidate = (candidate) => {
+    setStagedRouteAssignment({ jobId: selectedAssignmentJob?.jobId || null, techId: candidate.techId });
+    setSelectedAssignmentTechId(candidate.techId);
+    setActiveRouteTechId(candidate.techId);
+    setAssignmentFeedback({
+      message: `${candidate.technician.name} staged as the next dispatch worker.`,
       tone: "emerald",
     });
   };
@@ -307,11 +371,15 @@ export function DispatchPage() {
     setSelectedAssignmentTechId(
       stagedRouteAssignment && stagedRouteAssignment.jobId === selectedAssignmentJob?.jobId
         ? stagedRouteAssignment.techId
-        : selectedAssignmentJob?.techId || recommendedAssignmentTech?.techId || "",
+        : masterDispatchRecommendation?.shouldBypassCurrentWorker
+          ? masterDispatchRecommendation?.primary?.techId || ""
+          : selectedAssignmentJob?.techId || recommendedAssignmentTech?.techId || "",
     );
   }, [
     selectedAssignmentJob?.jobId,
     selectedAssignmentJob?.techId,
+    masterDispatchRecommendation?.primary?.techId,
+    masterDispatchRecommendation?.shouldBypassCurrentWorker,
     recommendedAssignmentTech?.techId,
     stagedRouteAssignment?.jobId,
     stagedRouteAssignment?.techId,
@@ -1138,6 +1206,51 @@ export function DispatchPage() {
                 </select>
               </label>
 
+              {masterDispatchRecommendation?.primary ? (
+                <div className="rounded-2xl border border-[#dce2ec] bg-slate-50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="section-title">Master dispatcher</p>
+                      <h3 className="mt-2 text-lg font-semibold text-slate-950">
+                        {masterDispatchRecommendation.headline}
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {masterDispatchRecommendation.instruction}
+                      </p>
+                    </div>
+                    <Badge tone={masterDispatchRecommendation.shouldBypassCurrentWorker ? "rose" : "emerald"}>
+                      {masterDispatchRecommendation.shouldBypassCurrentWorker ? "Reassign now" : "Primary ready"}
+                    </Badge>
+                  </div>
+
+                  {masterDispatchRecommendation.currentWorker?.isCurrentWorkerStale ? (
+                    <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                      {masterDispatchRecommendation.currentWorker.technician.name} has not confirmed for{" "}
+                      {masterDispatchRecommendation.currentResponseAgeMinutes} minutes. Do not let this job wait on that one worker.
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 space-y-3">
+                    <MasterDispatchCandidateCard
+                      candidate={masterDispatchRecommendation.primary}
+                      label="Primary"
+                      onStage={stageMasterDispatchCandidate}
+                      selected={selectedAssignmentTechId === masterDispatchRecommendation.primary.techId}
+                    />
+
+                    {masterDispatchRecommendation.fallbacks.map((candidate, index) => (
+                      <MasterDispatchCandidateCard
+                        candidate={candidate}
+                        key={candidate.techId}
+                        label={`Fallback ${index + 1}`}
+                        onStage={stageMasterDispatchCandidate}
+                        selected={selectedAssignmentTechId === candidate.techId}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
                 Technician
                 <select
@@ -1173,7 +1286,7 @@ export function DispatchPage() {
                 </p>
                 {recommendedAssignmentTech && !selectedAssignmentJob.techId ? (
                   <p className="mt-2 text-indigo-700">
-                    Recommended by ZIP {selectedAssignmentJobZipCode}: {recommendedAssignmentTech.name}
+                    Master pick for ZIP {selectedAssignmentJobZipCode || "unknown"}: {recommendedAssignmentTech.name}
                   </p>
                 ) : null}
               </div>
