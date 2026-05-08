@@ -66,6 +66,14 @@ const SMS_TEMPLATES = [
     body: "Hi, this is ASAP Appliance. Please send your current city, work experience, tools/vehicle status, and availability.",
   },
 ];
+const CALL_CONTROL_BUTTONS = [
+  { key: "audio", label: "Audio", icon: "speaker" },
+  { key: "facetime", label: "FaceTime", icon: "video", disabled: true },
+  { key: "mute", label: "Mute", icon: "mute" },
+  { key: "more", label: "More", icon: "more" },
+  { key: "end", label: "End", icon: "phone", danger: true },
+  { key: "keypad", label: "Keypad", icon: "keypad" },
+];
 
 function findSavedCustomerByPhone(customers, phoneNumber) {
   const targetPhone = normalizePhoneLookup(phoneNumber);
@@ -188,6 +196,121 @@ function formatCallDuration(startTime, durationSeconds) {
   const minutes = Math.floor(elapsedSeconds / 60);
   const seconds = elapsedSeconds % 60;
   return minutes ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+function CallControlIcon({ type }) {
+  if (type === "speaker") {
+    return (
+      <svg aria-hidden="true" className="h-8 w-8" fill="none" viewBox="0 0 32 32">
+        <path d="M5 13h5l8-6v18l-8-6H5z" fill="currentColor" />
+        <path d="M22 11c1.6 1.3 2.5 3 2.5 5s-.9 3.7-2.5 5" stroke="currentColor" strokeLinecap="round" strokeWidth="3" />
+        <path d="M25.5 7.5C28 9.8 29.5 12.8 29.5 16s-1.5 6.2-4 8.5" stroke="currentColor" strokeLinecap="round" strokeWidth="3" />
+      </svg>
+    );
+  }
+
+  if (type === "video") {
+    return (
+      <svg aria-hidden="true" className="h-8 w-8" fill="none" viewBox="0 0 32 32">
+        <rect fill="currentColor" height="16" rx="3" width="17" x="4" y="8" />
+        <path d="m22 13 6-4v14l-6-4z" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (type === "mute") {
+    return (
+      <svg aria-hidden="true" className="h-8 w-8" fill="none" viewBox="0 0 32 32">
+        <path d="M16 4a5 5 0 0 0-5 5v7a5 5 0 0 0 8.1 3.9M21 15.5V9a5 5 0 0 0-7.7-4.2" stroke="currentColor" strokeLinecap="round" strokeWidth="3" />
+        <path d="M7 15v1a9 9 0 0 0 14.4 7.2M25 15v1a9 9 0 0 1-1 4.1M16 25v3M11 28h10M5 5l22 22" stroke="currentColor" strokeLinecap="round" strokeWidth="3" />
+      </svg>
+    );
+  }
+
+  if (type === "phone") {
+    return (
+      <svg aria-hidden="true" className="h-8 w-8" fill="none" viewBox="0 0 32 32">
+        <path d="M7 19c5.7-4 12.3-4 18 0 1.1.8 1.3 2.3.4 3.3l-1.8 2.1c-.8.9-2.2 1.1-3.2.4l-2.1-1.4a4.3 4.3 0 0 0-4.6 0l-2.1 1.4c-1 .7-2.4.5-3.2-.4l-1.8-2.1c-.9-1-.7-2.5.4-3.3Z" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (type === "keypad") {
+    return (
+      <span aria-hidden="true" className="grid grid-cols-3 gap-1">
+        {Array.from({ length: 9 }).map((_, index) => (
+          <span className="h-2.5 w-2.5 rounded-full bg-current" key={index} />
+        ))}
+      </span>
+    );
+  }
+
+  return (
+    <span aria-hidden="true" className="flex gap-1">
+      <span className="h-2.5 w-2.5 rounded-full bg-current" />
+      <span className="h-2.5 w-2.5 rounded-full bg-current" />
+      <span className="h-2.5 w-2.5 rounded-full bg-current" />
+    </span>
+  );
+}
+
+function InCallScreen({ targetName, targetPhone, status, onEnd, onShowKeypad }) {
+  const statusText = status === "Sent" ? "Calling mobile..." : status === "Failed" ? "Call failed" : "Calling mobile...";
+  const displayName = targetName || formatUsPhone(targetPhone) || targetPhone || "Unknown caller";
+
+  return (
+    <div className="min-h-[640px] rounded-3xl bg-gradient-to-b from-[#3c4555] to-[#232743] px-5 py-7 text-white sm:min-h-[680px] sm:px-7">
+      <div className="flex items-center justify-between text-sm font-semibold text-white/85">
+        <span>10:32</span>
+        <div className="h-8 w-28 rounded-full bg-black" />
+        <div className="flex items-center gap-2">
+          <span className="tracking-[0.08em]">|||</span>
+          <span className="h-4 w-7 rounded-full border border-white/60" />
+        </div>
+      </div>
+
+      <div className="pt-28 text-center sm:pt-32">
+        <p className="text-3xl font-bold text-white/55 sm:text-4xl">{statusText}</p>
+        <p className="mt-4 break-words text-5xl font-bold leading-tight text-white sm:text-6xl">
+          {displayName}
+        </p>
+        {targetName && targetPhone ? (
+          <p className="mt-3 text-lg font-semibold text-white/55">
+            {formatUsPhone(targetPhone) || targetPhone}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mt-52 grid grid-cols-3 gap-x-8 gap-y-8 sm:mt-60">
+        {CALL_CONTROL_BUTTONS.map((control) => {
+          const isEnd = control.key === "end";
+          const buttonClass = isEnd
+            ? "bg-red-600 text-white hover:bg-red-500"
+            : "border border-white/25 bg-white/10 text-white hover:bg-white/15";
+
+          return (
+            <div className="text-center" key={control.key}>
+              <button
+                className={`mx-auto flex h-24 w-24 items-center justify-center rounded-full transition disabled:opacity-45 ${buttonClass}`}
+                disabled={control.disabled}
+                onClick={
+                  isEnd
+                    ? onEnd
+                    : control.key === "keypad"
+                      ? onShowKeypad
+                      : undefined
+                }
+                type="button"
+              >
+                <CallControlIcon type={control.icon} />
+              </button>
+              <p className="mt-3 text-lg font-bold text-white">{control.label}</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function stopOscillator(oscillator) {
