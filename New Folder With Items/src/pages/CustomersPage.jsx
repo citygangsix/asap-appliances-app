@@ -382,7 +382,7 @@ export function CustomersPage() {
       setActionFeedback({
         message:
           result.message ||
-          `Twilio is calling the configured office phone first from ${businessPhoneNumber}. After you answer, the customer conversation will be recorded and pushed into the CRM.`,
+          `SignalWire is calling the configured office phone first from ${businessPhoneNumber}. After you answer, the customer conversation will be recorded and pushed into the CRM.`,
         tone: "emerald",
       });
     } catch (callError) {

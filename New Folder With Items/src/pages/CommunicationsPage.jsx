@@ -11,7 +11,7 @@ import { getOperationsRepository } from "../lib/repositories";
 const COMMUNICATIONS_PAGE_SCAFFOLD = {
   title: "Communications",
   subtitle:
-    "A Twilio-ready mock interface for calls, texts, transcript review, and approving extracted operational events.",
+    "A SignalWire-ready interface for calls, texts, transcript review, and approving extracted operational events.",
   tabs: [{ label: "Calls & Texts", active: true }, { label: "Event Review" }],
   contentClassName: "grid gap-6 p-4 sm:p-6 lg:grid-cols-[0.9fr_1.1fr_0.9fr] lg:p-8",
 };
@@ -466,7 +466,7 @@ export function CommunicationsPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="section-title">Unmatched inbound</p>
-              <h2 className="mt-2 text-lg font-semibold">Twilio triage queue</h2>
+              <h2 className="mt-2 text-lg font-semibold">SignalWire triage queue</h2>
               <p className="mt-2 max-w-3xl text-sm text-slate-500">
                 These inbound calls and texts were accepted by the webhook but could not be written to
                 `communications` because no unique customer phone match was available yet.

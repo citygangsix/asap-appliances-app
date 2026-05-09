@@ -54,7 +54,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Twilio-Signature, X-Thumbtack-Secret, X-ASAP-Webhook-Secret",
+    "Content-Type, Authorization, X-Twilio-Signature, X-SignalWire-Signature, X-Thumbtack-Secret, X-ASAP-Webhook-Secret",
 };
 
 function parseFormBody(body) {
@@ -186,7 +186,7 @@ async function validateTwilioWebhookRequest(request, context, options = {}) {
 
   if (payload.AccountSid !== config.accountSid) {
     return {
-      response: respondJson(403, { ok: false, message: "Twilio AccountSid mismatch." }),
+      response: respondJson(403, { ok: false, message: `${config.providerDisplayName} AccountSid mismatch.` }),
     };
   }
 
@@ -198,7 +198,7 @@ async function validateTwilioWebhookRequest(request, context, options = {}) {
       response: respondJson(202, {
         ok: false,
         message:
-          "Webhook accepted but ignored because the destination number does not match TWILIO_PHONE_NUMBER or TWILIO_MANAGED_PHONE_NUMBERS.",
+          "Webhook accepted but ignored because the destination number does not match the configured provider business number.",
       }),
     };
   }
@@ -235,7 +235,10 @@ async function handleTwilioWebhook(request, context, pathname, persistEvent) {
     return validatedRequest.response;
   }
 
-  const result = await persistEvent(getServerSupabaseClient(), validatedRequest.payload);
+  const result = await persistEvent(getServerSupabaseClient(), {
+    ...validatedRequest.payload,
+    ProviderName: validatedRequest.config.providerName,
+  });
 
   if (pathname === SMS_WEBHOOK_PATH) {
     return respondTwiml(buildEmptyTwiml(), result.status || 200);
@@ -255,7 +258,7 @@ async function handleTwilioVoiceWebhook(request, context) {
     return respondJson(500, {
       ok: false,
       message:
-        "TWILIO_VOICE_FORWARD_TO or LUMIA_INVOICE_SMS_PHONE_NUMBER must be configured on the server.",
+        "SIGNALWIRE_VOICE_FORWARD_TO, TWILIO_VOICE_FORWARD_TO, or LUMIA_INVOICE_SMS_PHONE_NUMBER must be configured on the server.",
     });
   }
 
@@ -273,7 +276,10 @@ async function handleRecordingStatusWebhook(request, context) {
 
   const result = await persistRecordingStatusCallback(
     getServerSupabaseClient(),
-    validatedRequest.payload,
+    {
+      ...validatedRequest.payload,
+      ProviderName: validatedRequest.config.providerName,
+    },
   );
 
   return respondJson(result.status || (result.ok ? 200 : 400), result);

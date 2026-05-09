@@ -68,7 +68,7 @@ async function findExistingRecordingBySid(client, recordingSid) {
 function buildRecordingPayload(payload, linkedCommunicationId, intelligence = null) {
   return {
     linked_communication_id: linkedCommunicationId,
-    provider_name: "twilio",
+    provider_name: payload.ProviderName || payload.providerName || "twilio",
     provider_account_sid: payload.AccountSid || null,
     provider_call_sid: payload.CallSid || null,
     provider_parent_call_sid: payload.ParentCallSid || null,

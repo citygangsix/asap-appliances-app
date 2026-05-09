@@ -1411,7 +1411,7 @@ export function DispatchPage() {
                   </label>
 
                   <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                    When this confirmation is checked, the office number linked to Twilio is alerted by both text and call with the ETA, technician response, and payment-stay note.
+                    When this confirmation is checked, the office number linked to SignalWire is alerted by both text and call with the ETA, technician response, and payment-stay note.
                   </div>
                 </div>
               </div>

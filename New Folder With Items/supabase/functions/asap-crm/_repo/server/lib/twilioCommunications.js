@@ -83,6 +83,10 @@ function mapCallSummarySectionsToDomain(sections) {
   };
 }
 
+function readProviderName(payload) {
+  return payload.ProviderName || payload.providerName || "twilio";
+}
+
 async function listCustomerContacts(client) {
   const result = await client
     .from("customers")
@@ -150,7 +154,7 @@ function buildSmsDraft(customerId, payload) {
     occurredAt: new Date().toISOString(),
     fromNumber: payload.From || null,
     toNumber: payload.To || null,
-    providerName: "twilio",
+    providerName: readProviderName(payload),
     providerMessageSid: payload.MessageSid || payload.SmsSid || null,
     providerCallSid: null,
     startedAt: null,
@@ -180,7 +184,7 @@ function buildCallDraft(customerId, payload, recordingIntelligence = null) {
     occurredAt,
     fromNumber: payload.From || null,
     toNumber: payload.To || null,
-    providerName: "twilio",
+    providerName: readProviderName(payload),
     providerMessageSid: null,
     providerCallSid: payload.CallSid || null,
     startedAt: occurredAt,
@@ -223,7 +227,7 @@ function buildUnmatchedSmsDraft(matchStatus, payload) {
     transcriptText: payload.Body || null,
     fromNumber: payload.From || null,
     toNumber: payload.To || null,
-    providerName: "twilio",
+    providerName: readProviderName(payload),
     providerMessageSid: payload.MessageSid || payload.SmsSid || null,
     providerCallSid: null,
     rawPayload: payload,
@@ -251,7 +255,7 @@ function buildUnmatchedCallDraft(matchStatus, payload, recordingIntelligence = n
     transcriptionError: recordingIntelligence?.transcriptionError || null,
     fromNumber: payload.From || null,
     toNumber: payload.To || null,
-    providerName: "twilio",
+    providerName: readProviderName(payload),
     providerMessageSid: null,
     providerCallSid: payload.CallSid || null,
     rawPayload: payload,

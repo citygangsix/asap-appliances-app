@@ -59,7 +59,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Twilio-Signature, X-Thumbtack-Secret, X-ASAP-Webhook-Secret",
+    "Content-Type, Authorization, X-Twilio-Signature, X-SignalWire-Signature, X-Thumbtack-Secret, X-ASAP-Webhook-Secret",
 };
 
 const STATIC_DIST_DIR = path.resolve(process.cwd(), "dist");
@@ -105,7 +105,7 @@ function parseJsonBody(body) {
 }
 
 function getLocalOperationsServerPort() {
-  const configuredPort = Number(process.env.TWILIO_WEBHOOK_PORT || 8787);
+  const configuredPort = Number(process.env.SIGNALWIRE_WEBHOOK_PORT || process.env.TWILIO_WEBHOOK_PORT || 8787);
   return Number.isFinite(configuredPort) ? configuredPort : 8787;
 }
 
@@ -214,10 +214,11 @@ async function validateTwilioWebhookRequest(request, response, options = {}) {
   const queryPayload = Object.fromEntries(requestUrl.searchParams.entries());
   const payload = request.method === "GET" ? queryPayload : { ...queryPayload, ...formPayload };
   const signatureParams = request.method === "GET" ? {} : formPayload;
-  const signature = request.headers["x-twilio-signature"];
+  const twilioSignature = request.headers["x-twilio-signature"];
+  const signalWireSignature = request.headers["x-signalwire-signature"];
 
   if (payload.AccountSid !== config.accountSid) {
-    respondJson(response, 403, { ok: false, message: "Twilio AccountSid mismatch." });
+    respondJson(response, 403, { ok: false, message: `${config.providerDisplayName} AccountSid mismatch.` });
     return;
   }
 
@@ -228,20 +229,29 @@ async function validateTwilioWebhookRequest(request, response, options = {}) {
     respondJson(response, 202, {
       ok: false,
       message:
-        "Webhook accepted but ignored because the destination number does not match TWILIO_PHONE_NUMBER or TWILIO_MANAGED_PHONE_NUMBERS.",
+        "Webhook accepted but ignored because the destination number does not match the configured provider business number.",
     });
     return null;
   }
 
-  if (
-    !(await isValidTwilioSignature({
-      authToken: config.authToken,
-      signature,
-      url: buildWebhookUrl(config.webhookBaseUrl, request.url || requestUrl.pathname),
+  const webhookUrl = buildWebhookUrl(config.webhookBaseUrl, request.url || requestUrl.pathname);
+  const hasValidTwilioSignature = await isValidTwilioSignature({
+    authToken: config.authToken,
+    signature: twilioSignature,
+    url: webhookUrl,
+    params: signatureParams,
+  });
+  const hasValidSignalWireSignature =
+    Boolean(config.signalWireSigningKey) &&
+    (await isValidTwilioSignature({
+      authToken: config.signalWireSigningKey,
+      signature: signalWireSignature,
+      url: webhookUrl,
       params: signatureParams,
-    }))
-  ) {
-    respondJson(response, 403, { ok: false, message: "Invalid Twilio webhook signature." });
+    }));
+
+  if (!hasValidTwilioSignature && !hasValidSignalWireSignature) {
+    respondJson(response, 403, { ok: false, message: "Invalid voice provider webhook signature." });
     return null;
   }
 
@@ -257,7 +267,10 @@ async function handleTwilioWebhook(request, response, pathname, persistEvent) {
 
   const { payload } = validatedRequest;
 
-  const result = await persistEvent(getServerSupabaseClient(), payload);
+  const result = await persistEvent(getServerSupabaseClient(), {
+    ...payload,
+    ProviderName: validatedRequest.config.providerName,
+  });
 
   if (pathname === SMS_WEBHOOK_PATH) {
     respondTwiml(response, buildEmptyTwiml(), result.status || 200);
@@ -280,7 +293,7 @@ async function handleTwilioVoiceWebhook(request, response, pathname) {
     respondJson(response, 500, {
       ok: false,
       message:
-        "TWILIO_VOICE_FORWARD_TO or LUMIA_INVOICE_SMS_PHONE_NUMBER must be configured on the server.",
+        "SIGNALWIRE_VOICE_FORWARD_TO, TWILIO_VOICE_FORWARD_TO, or LUMIA_INVOICE_SMS_PHONE_NUMBER must be configured on the server.",
     });
     return;
   }
@@ -299,7 +312,10 @@ async function handleRecordingStatusWebhook(request, response, pathname) {
 
   const result = await persistRecordingStatusCallback(
     getServerSupabaseClient(),
-    validatedRequest.payload,
+    {
+      ...validatedRequest.payload,
+      ProviderName: validatedRequest.config.providerName,
+    },
   );
 
   respondJson(response, result.status || (result.ok ? 200 : 400), result);

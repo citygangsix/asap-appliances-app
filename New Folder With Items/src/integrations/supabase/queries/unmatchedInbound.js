@@ -14,7 +14,7 @@ export function getUnmatchedInboundQueueQueryPlan() {
     table: "unmatched_inbound_communications",
     operation: "select_pending",
     details:
-      "List pending unmatched inbound Twilio calls and texts that still need manual customer triage.",
+      "List pending unmatched inbound provider calls and texts that still need manual customer triage.",
     joins: [],
     expectedShape: "UnmatchedInboundCommunication[]",
   });

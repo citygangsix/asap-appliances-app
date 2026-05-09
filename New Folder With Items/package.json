@@ -13,6 +13,8 @@
     "preview": "vite preview",
     "api:prepare": "node scripts/prepare-edge-function.mjs",
     "api:deploy": "npm run api:prepare && supabase functions deploy asap-crm --use-api --no-verify-jwt --import-map supabase/functions/import_map.json",
+    "signalwire:webhooks": "node server/twilioWebhookServer.js",
+    "signalwire:webhooks:smoke": "node server/twilioWebhookSmokeTest.js",
     "twilio:webhooks": "node server/twilioWebhookServer.js",
     "twilio:webhooks:smoke": "node server/twilioWebhookSmokeTest.js"
   },

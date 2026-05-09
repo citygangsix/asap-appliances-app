@@ -370,7 +370,7 @@ export function TechniciansPage() {
       setActionFeedback({
         message:
           result.message ||
-          `Twilio is calling the configured office phone first from ${businessPhoneNumber}. After you answer, the candidate leg will be recorded and analyzed automatically.`,
+          `SignalWire is calling the configured office phone first from ${businessPhoneNumber}. After you answer, the candidate leg will be recorded and analyzed automatically.`,
         tone: "emerald",
       });
     } catch (callError) {

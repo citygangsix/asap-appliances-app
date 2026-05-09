@@ -27,7 +27,7 @@ export const ROUTES = [
     label: "Phone",
     icon: "☎",
     group: "Main",
-    eyebrow: "Quick Twilio access",
+    eyebrow: "Quick SignalWire access",
     alert: "Type a number and start a call",
   },
   {

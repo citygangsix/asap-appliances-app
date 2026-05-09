@@ -6,11 +6,21 @@ import { loadServerEnv } from "./lib/loadEnv.js";
 
 loadServerEnv();
 
-function readRequiredEnv(key) {
-  const value = process.env[key];
+function readFirstEnv(keys) {
+  for (const key of keys) {
+    if (process.env[key]) {
+      return process.env[key];
+    }
+  }
+
+  return null;
+}
+
+function readRequiredAnyEnv(keys) {
+  const value = readFirstEnv(keys);
 
   if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
+    throw new Error(`Missing required environment variable: ${keys.join(" or ")}`);
   }
 
   return value;
@@ -258,24 +268,33 @@ async function getSignedText({
 
 async function main() {
   const appRoot = process.cwd();
-  const accountSid = readRequiredEnv("TWILIO_ACCOUNT_SID");
-  const authToken = readRequiredEnv("TWILIO_AUTH_TOKEN");
-  const configuredPhoneNumber = readRequiredEnv("TWILIO_PHONE_NUMBER");
+  const accountSid = readRequiredAnyEnv(["SIGNALWIRE_PROJECT_ID", "TWILIO_ACCOUNT_SID"]);
+  const authToken = readRequiredAnyEnv(["SIGNALWIRE_API_TOKEN", "TWILIO_AUTH_TOKEN"]);
+  const configuredPhoneNumber = readRequiredAnyEnv(["SIGNALWIRE_PHONE_NUMBER", "TWILIO_PHONE_NUMBER"]);
   const managedPhoneNumbers = Array.from(
-    new Set([configuredPhoneNumber, ...readOptionalListEnv("TWILIO_MANAGED_PHONE_NUMBERS")]),
+    new Set([
+      configuredPhoneNumber,
+      ...readOptionalListEnv("SIGNALWIRE_MANAGED_PHONE_NUMBERS"),
+      ...readOptionalListEnv("TWILIO_MANAGED_PHONE_NUMBERS"),
+    ]),
   );
   const expectedVoiceForwardTo =
+    process.env.SIGNALWIRE_VOICE_FORWARD_TO ||
     process.env.TWILIO_VOICE_FORWARD_TO ||
     process.env.LUMIA_INVOICE_SMS_PHONE_NUMBER ||
     process.env.ASSISTANT_OFFICE_PHONE_NUMBER ||
     null;
   const expectedClickToCallAgent =
+    process.env.SIGNALWIRE_CLICK_TO_CALL_AGENT_NUMBER ||
     process.env.TWILIO_CLICK_TO_CALL_AGENT_NUMBER ||
     process.env.ASSISTANT_OFFICE_PHONE_NUMBER ||
+    process.env.SIGNALWIRE_VOICE_FORWARD_TO ||
     process.env.TWILIO_VOICE_FORWARD_TO ||
     null;
-  const publicBaseUrl = normalizeBaseUrl(readRequiredEnv("TWILIO_WEBHOOK_BASE_URL"));
-  const localBaseUrl = `http://127.0.0.1:${Number(process.env.TWILIO_WEBHOOK_PORT || 8787)}`;
+  const publicBaseUrl = normalizeBaseUrl(
+    readRequiredAnyEnv(["SIGNALWIRE_WEBHOOK_BASE_URL", "TWILIO_WEBHOOK_BASE_URL"]),
+  );
+  const localBaseUrl = `http://127.0.0.1:${Number(process.env.SIGNALWIRE_WEBHOOK_PORT || process.env.TWILIO_WEBHOOK_PORT || 8787)}`;
   const wrongToNumber = buildAlternatePhoneNumber(configuredPhoneNumber);
 
   const server = await ensureWebhookServer(appRoot, localBaseUrl);
@@ -520,7 +539,7 @@ async function main() {
       `Expected recording callback with wrong AccountSid to return 403, received ${recordingCallback.status}`,
     );
     assert(
-      recordingCallback.json?.message === "Twilio AccountSid mismatch.",
+      recordingCallback.json?.message?.includes("AccountSid mismatch"),
       "Expected recording callback to reject mismatched AccountSid before any write path runs.",
     );
     console.log("[twilio-smoke] PASS recording callback route rejects mismatched account safely");
@@ -542,7 +561,7 @@ async function main() {
       `Expected invalid-signature smoke request to return 403, received ${invalidSignature.status}`,
     );
     assert(
-      invalidSignature.json?.message === "Invalid Twilio webhook signature.",
+      invalidSignature.json?.message === "Invalid voice provider webhook signature.",
       "Expected invalid-signature smoke request to be rejected explicitly.",
     );
     console.log("[twilio-smoke] PASS invalid signature rejected");

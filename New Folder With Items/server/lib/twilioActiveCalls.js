@@ -76,7 +76,7 @@ async function fetchCallsForStatus(config, status) {
   if (!response.ok) {
     throw new Error(
       responseJson?.message ||
-        `Twilio active call lookup failed for ${status} with status ${response.status}.`,
+        `${config.providerDisplayName} active call lookup failed for ${status} with status ${response.status}.`,
     );
   }
 

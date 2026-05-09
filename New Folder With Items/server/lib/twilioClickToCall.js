@@ -45,7 +45,7 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
-function buildTwilioAuthHeader(accountSid, authToken) {
+function buildProviderAuthHeader(accountSid, authToken) {
   return `Basic ${btoa(`${accountSid}:${authToken}`)}`;
 }
 
@@ -112,46 +112,46 @@ function redactPhoneLikeText(value) {
   return String(value).replace(/\+?\d[\d\s().-]{6,}\d/g, (match) => redactPhoneNumber(match) || match);
 }
 
-function buildTwilioApiFailureMessage(responseJson, status) {
-  const twilioCode = String(responseJson?.code || "");
-  const twilioMessage = String(responseJson?.message || "").toLowerCase();
+function buildProviderApiFailureMessage(responseJson, status, providerDisplayName = "Provider") {
+  const providerCode = String(responseJson?.code || "");
+  const providerMessage = String(responseJson?.message || "").toLowerCase();
 
   if (status === 401) {
-    return "Twilio rejected the server credentials. Update TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in the server environment, then redeploy or restart the API.";
+    return `${providerDisplayName} rejected the server credentials. Update the provider project ID and API token in the server environment, then redeploy or restart the API.`;
   }
 
   if (
-    twilioCode === "21212" ||
-    twilioMessage.includes("caller id") ||
-    twilioMessage.includes("from phone") ||
-    twilioMessage.includes("'from'")
+    providerCode === "21212" ||
+    providerMessage.includes("caller id") ||
+    providerMessage.includes("from phone") ||
+    providerMessage.includes("'from'")
   ) {
-    return "Twilio rejected the outbound caller ID. Confirm TWILIO_PHONE_NUMBER belongs to this Twilio account and TWILIO_MANAGED_PHONE_NUMBERS includes it.";
+    return `${providerDisplayName} rejected the outbound caller ID. Confirm the configured business number belongs to this provider account.`;
   }
 
-  if (twilioCode === "21211" || twilioMessage.includes("valid phone number")) {
-    return "Twilio rejected one of the phone numbers. Confirm the customer phone and the configured office phone are valid E.164 numbers.";
+  if (providerCode === "21211" || providerMessage.includes("valid phone number")) {
+    return `${providerDisplayName} rejected one of the phone numbers. Confirm the customer phone and configured office phone are valid E.164 numbers.`;
   }
 
   if (
-    twilioCode === "21215" ||
-    twilioCode === "21219" ||
-    twilioMessage.includes("trial") ||
-    twilioMessage.includes("not verified") ||
-    twilioMessage.includes("unverified")
+    providerCode === "21215" ||
+    providerCode === "21219" ||
+    providerMessage.includes("trial") ||
+    providerMessage.includes("not verified") ||
+    providerMessage.includes("unverified")
   ) {
-    return "SignalWire blocked the call because this Space is in Trial mode. Verify the destination number in SignalWire or upgrade the Space before calling it.";
+    return `${providerDisplayName} blocked the call because the provider account is in Trial mode or the destination is not verified. Verify the destination number or upgrade/fund the account before calling it.`;
   }
 
-  if (twilioMessage.includes("permission") || twilioMessage.includes("geo")) {
-    return "Twilio blocked the call because of account permissions or geographic calling settings. Check Twilio Voice geographic permissions.";
+  if (providerMessage.includes("permission") || providerMessage.includes("geo")) {
+    return `${providerDisplayName} blocked the call because of account permissions or geographic calling settings.`;
   }
 
-  if (twilioCode) {
-    return `Twilio rejected the outbound call with error code ${twilioCode}. Check the Twilio call log for the full provider detail.`;
+  if (providerCode) {
+    return `${providerDisplayName} rejected the outbound call with error code ${providerCode}. Check the provider call log for the full detail.`;
   }
 
-  return `Twilio request failed with status ${status}.`;
+  return `${providerDisplayName} request failed with status ${status}.`;
 }
 
 function logClickToCallFailure(reason, context = {}) {
@@ -202,7 +202,13 @@ async function parseTwilioResponse(response, context = {}) {
       moreInfo: responseJson?.more_info || null,
     });
 
-    throw new Error(buildTwilioApiFailureMessage(responseJson, response.status));
+    throw new Error(
+      buildProviderApiFailureMessage(
+        responseJson,
+        response.status,
+        context.providerDisplayName || "Provider",
+      ),
+    );
   }
 
   if (!responseJson) {
@@ -419,7 +425,7 @@ async function createOutboundCallCommunicationLog(config, payload, providerCallS
       endedAt: null,
       fromNumber: businessPhoneNumber,
       toNumber: customerPhone,
-      providerName: "twilio",
+      providerName: config.providerName || "twilio",
       providerMessageSid: null,
       providerCallSid,
     }),
@@ -452,7 +458,7 @@ async function createOutboundSmsCommunicationLog(client, config, communication, 
       endedAt: null,
       fromNumber: config.phoneNumber,
       toNumber: communication.to_number,
-      providerName: "twilio",
+      providerName: config.providerName || "twilio",
       providerMessageSid,
       providerCallSid: null,
     }),
@@ -543,7 +549,7 @@ function resolveManagedBusinessPhoneNumber(config, requestedPhoneNumber) {
     return {
       ok: false,
       message:
-        "businessPhoneNumber must match TWILIO_PHONE_NUMBER or one of TWILIO_MANAGED_PHONE_NUMBERS.",
+        "businessPhoneNumber must match the configured provider business number.",
       managedPhoneNumbers,
     };
   }
@@ -597,6 +603,7 @@ async function placeTwilioApiCall({
   toNumber,
   url,
   statusCallback,
+  providerDisplayName,
 }) {
   const body = new URLSearchParams({
     From: fromNumber,
@@ -617,7 +624,7 @@ async function placeTwilioApiCall({
     response = await fetch(`${apiBaseUrl}/Accounts/${accountSid}/Calls.json`, {
       method: "POST",
       headers: {
-        Authorization: buildTwilioAuthHeader(accountSid, authToken),
+        Authorization: buildProviderAuthHeader(accountSid, authToken),
         Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
       },
@@ -629,12 +636,12 @@ async function placeTwilioApiCall({
       toNumber,
       url,
       statusCallback,
-      errorMessage: error?.message || "Twilio API request failed before a response was returned.",
+      errorMessage: error?.message || "Provider API request failed before a response was returned.",
       accountSidPresent: Boolean(accountSid),
       authTokenPresent: Boolean(authToken),
     });
 
-    throw new Error("The CRM could not reach Twilio's Calls API. Check network access and retry.");
+    throw new Error("The CRM could not reach the provider Calls API. Check network access and retry.");
   }
 
   const callRecord = await parseTwilioResponse(response, {
@@ -642,6 +649,7 @@ async function placeTwilioApiCall({
     toNumber,
     url,
     statusCallback,
+    providerDisplayName,
     accountSidPresent: Boolean(accountSid),
     authTokenPresent: Boolean(authToken),
   });
@@ -658,7 +666,7 @@ async function placeTwilioApiCall({
       authTokenPresent: Boolean(authToken),
     });
 
-    throw new Error("SignalWire did not return a call SID. No phone call was created.");
+    throw new Error(`${providerDisplayName || "Provider"} did not return a call SID. No phone call was created.`);
   }
 
   return callRecord;
@@ -873,7 +881,7 @@ export async function requestClickToCall(payload = {}) {
       status: 500,
       dryRun,
       message:
-        "TWILIO_CLICK_TO_CALL_AGENT_NUMBER, ASSISTANT_OFFICE_PHONE_NUMBER, or TWILIO_VOICE_FORWARD_TO must be configured on the server.",
+        "SIGNALWIRE_CLICK_TO_CALL_AGENT_NUMBER, TWILIO_CLICK_TO_CALL_AGENT_NUMBER, ASSISTANT_OFFICE_PHONE_NUMBER, or provider voice forwarding must be configured on the server.",
     };
   }
 
@@ -905,7 +913,7 @@ export async function requestClickToCall(payload = {}) {
       status: 500,
       dryRun,
       message:
-        "TWILIO_CLICK_TO_CALL_AGENT_NUMBER, ASSISTANT_OFFICE_PHONE_NUMBER, or TWILIO_VOICE_FORWARD_TO must be a valid US phone number or E.164 international number.",
+        "The configured click-to-call agent number must be a valid US phone number or E.164 international number.",
     };
   }
 
@@ -921,7 +929,7 @@ export async function requestClickToCall(payload = {}) {
       status: 500,
       dryRun,
       message:
-        "TWILIO_PHONE_NUMBER must be a valid Twilio business number in E.164 format, such as +15615769819.",
+        "The configured provider business number must be valid E.164 format, such as +15615769819.",
     };
   }
 
@@ -937,7 +945,7 @@ export async function requestClickToCall(payload = {}) {
       status: 500,
       dryRun,
       message:
-        "TWILIO_CLICK_TO_CALL_AGENT_NUMBER must be an answerable office phone, not the Twilio business caller ID.",
+        "The click-to-call agent number must be an answerable office phone, not the provider business caller ID.",
     };
   }
 
@@ -1073,7 +1081,7 @@ export async function requestClickToCall(payload = {}) {
       agentPhone: normalizedAgentPhone,
       ignoredRequestedAgentPhone,
       customerPhone: normalizedCustomerPhone,
-      message: `TWILIO_WEBHOOK_BASE_URL is not serving the webhook server. Checked ${webhookHealth.healthUrl}. ${webhookHealth.detail} Restart the tunnel, update TWILIO_WEBHOOK_BASE_URL, and restart the webhook server before using click-to-call.`,
+      message: `The configured webhook base URL is not serving the webhook server. Checked ${webhookHealth.healthUrl}. ${webhookHealth.detail} Restart the tunnel, update SIGNALWIRE_WEBHOOK_BASE_URL or TWILIO_WEBHOOK_BASE_URL, and restart the webhook server before using click-to-call.`,
     };
   }
 
@@ -1085,6 +1093,7 @@ export async function requestClickToCall(payload = {}) {
     toNumber: normalizedAgentPhone,
     url: bridgeUrl,
     statusCallback: statusCallbackUrl,
+    providerDisplayName: config.providerDisplayName,
   });
 
   let customerContactStatus = customerLookup.status;
@@ -1204,7 +1213,7 @@ export async function requestClickToCall(payload = {}) {
     businessPhoneNumber: normalizedBusinessPhoneNumber,
     customerPhone: normalizedCustomerPhone,
     followUpPolicy,
-    message: `Twilio is calling ${normalizedAgentPhone} and will connect ${customerName} once you answer.`,
+    message: `${config.providerDisplayName} is calling ${normalizedAgentPhone} and will connect ${customerName} once you answer.`,
   };
 }
 

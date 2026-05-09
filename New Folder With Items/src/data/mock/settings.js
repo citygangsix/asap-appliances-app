@@ -17,7 +17,7 @@ export const settingsGroups = [
   },
   {
     title: "Future integrations",
-    items: ["Supabase", "Twilio", "QuickBooks", "Parts vendors"],
+    items: ["Supabase", "SignalWire", "QuickBooks", "Parts vendors"],
   },
   {
     title: "Automation rules",

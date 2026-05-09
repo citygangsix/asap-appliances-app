@@ -18,7 +18,7 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
-function buildTwilioAuthHeader(accountSid, authToken) {
+function buildProviderAuthHeader(accountSid, authToken) {
   return `Basic ${btoa(`${accountSid}:${authToken}`)}`;
 }
 
@@ -26,7 +26,7 @@ function buildTwimlSayResponse(message) {
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">${escapeXml(message)}</Say></Response>`;
 }
 
-async function parseTwilioResponse(response) {
+async function parseProviderResponse(response, providerDisplayName) {
   const responseText = await response.text();
   let responseJson = null;
 
@@ -41,7 +41,7 @@ async function parseTwilioResponse(response) {
   if (!response.ok) {
     if (response.status === 401) {
       throw new Error(
-        "Twilio rejected the server credentials. Update TWILIO_AUTH_TOKEN or TWILIO_API_KEY_SECRET in .env.server.local, then restart the webhook server.",
+        `${providerDisplayName} rejected the server credentials. Update the provider API token in .env.server.local, then restart the webhook server.`,
       );
     }
 
@@ -55,21 +55,21 @@ async function parseTwilioResponse(response) {
       normalizedProviderMessage.includes("verified phone number")
     ) {
       throw new Error(
-        "SignalWire/Twilio rejected this text because the destination number is not verified on the restricted provider account. Verify the destination number in the provider dashboard, or remove Trial Mode/fund the SignalWire Space, then try again.",
+        `${providerDisplayName} rejected this text because the destination number is not verified on the restricted provider account. Verify the destination number in the provider dashboard, or remove Trial Mode/fund the account, then try again.`,
       );
     }
 
-    throw new Error(providerMessage || `Twilio request failed with status ${response.status}.`);
+    throw new Error(providerMessage || `${providerDisplayName} request failed with status ${response.status}.`);
   }
 
   return responseJson;
 }
 
-async function sendTwilioSms({ accountSid, authToken, apiBaseUrl, fromNumber, toNumber, body }) {
+async function sendProviderSms({ accountSid, authToken, apiBaseUrl, fromNumber, toNumber, body, providerDisplayName }) {
   const response = await fetch(`${apiBaseUrl}/Accounts/${accountSid}/Messages.json`, {
     method: "POST",
     headers: {
-      Authorization: buildTwilioAuthHeader(accountSid, authToken),
+      Authorization: buildProviderAuthHeader(accountSid, authToken),
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({
@@ -79,14 +79,14 @@ async function sendTwilioSms({ accountSid, authToken, apiBaseUrl, fromNumber, to
     }),
   });
 
-  return parseTwilioResponse(response);
+  return parseProviderResponse(response, providerDisplayName);
 }
 
-async function placeTwilioCall({ accountSid, authToken, apiBaseUrl, fromNumber, toNumber, message }) {
+async function placeProviderCall({ accountSid, authToken, apiBaseUrl, fromNumber, toNumber, message, providerDisplayName }) {
   const response = await fetch(`${apiBaseUrl}/Accounts/${accountSid}/Calls.json`, {
     method: "POST",
     headers: {
-      Authorization: buildTwilioAuthHeader(accountSid, authToken),
+      Authorization: buildProviderAuthHeader(accountSid, authToken),
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({
@@ -96,7 +96,7 @@ async function placeTwilioCall({ accountSid, authToken, apiBaseUrl, fromNumber, 
     }),
   });
 
-  return parseTwilioResponse(response);
+  return parseProviderResponse(response, providerDisplayName);
 }
 
 export async function sendOutboundSms({ toNumber, body, dryRun = false, label = "sms" }) {
@@ -133,13 +133,14 @@ export async function sendOutboundSms({ toNumber, body, dryRun = false, label = 
     };
   }
 
-  const twilioResponse = await sendTwilioSms({
+  const providerResponse = await sendProviderSms({
     accountSid: config.accountSid,
     authToken: config.authToken,
     apiBaseUrl: config.apiBaseUrl,
     fromNumber: config.phoneNumber,
     toNumber: destination,
     body,
+    providerDisplayName: config.providerDisplayName,
   });
 
   return {
@@ -149,8 +150,9 @@ export async function sendOutboundSms({ toNumber, body, dryRun = false, label = 
     dryRun: false,
     skipped: false,
     smsRequested: true,
-    providerMessageSid: twilioResponse?.sid || null,
-    message: "Outbound SMS sent.",
+    providerName: config.providerName,
+    providerMessageSid: providerResponse?.sid || null,
+    message: `Outbound SMS sent through ${config.providerDisplayName}.`,
   };
 }
 
@@ -189,13 +191,14 @@ export async function sendOutboundCall({ toNumber, message, dryRun = false, labe
     };
   }
 
-  const twilioResponse = await placeTwilioCall({
+  const providerResponse = await placeProviderCall({
     accountSid: config.accountSid,
     authToken: config.authToken,
     apiBaseUrl: config.apiBaseUrl,
     fromNumber: config.phoneNumber,
     toNumber: destination,
     message,
+    providerDisplayName: config.providerDisplayName,
   });
 
   return {
@@ -205,8 +208,9 @@ export async function sendOutboundCall({ toNumber, message, dryRun = false, labe
     dryRun: false,
     skipped: false,
     callRequested: true,
-    providerCallSid: twilioResponse?.sid || null,
-    message: "Outbound voice call placed.",
+    providerName: config.providerName,
+    providerCallSid: providerResponse?.sid || null,
+    message: `Outbound voice call placed through ${config.providerDisplayName}.`,
   };
 }
 

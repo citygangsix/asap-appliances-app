@@ -21,6 +21,28 @@ function readOptionalEnv(key) {
   return value ? value : null;
 }
 
+function readFirstEnv(keys) {
+  for (const key of keys) {
+    const value = readOptionalEnv(key);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function readRequiredAnyEnv(keys) {
+  const value = readFirstEnv(keys);
+
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${keys.join(" or ")}`);
+  }
+
+  return value;
+}
+
 function readRequiredSupabaseUrl() {
   const value = readServerEnv("VITE_SUPABASE_URL") || readServerEnv("SUPABASE_URL");
 
@@ -61,6 +83,10 @@ function readOptionalNumberEnv(key, fallback) {
   return readServerNumberEnv(key, fallback);
 }
 
+function normalizeApiBaseUrl(value) {
+  return value ? value.trim().replace(/\/$/u, "") : null;
+}
+
 function normalizeSignalWireApiBaseUrl() {
   let normalizedSpaceUrl = readOptionalEnv("SIGNALWIRE_SPACE_URL")?.trim().replace(/\/$/u, "");
 
@@ -91,37 +117,69 @@ function normalizeSignalWireApiBaseUrl() {
   return `${parsedSpaceUrl.origin}/api/laml/2010-04-01`;
 }
 
+function resolveTelephonyProvider(apiBaseUrl) {
+  const configuredProvider = readOptionalEnv("TELEPHONY_PROVIDER")?.trim().toLowerCase();
+
+  if (configuredProvider === "signalwire" || configuredProvider === "twilio") {
+    return configuredProvider;
+  }
+
+  if (
+    readOptionalEnv("SIGNALWIRE_PROJECT_ID") ||
+    readOptionalEnv("SIGNALWIRE_API_TOKEN") ||
+    readOptionalEnv("SIGNALWIRE_SPACE_URL") ||
+    /signalwire\.com/iu.test(apiBaseUrl || "")
+  ) {
+    return "signalwire";
+  }
+
+  return "twilio";
+}
+
 export function getTwilioServerConfig() {
-  const phoneNumber = readRequiredEnv("TWILIO_PHONE_NUMBER");
+  const phoneNumber = readRequiredAnyEnv(["SIGNALWIRE_PHONE_NUMBER", "TWILIO_PHONE_NUMBER"]);
   const lumiaInvoicePhoneNumber = readOptionalEnv("LUMIA_INVOICE_SMS_PHONE_NUMBER");
   const assistantOfficePhoneNumber = readOptionalEnv("ASSISTANT_OFFICE_PHONE_NUMBER") || lumiaInvoicePhoneNumber;
   const clickToCallAgentNumber =
+    readOptionalEnv("SIGNALWIRE_CLICK_TO_CALL_AGENT_NUMBER") ||
     readOptionalEnv("TWILIO_CLICK_TO_CALL_AGENT_NUMBER") ||
     assistantOfficePhoneNumber ||
+    readOptionalEnv("SIGNALWIRE_VOICE_FORWARD_TO") ||
     readOptionalEnv("TWILIO_VOICE_FORWARD_TO");
+  const signalWireManagedPhoneNumbers = readOptionalListEnv("SIGNALWIRE_MANAGED_PHONE_NUMBERS");
+  const twilioManagedPhoneNumbers = readOptionalListEnv("TWILIO_MANAGED_PHONE_NUMBERS");
   const managedPhoneNumbers = Array.from(
-    new Set([phoneNumber, ...readOptionalListEnv("TWILIO_MANAGED_PHONE_NUMBERS")].filter(Boolean)),
+    new Set([phoneNumber, ...signalWireManagedPhoneNumbers, ...twilioManagedPhoneNumbers].filter(Boolean)),
   );
+  const apiBaseUrl =
+    normalizeSignalWireApiBaseUrl() ||
+    normalizeApiBaseUrl(readOptionalEnv("TELEPHONY_API_BASE_URL")) ||
+    normalizeApiBaseUrl(readOptionalEnv("TWILIO_API_BASE_URL")) ||
+    "https://api.twilio.com/2010-04-01";
+  const providerName = resolveTelephonyProvider(apiBaseUrl);
+  const providerDisplayName = providerName === "signalwire" ? "SignalWire" : "Twilio";
 
   return {
     supabaseUrl: readRequiredSupabaseUrl(),
     supabaseServiceRoleKey: readRequiredSupabaseServiceRoleKey(),
-    accountSid: readOptionalEnv("SIGNALWIRE_PROJECT_ID") || readRequiredEnv("TWILIO_ACCOUNT_SID"),
-    authToken: readOptionalEnv("SIGNALWIRE_API_TOKEN") || readRequiredEnv("TWILIO_AUTH_TOKEN"),
+    providerName,
+    providerDisplayName,
+    accountSid: readRequiredAnyEnv(["SIGNALWIRE_PROJECT_ID", "TWILIO_ACCOUNT_SID"]),
+    authToken: readRequiredAnyEnv(["SIGNALWIRE_API_TOKEN", "TWILIO_AUTH_TOKEN"]),
     signalWireSigningKey: readOptionalEnv("SIGNALWIRE_SIGNING_KEY"),
     apiKeySid: readOptionalEnv("TWILIO_API_KEY_SID"),
     apiKeySecret: readOptionalEnv("TWILIO_API_KEY_SECRET"),
-    apiBaseUrl:
-      normalizeSignalWireApiBaseUrl() ||
-      readOptionalEnv("TWILIO_API_BASE_URL")?.replace(/\/$/u, "") ||
-      "https://api.twilio.com/2010-04-01",
-    twimlAppSid: readOptionalEnv("TWILIO_TWIML_APP_SID"),
+    apiBaseUrl,
+    twimlAppSid: readOptionalEnv("SIGNALWIRE_CXML_APP_SID") || readOptionalEnv("TWILIO_TWIML_APP_SID"),
     phoneNumber,
     managedPhoneNumbers,
     lumiaInvoicePhoneNumber,
     assistantOfficePhoneNumber,
     voiceForwardToNumber:
-      readOptionalEnv("TWILIO_VOICE_FORWARD_TO") || lumiaInvoicePhoneNumber || assistantOfficePhoneNumber,
+      readOptionalEnv("SIGNALWIRE_VOICE_FORWARD_TO") ||
+      readOptionalEnv("TWILIO_VOICE_FORWARD_TO") ||
+      lumiaInvoicePhoneNumber ||
+      assistantOfficePhoneNumber,
     clickToCallAgentNumber,
     thumbtackAssistantPhoneNumber:
       readOptionalEnv("THUMBTACK_ASSISTANT_PHONE_NUMBER") || clickToCallAgentNumber,
@@ -143,8 +201,8 @@ export function getTwilioServerConfig() {
       120,
     ),
     clickToCallMissedSmsBody: readOptionalEnv("TWILIO_CLICK_TO_CALL_MISSED_SMS_BODY"),
-    webhookBaseUrl: readRequiredEnv("TWILIO_WEBHOOK_BASE_URL").replace(/\/$/u, ""),
-    port: Number(readServerEnv("TWILIO_WEBHOOK_PORT") || 8787),
+    webhookBaseUrl: readRequiredAnyEnv(["SIGNALWIRE_WEBHOOK_BASE_URL", "TWILIO_WEBHOOK_BASE_URL"]).replace(/\/$/u, ""),
+    port: Number(readServerEnv("SIGNALWIRE_WEBHOOK_PORT") || readServerEnv("TWILIO_WEBHOOK_PORT") || 8787),
   };
 }
 

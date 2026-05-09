@@ -41,6 +41,6 @@ The webhook currently accepts common variants such as:
 ## Current Runtime Notes
 
 - New lead calls target `+15615641545` first.
-- Calls are recorded through the CRM Twilio flow.
-- The current outbound caller ID shown to customers is `+18445424212`.
-- Keep `TWILIO_PHONE_NUMBER=+18445424212` and `TWILIO_MANAGED_PHONE_NUMBERS=+18445424212` in the hosted Supabase secrets unless another Twilio or BYOC line is intentionally added.
+- Calls are recorded through the CRM SignalWire compatibility flow.
+- The current outbound caller ID shown to customers is `+15615769819`.
+- Keep `SIGNALWIRE_PHONE_NUMBER=+15615769819` and `SIGNALWIRE_MANAGED_PHONE_NUMBERS=+15615769819` in the hosted Supabase secrets unless another SignalWire line is intentionally added.

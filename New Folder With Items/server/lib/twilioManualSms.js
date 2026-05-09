@@ -103,7 +103,7 @@ async function createManualSmsCommunicationLog(client, config, payload) {
       endedAt: null,
       fromNumber: config.phoneNumber,
       toNumber: payload.toNumber,
-      providerName: "twilio",
+      providerName: config.providerName || "twilio",
       providerMessageSid: payload.providerMessageSid || null,
       providerCallSid: null,
     }),

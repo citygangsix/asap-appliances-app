@@ -349,11 +349,11 @@ async function requestClickToCall(payload) {
   }
 
   if (!response.ok || !responseJson) {
-    throw new Error(responseJson?.message || `Twilio call failed with status ${response.status}.`);
+    throw new Error(responseJson?.message || `SignalWire call failed with status ${response.status}.`);
   }
 
   if (!responseJson.ok) {
-    throw new Error(responseJson.message || "Twilio call failed.");
+    throw new Error(responseJson.message || "SignalWire call failed.");
   }
 
   return responseJson;
@@ -736,7 +736,7 @@ export function PhonePage() {
   const [smsDraftContact, setSmsDraftContact] = useState(null);
   const [smsBody, setSmsBody] = useState("");
   const [smsStatus, setSmsStatus] = useState("Ready");
-  const [smsMessage, setSmsMessage] = useState("Write a text message to send from the Twilio phone.");
+  const [smsMessage, setSmsMessage] = useState("Write a text message to send from the SignalWire phone.");
   const [activeCalls, setActiveCalls] = useState([]);
   const [activeCallsError, setActiveCallsError] = useState(null);
   const [activeCallsFetchedAt, setActiveCallsFetchedAt] = useState(null);
@@ -1115,7 +1115,7 @@ export function PhonePage() {
     loadDialTarget(contact);
     setInteractionContext("text");
     setSmsStatus("Ready");
-    setSmsMessage(`${contact.name || formatUsPhone(targetPhone) || "Contact"} is ready for a Twilio text.`);
+    setSmsMessage(`${contact.name || formatUsPhone(targetPhone) || "Contact"} is ready for a SignalWire text.`);
     focusSmsComposer();
   }
 
@@ -1175,7 +1175,7 @@ export function PhonePage() {
     setSmsRecipientQuery(target.name || formatUsPhone(targetPhone) || targetPhone || "");
     setInteractionContext("text");
     setSmsStatus("Ready");
-    setSmsMessage(`${targetName} is ready for a Twilio text.`);
+    setSmsMessage(`${targetName} is ready for a SignalWire text.`);
     focusSmsComposer();
   }
 
@@ -1586,7 +1586,7 @@ export function PhonePage() {
                   onClick={() => startCall()}
                   type="button"
                 >
-                  Call from Twilio
+                  Call from SignalWire
                 </button>
                 <button
                   className="min-h-[60px] rounded-2xl bg-slate-700 px-5 py-3 text-base font-semibold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
@@ -1686,7 +1686,7 @@ export function PhonePage() {
                     setInteractionContext("text");
                   }
                 }}
-                placeholder="Write a text to send from the Twilio phone"
+                placeholder="Write a text to send from the SignalWire phone"
                 value={smsBody}
               />
               <div className="mt-3 flex flex-wrap gap-2">
@@ -1707,7 +1707,7 @@ export function PhonePage() {
                 onClick={() => sendTextMessage()}
                 type="button"
               >
-                Send text from Twilio
+                Send text from SignalWire
               </button>
               <p className="mt-3 text-sm leading-6 text-slate-300">{smsMessage}</p>
             </div>

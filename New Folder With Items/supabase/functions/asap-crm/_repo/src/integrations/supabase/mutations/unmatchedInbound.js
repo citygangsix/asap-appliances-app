@@ -13,7 +13,7 @@ export function createUnmatchedInboundMutation() {
     key: "communications.createUnmatchedInbound",
     table: "unmatched_inbound_communications",
     operation: "insert",
-    details: "Persist an inbound Twilio event that cannot yet be linked to a unique customer.",
+    details: "Persist an inbound provider event that cannot yet be linked to a unique customer.",
     expectedPayload: "UnmatchedInboundCommunicationInsertPayload",
     expectedResult: "UnmatchedInboundCommunicationRow",
   });

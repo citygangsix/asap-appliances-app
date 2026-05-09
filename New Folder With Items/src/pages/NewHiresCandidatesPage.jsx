@@ -230,7 +230,7 @@ export function NewHiresCandidatesPage() {
                     </p>
                     <p className="mt-3 text-sm leading-6 text-slate-700">
                       {selectedCandidate.starterPacketSentAtLabel
-                        ? `Sent by Twilio ${selectedCandidate.starterPacketSentAtLabel}`
+                        ? `Sent by SignalWire ${selectedCandidate.starterPacketSentAtLabel}`
                         : "Not sent yet."}
                     </p>
                     {selectedCandidate.starterPacketUrl ? (
