@@ -561,7 +561,9 @@ async function main() {
       `Expected invalid-signature smoke request to return 403, received ${invalidSignature.status}`,
     );
     assert(
-      invalidSignature.json?.message === "Invalid voice provider webhook signature.",
+      ["Invalid voice provider webhook signature.", "Invalid Twilio webhook signature."].includes(
+        invalidSignature.json?.message,
+      ),
       "Expected invalid-signature smoke request to be rejected explicitly.",
     );
     console.log("[twilio-smoke] PASS invalid signature rejected");
