@@ -4,6 +4,7 @@ import { formatStatusLabel, getStatusTone } from "../../lib/domain/jobs";
 import {
   buildDefaultVehicleProfile,
   calculateFuelReimbursement,
+  estimateRoadMiles,
   formatMiles,
   formatMoney,
 } from "../../lib/domain/dispatchRouting";
@@ -13,6 +14,8 @@ const MIN_ZOOM = 4;
 const MAX_ZOOM = 14;
 const WHEEL_ZOOM_THRESHOLD = 180;
 const ROUTE_COLORS = ["#4f46e5", "#0f766e", "#dc2626", "#b45309", "#2563eb", "#7c3aed"];
+const SERVICE_ZONE_COLORS = ["#0f766e", "#4f46e5", "#b45309", "#be123c", "#2563eb", "#7c2d12"];
+const DEMAND_CLUSTER_LIMIT = 6;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -178,6 +181,315 @@ function pointMatchesStatusPriority(point, filterValue) {
   }
 
   return true;
+}
+
+function extractZipFromText(...values) {
+  const match = values.filter(Boolean).join(" ").match(/\b\d{5}(?:-\d{4})?\b/);
+  return match ? match[0].slice(0, 5) : "";
+}
+
+function cleanAreaLabel(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\b(fl|tx|usa)\b\.?/gi, "")
+    .replace(/\d{5}(?:-\d{4})?/g, "")
+    .trim();
+}
+
+function readCityFromAddress(address) {
+  const parts = String(address || "")
+    .split(",")
+    .map((part) => cleanAreaLabel(part))
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return parts[parts.length - 2];
+  }
+
+  return "";
+}
+
+function getJobAreaLabel(job) {
+  const zipCode = extractZipFromText(
+    job?.serviceAddress,
+    job?.customer?.zipCode,
+    job?.customer?.postalCode,
+    job?.customer?.postal_code,
+  );
+
+  if (zipCode) {
+    return `ZIP ${zipCode}`;
+  }
+
+  return (
+    cleanAreaLabel(job?.customer?.city) ||
+    readCityFromAddress(job?.serviceAddress) ||
+    cleanAreaLabel(job?.customer?.serviceArea || job?.serviceArea) ||
+    "Unmapped area"
+  );
+}
+
+function getWorkerCoverageLabel(technician) {
+  return (
+    cleanAreaLabel(technician?.serviceArea) ||
+    cleanAreaLabel(technician?.availabilityLabel) ||
+    technician?.name ||
+    "Coverage area"
+  );
+}
+
+function getJobPriorityWeight(job) {
+  const priority = String(job?.priority || "").toLowerCase();
+
+  if (priority === "escalated") {
+    return 4;
+  }
+
+  if (priority === "high") {
+    return 3;
+  }
+
+  return 1;
+}
+
+function findNearestCoverageZone(coordinate, coverageZones) {
+  if (!coordinate || !coverageZones.length) {
+    return null;
+  }
+
+  return coverageZones.reduce(
+    (best, zone) => {
+      const miles = estimateRoadMiles(coordinate, zone.coordinate);
+      return miles < best.miles ? { zone, miles } : best;
+    },
+    { zone: null, miles: Number.POSITIVE_INFINITY },
+  );
+}
+
+function buildTargetAction(area) {
+  if (area.openLeadCount > 0 && area.bestLeadRecommendation?.bestRoute) {
+    return `Stage lead with ${area.bestLeadRecommendation.bestRoute.technicianName}`;
+  }
+
+  if (area.highPriorityCount > 0 && area.nearestZone) {
+    return `Move priority work to ${area.nearestZone.technician.name}`;
+  }
+
+  if (area.nearestMiles > 45) {
+    return "Coverage gap";
+  }
+
+  if (area.demandCount >= 3 && area.nearestZone) {
+    return `Batch route with ${area.nearestZone.technician.name}`;
+  }
+
+  if (area.nearestZone) {
+    return `Keep warm with ${area.nearestZone.technician.name}`;
+  }
+
+  return "Needs worker coverage";
+}
+
+function buildCoverageZones({ workerPoints, demandPoints, routePlans }) {
+  return workerPoints
+    .map((point, index) => {
+      const technician = point.technician;
+      const routePlan = routePlans.find((plan) => plan.techId === technician.techId);
+      const serviceZipCount = Array.isArray(technician.serviceZipCodes) ? technician.serviceZipCodes.length : 0;
+      const nearbyDemandCount = demandPoints.filter((demandPoint) =>
+        estimateRoadMiles(point.coordinate, demandPoint.coordinate) <= 35,
+      ).length;
+
+      return {
+        id: technician.techId,
+        label: technician.name,
+        color: SERVICE_ZONE_COLORS[index % SERVICE_ZONE_COLORS.length],
+        coordinate: point.coordinate,
+        technician,
+        serviceArea: getWorkerCoverageLabel(technician),
+        serviceZipCount,
+        nearbyDemandCount,
+        stopCount: routePlan?.stopCount || 0,
+        routeMiles: routePlan?.totalMiles || 0,
+        radius: clamp(82 + serviceZipCount * 1.4 + nearbyDemandCount * 8, 86, 190),
+      };
+    })
+    .sort((left, right) => right.nearbyDemandCount - left.nearbyDemandCount || right.stopCount - left.stopCount);
+}
+
+function buildTargetAreas({ demandPoints, coverageZones, leadRecommendations }) {
+  const leadRecommendationsByJobId = new Map(
+    leadRecommendations.map((recommendation) => [recommendation.job.jobId, recommendation]),
+  );
+  const areaMap = new Map();
+
+  demandPoints.forEach((point) => {
+    const areaLabel = getJobAreaLabel(point.job);
+    const areaKey = areaLabel.toLowerCase();
+    const current =
+      areaMap.get(areaKey) ||
+      {
+        id: areaKey,
+        label: areaLabel,
+        points: [],
+        openLeadCount: 0,
+        scheduledCount: 0,
+        highPriorityCount: 0,
+        priorityWeight: 0,
+        leadRecommendations: [],
+      };
+
+    current.points.push(point);
+    current.openLeadCount += point.type === "lead" ? 1 : 0;
+    current.scheduledCount += point.type === "job" ? 1 : 0;
+    current.highPriorityCount += ["escalated", "high"].includes(point.job?.priority) ? 1 : 0;
+    current.priorityWeight += getJobPriorityWeight(point.job);
+
+    const leadRecommendation = leadRecommendationsByJobId.get(point.job?.jobId);
+    if (leadRecommendation) {
+      current.leadRecommendations.push(leadRecommendation);
+    }
+
+    areaMap.set(areaKey, current);
+  });
+
+  return Array.from(areaMap.values())
+    .map((area) => {
+      const center = area.points.reduce(
+        (current, point) => ({
+          lat: current.lat + point.coordinate.lat / area.points.length,
+          lng: current.lng + point.coordinate.lng / area.points.length,
+        }),
+        { lat: 0, lng: 0 },
+      );
+      const nearest = findNearestCoverageZone(center, coverageZones);
+      const bestLeadRecommendation = area.leadRecommendations
+        .filter((recommendation) => recommendation.bestRoute)
+        .sort(
+          (left, right) =>
+            (left.bestRoute?.addedMiles ?? Number.POSITIVE_INFINITY) -
+            (right.bestRoute?.addedMiles ?? Number.POSITIVE_INFINITY),
+        )[0];
+      const nearestMiles = nearest?.miles ?? Number.POSITIVE_INFINITY;
+      const demandCount = area.points.length;
+      const score =
+        area.openLeadCount * 5 +
+        area.highPriorityCount * 3 +
+        area.scheduledCount +
+        area.priorityWeight +
+        Math.max(0, 3 - nearestMiles / 18);
+
+      return {
+        ...area,
+        center,
+        demandCount,
+        nearestZone: nearest?.zone || null,
+        nearestMiles,
+        bestLeadRecommendation,
+        score,
+      };
+    })
+    .map((area) => ({
+      ...area,
+      actionLabel: buildTargetAction(area),
+      radius: clamp(58 + area.demandCount * 15 + area.openLeadCount * 8, 64, 150),
+    }))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, DEMAND_CLUSTER_LIMIT);
+}
+
+function buildMarketInsights({ visibleMapPoints, routePlans, leadRecommendations }) {
+  const workerPoints = visibleMapPoints.filter((point) => point.type === "technician");
+  const demandPoints = visibleMapPoints.filter((point) => point.type === "job" || point.type === "lead");
+  const coverageZones = buildCoverageZones({ workerPoints, demandPoints, routePlans });
+  const targetAreas = buildTargetAreas({ demandPoints, coverageZones, leadRecommendations });
+
+  return {
+    coverageZones,
+    targetAreas,
+    totalDemandCount: demandPoints.length,
+    openLeadCount: demandPoints.filter((point) => point.type === "lead").length,
+    highPriorityCount: demandPoints.filter((point) => ["escalated", "high"].includes(point.job?.priority)).length,
+  };
+}
+
+function CoverageZonesOverlay({ zones, mapView, size, activeRouteTechId }) {
+  if (!zones.length) {
+    return null;
+  }
+
+  return (
+    <svg className="pointer-events-none absolute inset-0 z-[11] h-full w-full">
+      {zones.map((zone) => {
+        const position = getPointScreenPosition(zone.coordinate, mapView, size);
+        const isActive = activeRouteTechId === zone.id;
+
+        return (
+          <g key={zone.id}>
+            <circle
+              cx={position.x}
+              cy={position.y}
+              fill={zone.color}
+              fillOpacity={isActive ? 0.16 : 0.08}
+              r={zone.radius}
+              stroke={zone.color}
+              strokeDasharray={isActive ? "0" : "10 8"}
+              strokeOpacity={isActive ? 0.56 : 0.34}
+              strokeWidth={isActive ? 3 : 2}
+            />
+            <circle cx={position.x} cy={position.y} fill={zone.color} fillOpacity="0.14" r={Math.max(24, zone.radius * 0.28)} />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function DemandClustersOverlay({ areas, mapView, size }) {
+  if (!areas.length) {
+    return null;
+  }
+
+  return (
+    <>
+      <svg className="pointer-events-none absolute inset-0 z-[12] h-full w-full">
+        {areas.map((area) => {
+          const position = getPointScreenPosition(area.center, mapView, size);
+          const color = area.openLeadCount > 0 ? "#be123c" : area.highPriorityCount > 0 ? "#b45309" : "#4f46e5";
+
+          return (
+            <circle
+              key={area.id}
+              cx={position.x}
+              cy={position.y}
+              fill={color}
+              fillOpacity={area.openLeadCount > 0 ? 0.14 : 0.1}
+              r={area.radius}
+              stroke={color}
+              strokeDasharray="5 7"
+              strokeOpacity="0.42"
+              strokeWidth="2"
+            />
+          );
+        })}
+      </svg>
+
+      {areas.slice(0, 4).map((area) => {
+        const position = getPointScreenPosition(area.center, mapView, size);
+
+        return (
+          <div
+            key={`${area.id}-label`}
+            className="pointer-events-none absolute z-[18] max-w-[150px] -translate-x-1/2 rounded-xl border border-slate-200 bg-white/95 px-2.5 py-1.5 text-center text-[11px] font-semibold text-slate-700 shadow"
+            style={{ left: position.x, top: position.y - area.radius - 16 }}
+          >
+            <span className="block truncate">{area.label}</span>
+            <span className="text-slate-500">{area.demandCount} records</span>
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 function Marker({ point, mapView, size, selected, onSelect }) {
@@ -398,6 +710,128 @@ function MarkerDetailCard({
   );
 }
 
+function TerritoryStrategyPanel({
+  insights,
+  activeRouteTechId,
+  onSelectRouteTechnician,
+  onStageLead,
+}) {
+  const topCoverageZones = insights.coverageZones.slice(0, 3);
+  const topTargetAreas = insights.targetAreas.slice(0, 4);
+
+  return (
+    <div className="mt-6 border-t border-[#e7ebf2] pt-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="section-title">Territory strategy</p>
+          <h3 className="mt-2 text-lg font-semibold text-slate-950">Coverage and demand</h3>
+        </div>
+        <Badge tone={insights.openLeadCount > 0 ? "rose" : "indigo"}>{insights.targetAreas.length} areas</Badge>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-[11px] font-medium text-slate-500">Demand</p>
+          <p className="mt-1 text-lg font-semibold text-slate-950">{insights.totalDemandCount}</p>
+        </div>
+        <div className="rounded-xl bg-rose-50 p-3">
+          <p className="text-[11px] font-medium text-rose-700">Leads</p>
+          <p className="mt-1 text-lg font-semibold text-rose-700">{insights.openLeadCount}</p>
+        </div>
+        <div className="rounded-xl bg-amber-50 p-3">
+          <p className="text-[11px] font-medium text-amber-700">Priority</p>
+          <p className="mt-1 text-lg font-semibold text-amber-700">{insights.highPriorityCount}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {topTargetAreas.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+            No mapped customer demand matches the current filters.
+          </p>
+        ) : (
+          topTargetAreas.map((area) => {
+            const bestRoute = area.bestLeadRecommendation?.bestRoute;
+            const focusTechId = bestRoute?.techId || area.nearestZone?.id || "";
+
+            return (
+              <div key={area.id} className="rounded-xl border border-[#dce2ec] bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{area.label}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {area.demandCount} records · {area.openLeadCount} leads
+                    </p>
+                  </div>
+                  <Badge tone={area.openLeadCount > 0 ? "rose" : area.highPriorityCount > 0 ? "amber" : "slate"}>
+                    {area.highPriorityCount > 0 ? "Priority" : "Target"}
+                  </Badge>
+                </div>
+
+                <p className="mt-3 text-sm font-medium text-slate-700">{area.actionLabel}</p>
+                {area.nearestZone ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {area.nearestZone.technician.name} · {formatMiles(area.nearestMiles)}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {bestRoute ? (
+                    <SecondaryButton
+                      className="rounded-xl px-3 py-2 text-xs"
+                      onClick={() => onStageLead(area.bestLeadRecommendation.job.jobId, bestRoute.techId)}
+                    >
+                      Stage lead
+                    </SecondaryButton>
+                  ) : null}
+                  {focusTechId ? (
+                    <SecondaryButton
+                      className="rounded-xl px-3 py-2 text-xs"
+                      onClick={() => onSelectRouteTechnician(focusTechId)}
+                    >
+                      Focus worker
+                    </SecondaryButton>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {topCoverageZones.length ? (
+        <div className="mt-5 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Worker coverage</p>
+          {topCoverageZones.map((zone) => (
+            <button
+              key={zone.id}
+              type="button"
+              className={`w-full rounded-xl border p-3 text-left transition hover:border-indigo-300 ${
+                activeRouteTechId === zone.id ? "border-indigo-300 bg-indigo-50/80" : "border-slate-200 bg-slate-50"
+              }`}
+              onClick={() => onSelectRouteTechnician(zone.id)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{zone.technician.name}</p>
+                  <p className="mt-1 truncate text-xs text-slate-500">{zone.serviceArea}</p>
+                </div>
+                <span
+                  className="mt-1 h-3 w-3 shrink-0 rounded-full"
+                  style={{ backgroundColor: zone.color }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                {zone.nearbyDemandCount} nearby records · {zone.serviceZipCount} ZIPs · {zone.stopCount} stops
+              </p>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * @param {{
  *   jobs: any[],
@@ -436,6 +870,8 @@ export function DispatchMapWorkspace({
   const [showWorkers, setShowWorkers] = useState(true);
   const [showJobs, setShowJobs] = useState(true);
   const [showLeads, setShowLeads] = useState(true);
+  const [showCoverageZones, setShowCoverageZones] = useState(true);
+  const [showDemandHeat, setShowDemandHeat] = useState(true);
   const [technicianFilter, setTechnicianFilter] = useState("all");
   const [statusPriorityFilter, setStatusPriorityFilter] = useState("all");
   const [selectedMarkerKey, setSelectedMarkerKey] = useState("");
@@ -520,6 +956,15 @@ export function DispatchMapWorkspace({
       })),
     ];
   }, [mapPoints]);
+  const marketInsights = useMemo(
+    () =>
+      buildMarketInsights({
+        visibleMapPoints,
+        routePlans: visibleRoutePlans,
+        leadRecommendations,
+      }),
+    [leadRecommendations, visibleMapPoints, visibleRoutePlans],
+  );
   const locatedWorkers = mapPoints.filter((point) => point.type === "technician").length;
   const visibleWorkers = visibleMapPoints.filter((point) => point.type === "technician").length;
   const visibleJobs = visibleMapPoints.filter((point) => point.type === "job").length;
@@ -672,10 +1117,10 @@ export function DispatchMapWorkspace({
             <p className="section-title">Dispatch map</p>
             <h2 className="mt-2 text-xl font-semibold text-slate-950">Map command workspace</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              Pan, scroll, inspect workers and jobs, then stage the best-fit dispatch route from the same screen.
+              Workers, routes, customer demand, lead clusters, and manual territory decisions in one dispatch view.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[620px]">
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <p className="text-xs text-slate-500">Workers</p>
               <p className="text-lg font-semibold text-slate-950">{visibleWorkers}/{locatedWorkers || technicians.length}</p>
@@ -687,6 +1132,14 @@ export function DispatchMapWorkspace({
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <p className="text-xs text-slate-500">Leads</p>
               <p className="text-lg font-semibold text-rose-600">{visibleLeads}/{incomingLeads}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 px-3 py-2">
+              <p className="text-xs text-slate-500">Targets</p>
+              <p className="text-lg font-semibold text-slate-950">{marketInsights.targetAreas.length}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 px-3 py-2">
+              <p className="text-xs text-slate-500">Zones</p>
+              <p className="text-lg font-semibold text-slate-950">{marketInsights.coverageZones.length}</p>
             </div>
             <div className="rounded-xl bg-slate-50 px-3 py-2">
               <p className="text-xs text-slate-500">Miles</p>
@@ -705,6 +1158,8 @@ export function DispatchMapWorkspace({
                 ["Workers", showWorkers, setShowWorkers],
                 ["Scheduled jobs", showJobs, setShowJobs],
                 ["Incoming leads", showLeads, setShowLeads],
+                ["Coverage zones", showCoverageZones, setShowCoverageZones],
+                ["Demand heat", showDemandHeat, setShowDemandHeat],
               ].map(([label, enabled, setter]) => (
                 <button
                   key={label}
@@ -786,6 +1241,21 @@ export function DispatchMapWorkspace({
             routePlans={visibleRoutePlans}
             size={size}
           />
+          {showCoverageZones ? (
+            <CoverageZonesOverlay
+              activeRouteTechId={activeRouteTechId}
+              mapView={mapView}
+              size={size}
+              zones={marketInsights.coverageZones}
+            />
+          ) : null}
+          {showDemandHeat ? (
+            <DemandClustersOverlay
+              areas={marketInsights.targetAreas}
+              mapView={mapView}
+              size={size}
+            />
+          ) : null}
           {visibleMapPoints.map((point) => (
             <Marker
               key={`${point.type}-${point.id}`}
@@ -844,6 +1314,8 @@ export function DispatchMapWorkspace({
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Workers</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-indigo-500" /> Jobs</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Leads</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-full border border-teal-600 bg-teal-100" /> Zones</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-full border border-amber-600 bg-amber-100" /> Demand</span>
           </div>
 
           <button
@@ -889,6 +1361,13 @@ export function DispatchMapWorkspace({
               selectedTechId={selectedTechId || activeRouteTechId}
             />
           </div>
+
+          <TerritoryStrategyPanel
+            activeRouteTechId={activeRouteTechId}
+            insights={marketInsights}
+            onSelectRouteTechnician={onSelectRouteTechnician}
+            onStageLead={onStageLead}
+          />
 
           <div className="mt-6 border-t border-[#e7ebf2] pt-5">
           <div className="flex items-center justify-between gap-3">
