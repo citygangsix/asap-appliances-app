@@ -108,7 +108,7 @@ insert into public.technicians (
   (
     '00000000-0000-0000-0000-000000000208',
     'Dexter',
-    '860-288-6688',
+    '954-288-6688',
     null,
     'Fort Lauderdale / Broward County',
     ARRAY[

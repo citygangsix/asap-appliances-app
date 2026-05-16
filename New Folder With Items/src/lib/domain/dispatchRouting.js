@@ -3,23 +3,31 @@ import { extractZipCode } from "./technicianCoverage";
 const EARTH_RADIUS_MILES = 3958.8;
 const ROAD_DISTANCE_FACTOR = 1.22;
 const DEFAULT_FUEL_PRICE_PER_GALLON = 3.5;
+const FLORIDA_BOUNDS = {
+  north: 31.05,
+  south: 24.35,
+  west: -87.75,
+  east: -79.75,
+};
 
 const CITY_COORDINATES = {
-  arlington: { lat: 32.7357, lng: -97.1081, label: "Arlington, TX" },
+  "boca raton": { lat: 26.3683, lng: -80.1289, label: "Boca Raton, FL" },
   clearwater: { lat: 27.9659, lng: -82.8001, label: "Clearwater, FL" },
-  dallas: { lat: 32.7767, lng: -96.797, label: "Dallas, TX" },
-  frisco: { lat: 33.1507, lng: -96.8236, label: "Frisco, TX" },
+  "fort myers": { lat: 26.6406, lng: -81.8723, label: "Fort Myers, FL" },
   "fort lauderdale": { lat: 26.1224, lng: -80.1373, label: "Fort Lauderdale, FL" },
+  "fort pierce": { lat: 27.4467, lng: -80.3256, label: "Fort Pierce, FL" },
   hialeah: { lat: 25.8576, lng: -80.2781, label: "Hialeah, FL" },
   hollywood: { lat: 26.0112, lng: -80.1495, label: "Hollywood, FL" },
   holiday: { lat: 28.1878, lng: -82.7395, label: "Holiday, FL" },
-  irving: { lat: 32.814, lng: -96.9489, label: "Irving, TX" },
-  mckinney: { lat: 33.1972, lng: -96.6398, label: "McKinney, TX" },
+  jacksonville: { lat: 30.3322, lng: -81.6557, label: "Jacksonville, FL" },
   miami: { lat: 25.7617, lng: -80.1918, label: "Miami, FL" },
+  naples: { lat: 26.142, lng: -81.7948, label: "Naples, FL" },
   ocala: { lat: 29.1872, lng: -82.1401, label: "Ocala, FL" },
-  plano: { lat: 33.0198, lng: -96.6989, label: "Plano, TX" },
   pompano: { lat: 26.2379, lng: -80.1248, label: "Pompano Beach, FL" },
   "pompano beach": { lat: 26.2379, lng: -80.1248, label: "Pompano Beach, FL" },
+  "port st lucie": { lat: 27.273, lng: -80.3582, label: "Port St. Lucie, FL" },
+  "port saint lucie": { lat: 27.273, lng: -80.3582, label: "Port St. Lucie, FL" },
+  sarasota: { lat: 27.3364, lng: -82.5307, label: "Sarasota, FL" },
   "st pete": { lat: 27.7676, lng: -82.6403, label: "St. Petersburg, FL" },
   "st petersburg": { lat: 27.7676, lng: -82.6403, label: "St. Petersburg, FL" },
   tampa: { lat: 27.9506, lng: -82.4572, label: "Tampa, FL" },
@@ -29,6 +37,8 @@ const CITY_COORDINATES = {
 
 const AREA_COORDINATES = [
   { tokens: ["broward"], coordinate: CITY_COORDINATES["fort lauderdale"] },
+  { tokens: ["collier"], coordinate: CITY_COORDINATES.naples },
+  { tokens: ["lee"], coordinate: CITY_COORDINATES["fort myers"] },
   { tokens: ["hernando"], coordinate: { lat: 28.5553, lng: -82.3885, label: "Hernando County, FL" } },
   { tokens: ["hillsborough"], coordinate: CITY_COORDINATES.tampa },
   { tokens: ["marion"], coordinate: CITY_COORDINATES.ocala },
@@ -38,7 +48,22 @@ const AREA_COORDINATES = [
   { tokens: ["pinellas"], coordinate: CITY_COORDINATES["st petersburg"] },
 ];
 
+const LEGACY_DEMO_LOCATION_COORDINATES = [
+  { tokens: ["mckinney"], coordinate: CITY_COORDINATES["boca raton"] },
+  { tokens: ["plano frisco"], coordinate: CITY_COORDINATES.holiday },
+  { tokens: ["frisco"], coordinate: CITY_COORDINATES.holiday },
+  { tokens: ["central dallas"], coordinate: CITY_COORDINATES.miami },
+  { tokens: ["north dallas"], coordinate: CITY_COORDINATES.ocala },
+  { tokens: ["dallas mesquite"], coordinate: CITY_COORDINATES.miami },
+  { tokens: ["dallas"], coordinate: CITY_COORDINATES.miami },
+  { tokens: ["arlington"], coordinate: CITY_COORDINATES["fort lauderdale"] },
+  { tokens: ["las colinas"], coordinate: CITY_COORDINATES["st petersburg"] },
+  { tokens: ["irving"], coordinate: CITY_COORDINATES["st petersburg"] },
+  { tokens: ["plano"], coordinate: CITY_COORDINATES.ocala },
+];
+
 const ZIP_PREFIX_COORDINATES = [
+  { prefix: "320", coordinate: CITY_COORDINATES.jacksonville },
   { prefix: "321", coordinate: CITY_COORDINATES.ocala },
   { prefix: "326", coordinate: CITY_COORDINATES.ocala },
   { prefix: "327", coordinate: CITY_COORDINATES.ocala },
@@ -49,12 +74,12 @@ const ZIP_PREFIX_COORDINATES = [
   { prefix: "335", coordinate: CITY_COORDINATES.tampa },
   { prefix: "336", coordinate: CITY_COORDINATES.tampa },
   { prefix: "337", coordinate: CITY_COORDINATES["st petersburg"] },
+  { prefix: "339", coordinate: CITY_COORDINATES["fort myers"] },
+  { prefix: "341", coordinate: CITY_COORDINATES.naples },
+  { prefix: "342", coordinate: CITY_COORDINATES.sarasota },
   { prefix: "344", coordinate: CITY_COORDINATES.ocala },
   { prefix: "346", coordinate: CITY_COORDINATES.holiday },
-  { prefix: "750", coordinate: CITY_COORDINATES.plano },
-  { prefix: "751", coordinate: CITY_COORDINATES.mckinney },
-  { prefix: "752", coordinate: CITY_COORDINATES.dallas },
-  { prefix: "760", coordinate: CITY_COORDINATES.arlington },
+  { prefix: "349", coordinate: CITY_COORDINATES["port st lucie"] },
 ];
 
 function buildLocalDateKey(date = new Date()) {
@@ -72,6 +97,18 @@ function normalizeSearchText(value) {
     .trim();
 }
 
+function isFloridaCoordinate(coordinate) {
+  return (
+    coordinate &&
+    Number.isFinite(Number(coordinate.lat)) &&
+    Number.isFinite(Number(coordinate.lng)) &&
+    Number(coordinate.lat) >= FLORIDA_BOUNDS.south &&
+    Number(coordinate.lat) <= FLORIDA_BOUNDS.north &&
+    Number(coordinate.lng) >= FLORIDA_BOUNDS.west &&
+    Number(coordinate.lng) <= FLORIDA_BOUNDS.east
+  );
+}
+
 function readCoordinateFromRecord(record) {
   const candidates = [
     [record?.latitude, record?.longitude],
@@ -83,8 +120,9 @@ function readCoordinateFromRecord(record) {
   ];
 
   const match = candidates.find(([lat, lng]) => Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)));
+  const coordinate = match ? { lat: Number(match[0]), lng: Number(match[1]), label: "Saved coordinates" } : null;
 
-  return match ? { lat: Number(match[0]), lng: Number(match[1]), label: "Saved coordinates" } : null;
+  return isFloridaCoordinate(coordinate) ? coordinate : null;
 }
 
 function findCoordinateByZip(zipCode) {
@@ -124,10 +162,21 @@ function findCoordinateByText(...values) {
     tokens.some((token) => text.includes(token)),
   );
 
-  return areaMatch
+  if (areaMatch) {
+    return {
+      ...areaMatch.coordinate,
+      confidence: "service-area",
+    };
+  }
+
+  const legacyDemoMatch = LEGACY_DEMO_LOCATION_COORDINATES.find(({ tokens }) =>
+    tokens.some((token) => text.includes(token)),
+  );
+
+  return legacyDemoMatch
     ? {
-        ...areaMatch.coordinate,
-        confidence: "service-area",
+        ...legacyDemoMatch.coordinate,
+        confidence: "legacy-demo-location",
       }
     : null;
 }
@@ -140,11 +189,13 @@ function offsetCoordinate(coordinate, index, radius = 0.016) {
   const angle = ((index + 1) * 137.5 * Math.PI) / 180;
   const scale = radius * (1 + (index % 4) * 0.28);
 
-  return {
+  const offset = {
     ...coordinate,
     lat: coordinate.lat + Math.sin(angle) * scale,
     lng: coordinate.lng + Math.cos(angle) * scale,
   };
+
+  return isFloridaCoordinate(offset) ? offset : coordinate;
 }
 
 function getRouteDateKey(job) {

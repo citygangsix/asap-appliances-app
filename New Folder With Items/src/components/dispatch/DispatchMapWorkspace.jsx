@@ -16,6 +16,13 @@ const WHEEL_ZOOM_THRESHOLD = 180;
 const ROUTE_COLORS = ["#4f46e5", "#0f766e", "#dc2626", "#b45309", "#2563eb", "#7c3aed"];
 const SERVICE_ZONE_COLORS = ["#0f766e", "#4f46e5", "#b45309", "#be123c", "#2563eb", "#7c2d12"];
 const DEMAND_CLUSTER_LIMIT = 6;
+const FLORIDA_MAP_CENTER = { lat: 27.9944, lng: -81.7603 };
+const FLORIDA_VIEW_BOUNDS = {
+  north: 31.05,
+  south: 24.35,
+  west: -87.75,
+  east: -79.75,
+};
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -47,7 +54,7 @@ function unprojectCoordinate(point, zoom) {
 
 function getInitialMapView(points) {
   if (!points.length) {
-    return { center: { lat: 28.6, lng: -82.2 }, zoom: 7 };
+    return { center: FLORIDA_MAP_CENTER, zoom: 7 };
   }
 
   const bounds = points.reduce(
@@ -83,8 +90,8 @@ function getInitialMapView(points) {
 
   return {
     center: {
-      lat: (bounds.minLat + bounds.maxLat) / 2,
-      lng: (bounds.minLng + bounds.maxLng) / 2,
+      lat: clamp((bounds.minLat + bounds.maxLat) / 2, FLORIDA_VIEW_BOUNDS.south, FLORIDA_VIEW_BOUNDS.north),
+      lng: clamp((bounds.minLng + bounds.maxLng) / 2, FLORIDA_VIEW_BOUNDS.west, FLORIDA_VIEW_BOUNDS.east),
     },
     zoom,
   };
