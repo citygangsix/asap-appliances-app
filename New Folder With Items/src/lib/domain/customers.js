@@ -1,4 +1,5 @@
 import { formatCurrency } from "./finance";
+import { isClosedJob } from "./jobs";
 
 /** @typedef {import("../../types/models").Communication} Communication */
 /** @typedef {import("../../types/models").Customer} Customer */
@@ -13,7 +14,7 @@ import { formatCurrency } from "./finance";
  */
 export function pickActiveCustomerJob(customerJobs, activeJobId = null) {
   if (activeJobId) {
-    const matchingJob = customerJobs.find((job) => job.jobId === activeJobId);
+    const matchingJob = customerJobs.find((job) => job.jobId === activeJobId && !isClosedJob(job));
 
     if (matchingJob) {
       return matchingJob;
@@ -21,8 +22,7 @@ export function pickActiveCustomerJob(customerJobs, activeJobId = null) {
   }
 
   return (
-    customerJobs.find((job) => !["completed", "canceled"].includes(job.lifecycleStatus)) ||
-    customerJobs[0] ||
+    customerJobs.find((job) => !isClosedJob(job)) ||
     null
   );
 }

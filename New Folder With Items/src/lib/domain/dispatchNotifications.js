@@ -1,7 +1,7 @@
+import { isClosedJob } from "./jobs";
+
 export const DISPATCH_RESPONSE_WARNING_MINUTES = 10;
 export const DISPATCH_RESPONSE_CRITICAL_MINUTES = 15;
-
-const CLOSED_JOB_STATUSES = new Set(["completed", "canceled", "cancelled"]);
 
 function formatStatusLabel(value) {
   return String(value)
@@ -96,7 +96,7 @@ export function buildDispatchResponseNotifications({
         ageMinutes === null ||
         ageMinutes < warningMinutes ||
         job.dispatchConfirmationReceivedAt ||
-        CLOSED_JOB_STATUSES.has(job.lifecycleStatus)
+        isClosedJob(job)
       ) {
         return null;
       }

@@ -503,11 +503,14 @@ function Marker({ point, mapView, size, selected, onSelect }) {
   const position = getPointScreenPosition(point.coordinate, mapView, size);
   const isTechnician = point.type === "technician";
   const isLead = point.type === "lead";
+  const isPendingRepair = ["pending_installation", "pending_repair"].includes(point.status);
   const markerClass = isTechnician
     ? "border-slate-900 bg-white text-slate-950"
     : isLead
       ? "border-rose-500 bg-rose-500 text-white"
-      : "border-indigo-500 bg-indigo-500 text-white";
+      : isPendingRepair
+        ? "border-amber-500 bg-amber-500 text-white"
+        : "border-indigo-500 bg-indigo-500 text-white";
 
   return (
     <button
@@ -523,7 +526,7 @@ function Marker({ point, mapView, size, selected, onSelect }) {
       <span className="flex items-center gap-1.5 whitespace-nowrap">
         <span
           className={`h-2 w-2 rounded-full ${
-            isTechnician ? "bg-emerald-500" : isLead ? "bg-white" : "bg-indigo-100"
+            isTechnician ? "bg-emerald-500" : isLead || isPendingRepair ? "bg-white" : "bg-indigo-100"
           }`}
         />
         <span className="max-w-[132px] overflow-hidden text-ellipsis">{point.label}</span>
@@ -666,6 +669,7 @@ function MarkerDetailCard({
   const recommendation = leadRecommendations.find((item) => item.job.jobId === job.jobId);
   const recommendedRoute = recommendation?.bestRoute;
   const activeRoute = selectedTechId ? routePlans.find((plan) => plan.techId === selectedTechId) : null;
+  const mapStatus = selectedPoint.status || job.dispatchStatus;
 
   return (
     <div className="rounded-2xl border border-[#dce2ec] bg-white p-4 shadow-sm" data-testid="marker-detail-card">
@@ -674,8 +678,8 @@ function MarkerDetailCard({
           <p className="text-sm font-semibold text-slate-950">{job.customer?.name || selectedPoint.label}</p>
           <p className="mt-1 text-xs text-slate-500">{job.serviceAddress}</p>
         </div>
-        <Badge tone={selectedPoint.type === "lead" ? "rose" : getStatusTone(job.dispatchStatus)}>
-          {selectedPoint.type === "lead" ? "Lead" : formatStatusLabel(job.dispatchStatus)}
+        <Badge tone={selectedPoint.type === "lead" ? "rose" : getStatusTone(mapStatus)}>
+          {selectedPoint.type === "lead" ? "Unsecured lead" : formatStatusLabel(mapStatus)}
         </Badge>
       </div>
 
@@ -1320,6 +1324,7 @@ export function DispatchMapWorkspace({
           <div className="absolute bottom-4 left-4 z-30 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-600 shadow-lg">
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Workers</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-indigo-500" /> Jobs</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" /> Pending repair</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" /> Leads</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-full border border-teal-600 bg-teal-100" /> Zones</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-full border border-amber-600 bg-amber-100" /> Demand</span>

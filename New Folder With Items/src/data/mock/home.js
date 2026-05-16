@@ -1,18 +1,18 @@
 export const homeKpis = [
-  { label: "Jobs today", value: "26", detail: "18 active, 5 completed, 3 at risk" },
-  { label: "Callbacks needed", value: "7", detail: "4 from customers, 3 from technicians" },
-  { label: "Technicians en route", value: "3", detail: "1 late, 1 needs escalation check" },
-  { label: "Parts awaiting payment", value: "3", detail: "2 high-priority refrigerators" },
-  { label: "Labor due today", value: "$1,240", detail: "2 onsite and 4 pending completion" },
-  { label: "Unresolved communications", value: "5", detail: "3 text threads and 2 calls" },
+  { label: "Jobs today", value: "6", detail: "0 active, 6 completed, 0 at risk" },
+  { label: "Callbacks needed", value: "0", detail: "Completed customers moved to history" },
+  { label: "Technicians en route", value: "1", detail: "No mapped customer stops" },
+  { label: "Parts awaiting payment", value: "0", detail: "No active parts deposits due" },
+  { label: "Labor due today", value: "$0", detail: "Closed demo invoices are paid" },
+  { label: "Unresolved communications", value: "0", detail: "No open customer action threads" },
 ];
 
 export const activityFeed = [
-  "09:08 AM · Parts quote sent to Renee Walker for Samsung refrigerator repair.",
-  "09:41 AM · Steven Knapp marked onsite at Julian Brooks washer job.",
-  "10:06 AM · Kelly Warren labor authorization card failed on retry.",
-  "10:22 AM · Dispatch escalated Nadia Hart due to tight service window.",
-  "10:37 AM · Bianca Flores requested callback before assigning technician.",
+  "10:45 AM · Renee Walker repair completed and invoice closed.",
+  "11:10 AM · Julian Brooks diagnostic paid; repair declined.",
+  "12:05 PM · Bianca Flores diagnostic paid; quoted oven repair declined.",
+  "02:30 PM · Sanjay Patel return visit completed.",
+  "04:20 PM · Nadia Hart parts installation completed and invoice paid.",
 ];
 
 export const callMetrics = [
@@ -23,9 +23,9 @@ export const callMetrics = [
 ];
 
 export const urgentQueues = [
-  { label: "Jobs needing assignment", count: 4, jobIds: ["ASAP-1051", "ASAP-1063"] },
-  { label: "Jobs awaiting parts payment", count: 3, jobIds: ["ASAP-1042", "ASAP-1059"] },
-  { label: "Return visits to schedule", count: 5, jobIds: ["ASAP-1055", "ASAP-1040"] },
-  { label: "Labor due now", count: 2, jobIds: ["ASAP-1048", "ASAP-1037"] },
-  { label: "Failed payments", count: 1, jobIds: ["ASAP-1059"] },
+  { label: "Jobs needing assignment", count: 0, jobIds: [] },
+  { label: "Jobs awaiting parts payment", count: 0, jobIds: [] },
+  { label: "Return visits to schedule", count: 0, jobIds: [] },
+  { label: "Labor due now", count: 0, jobIds: [] },
+  { label: "Failed payments", count: 0, jobIds: [] },
 ];

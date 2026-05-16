@@ -1,4 +1,5 @@
 import { extractZipCode } from "./technicianCoverage";
+import { isClosedJob } from "./jobs";
 
 const EARTH_RADIUS_MILES = 3958.8;
 const ROAD_DISTANCE_FACTOR = 1.22;
@@ -82,6 +83,39 @@ const ZIP_PREFIX_COORDINATES = [
   { prefix: "349", coordinate: CITY_COORDINATES["port st lucie"] },
 ];
 
+const ACTIVE_LIFECYCLE_STATUSES = new Set([
+  "new",
+  "scheduled",
+  "en_route",
+  "onsite",
+  "paused",
+  "return_scheduled",
+  "pending_installation",
+  "pending_repair",
+]);
+
+const ACTIONABLE_DISPATCH_STATUSES = new Set([
+  "unassigned",
+  "assigned",
+  "confirmed",
+  "late",
+  "escalated",
+]);
+
+const ACTIONABLE_PAYMENT_STATUSES = new Set([
+  "parts_due",
+  "labor_due",
+  "partial",
+  "failed",
+]);
+
+const PENDING_REPAIR_PARTS_STATUSES = new Set([
+  "ready_to_order",
+  "ordered",
+  "shipped",
+  "delivered",
+]);
+
 function buildLocalDateKey(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -95,6 +129,10 @@ function normalizeSearchText(value) {
     .replace(/\./g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeStatus(value) {
+  return String(value || "").toLowerCase();
 }
 
 function isFloridaCoordinate(coordinate) {
@@ -402,7 +440,7 @@ export function getTomorrowDateKey() {
 
 export function getAvailableRouteDates(jobs = []) {
   return Array.from(
-    new Set(jobs.map(getRouteDateKey).filter(Boolean)),
+    new Set(jobs.filter(isActionableMapJob).map(getRouteDateKey).filter(Boolean)),
   ).sort();
 }
 
@@ -461,6 +499,75 @@ export function estimateRoadMiles(leftCoordinate, rightCoordinate) {
   return directMiles * ROAD_DISTANCE_FACTOR;
 }
 
+export function isPendingRepairMapJob(job) {
+  if (isClosedJob(job)) {
+    return false;
+  }
+
+  const lifecycleStatus = normalizeStatus(job?.lifecycleStatus);
+  const paymentStatus = normalizeStatus(job?.paymentStatus);
+  const partsStatus = normalizeStatus(job?.partsStatus);
+
+  return (
+    lifecycleStatus === "return_scheduled" ||
+    lifecycleStatus === "pending_installation" ||
+    lifecycleStatus === "pending_repair" ||
+    (paymentStatus === "parts_paid" && partsStatus !== "installed" && partsStatus !== "none_needed") ||
+    PENDING_REPAIR_PARTS_STATUSES.has(partsStatus)
+  );
+}
+
+export function isUnsecuredMapLead(job) {
+  if (isClosedJob(job) || isPendingRepairMapJob(job)) {
+    return false;
+  }
+
+  const lifecycleStatus = normalizeStatus(job?.lifecycleStatus);
+  const dispatchStatus = normalizeStatus(job?.dispatchStatus);
+  const paymentStatus = normalizeStatus(job?.paymentStatus);
+  const partsStatus = normalizeStatus(job?.partsStatus);
+  const isUnassigned = !job?.techId || dispatchStatus === "unassigned";
+  const needsPayment = ACTIONABLE_PAYMENT_STATUSES.has(paymentStatus);
+  const needsSalesDecision = partsStatus === "quoted" || partsStatus === "awaiting_payment";
+
+  return isUnassigned && (
+    needsPayment ||
+    needsSalesDecision ||
+    lifecycleStatus === "new" ||
+    lifecycleStatus === "scheduled"
+  );
+}
+
+export function isActionableMapJob(job) {
+  if (isClosedJob(job)) {
+    return false;
+  }
+
+  const lifecycleStatus = normalizeStatus(job?.lifecycleStatus);
+  const dispatchStatus = normalizeStatus(job?.dispatchStatus);
+  const paymentStatus = normalizeStatus(job?.paymentStatus);
+
+  return (
+    ACTIVE_LIFECYCLE_STATUSES.has(lifecycleStatus) ||
+    ACTIONABLE_DISPATCH_STATUSES.has(dispatchStatus) ||
+    ACTIONABLE_PAYMENT_STATUSES.has(paymentStatus) ||
+    isPendingRepairMapJob(job) ||
+    isUnsecuredMapLead(job)
+  );
+}
+
+export function getDispatchMapJobStatus(job) {
+  if (isPendingRepairMapJob(job)) {
+    return "pending_installation";
+  }
+
+  if (isUnsecuredMapLead(job)) {
+    return "unsecured_lead";
+  }
+
+  return job?.dispatchStatus || job?.lifecycleStatus || "scheduled";
+}
+
 export function buildDispatchMapPoints({ jobs = [], technicians = [] }) {
   const technicianPoints = technicians
     .map((technician, index) => {
@@ -481,9 +588,11 @@ export function buildDispatchMapPoints({ jobs = [], technicians = [] }) {
     .filter(Boolean);
 
   const jobPoints = jobs
+    .filter(isActionableMapJob)
     .map((job, index) => {
       const coordinate = resolveJobCoordinate(job, index);
-      const isLead = !job.techId || job.dispatchStatus === "unassigned";
+      const isLead = isUnsecuredMapLead(job);
+      const mapStatus = getDispatchMapJobStatus(job);
 
       return coordinate
         ? {
@@ -492,7 +601,7 @@ export function buildDispatchMapPoints({ jobs = [], technicians = [] }) {
             label: job.customer?.name || job.jobId,
             subLabel: job.serviceAddress,
             coordinate,
-            status: job.dispatchStatus,
+            status: mapStatus,
             job,
           }
         : null;
@@ -512,7 +621,7 @@ export function buildDispatchRoutePlans({
     const startCoordinate = resolveTechnicianCoordinate(technician, technicianIndex);
     const assignedStops = jobs
       .filter((job) => job.techId === technician.techId)
-      .filter((job) => !["completed", "canceled"].includes(job.lifecycleStatus))
+      .filter(isActionableMapJob)
       .filter((job) => isJobOnRouteDate(job, routeDateKey))
       .map((job, jobIndex) => {
         const coordinate = resolveJobCoordinate(job, jobIndex);
@@ -566,8 +675,8 @@ export function buildLeadRecommendations({
   includeReturnToBase = true,
 }) {
   return jobs
-    .filter((job) => !job.techId || job.dispatchStatus === "unassigned")
-    .filter((job) => !["completed", "canceled"].includes(job.lifecycleStatus))
+    .filter(isUnsecuredMapLead)
+    .filter(isActionableMapJob)
     .filter((job) => isJobOnRouteDate(job, routeDateKey))
     .map((job, jobIndex) => {
       const coordinate = resolveJobCoordinate(job, jobIndex);

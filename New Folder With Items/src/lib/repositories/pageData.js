@@ -7,6 +7,7 @@ import {
   getDispatchBoardJobs,
   getUnassignedDispatchJobs,
   getWatchListJobs,
+  isClosedJob,
 } from "../domain/jobs";
 
 function sum(items, selector) {
@@ -76,7 +77,7 @@ function buildRevenueTrendPoints(invoiceRecords) {
 function buildHomeKpis({ communicationRecords, invoiceRecords, jobRecords, technicians }) {
   const localDateKey = buildLocalDateKey();
   const jobsToday = jobRecords.filter((job) => isIsoOnLocalDate(job.scheduledStartAt, localDateKey));
-  const activeJobs = jobsToday.filter((job) => !["completed", "canceled"].includes(job.lifecycleStatus));
+  const activeJobs = jobsToday.filter((job) => !isClosedJob(job));
   const completedJobsToday = jobsToday.filter((job) => job.lifecycleStatus === "completed");
   const atRiskJobs = jobsToday.filter((job) =>
     ["failed", "partial", "parts_due", "awaiting_payment", "late", "escalated"].some(

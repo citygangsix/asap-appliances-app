@@ -5,9 +5,8 @@ import {
   resolveTechnicianCoordinate,
 } from "./dispatchRouting";
 import { DISPATCH_RESPONSE_WARNING_MINUTES } from "./dispatchNotifications";
+import { isClosedJob } from "./jobs";
 import { extractZipCode, getTechnicianCoverageZipCodes } from "./technicianCoverage";
-
-const CLOSED_JOB_STATUSES = new Set(["completed", "canceled", "cancelled"]);
 
 const TECHNICIAN_STATUS_SCORE = {
   unassigned: 24,
@@ -122,7 +121,7 @@ function getPendingConfirmations(technician, jobs) {
       job.techId === technician.techId &&
       job.dispatchConfirmationRequestedAt &&
       !job.dispatchConfirmationReceivedAt &&
-      !CLOSED_JOB_STATUSES.has(job.lifecycleStatus),
+      !isClosedJob(job),
   ).length;
 }
 

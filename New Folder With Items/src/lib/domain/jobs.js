@@ -9,6 +9,54 @@ import { groupBy, indexBy } from "./relations";
 /** @typedef {import("../../types/models").JobTimelineEvent} JobTimelineEvent */
 /** @typedef {import("../../types/models").Technician} Technician */
 
+export const CLOSED_JOB_LIFECYCLE_STATUSES = new Set([
+  "completed",
+  "canceled",
+  "cancelled",
+  "declined",
+  "diagnostic_paid_declined_repair",
+  "closed",
+  "no_work_needed",
+  "paid_closed",
+]);
+
+export const CLOSED_JOB_DISPATCH_STATUSES = new Set([
+  "completed",
+  "canceled",
+  "cancelled",
+  "declined",
+  "closed",
+  "paid_closed",
+]);
+
+function normalizeStatus(value) {
+  return String(value || "").toLowerCase();
+}
+
+/**
+ * @param {JobRecord|Job|null|undefined} job
+ */
+export function isClosedJob(job) {
+  if (!job) {
+    return true;
+  }
+
+  const lifecycleStatus = normalizeStatus(job.lifecycleStatus);
+  const dispatchStatus = normalizeStatus(job.dispatchStatus);
+  const paymentStatus = normalizeStatus(job.paymentStatus);
+  const partsStatus = normalizeStatus(job.partsStatus);
+  const invoiceStatus = normalizeStatus(job.invoice?.paymentStatus);
+
+  return (
+    CLOSED_JOB_LIFECYCLE_STATUSES.has(lifecycleStatus) ||
+    CLOSED_JOB_DISPATCH_STATUSES.has(dispatchStatus) ||
+    paymentStatus === "paid_closed" ||
+    paymentStatus === "diagnostic_paid_declined_repair" ||
+    invoiceStatus === "void" ||
+    partsStatus === "declined"
+  );
+}
+
 export function formatStatusLabel(value) {
   return value
     .split("_")
@@ -129,14 +177,14 @@ export function getJobDetailRows(job) {
  * @param {JobRecord[]} jobs
  */
 export function getWatchListJobs(jobs) {
-  return jobs.filter((job) => ["failed", "parts_due", "partial"].includes(job.paymentStatus));
+  return jobs.filter((job) => !isClosedJob(job) && ["failed", "parts_due", "partial"].includes(job.paymentStatus));
 }
 
 /**
  * @param {JobRecord[]} jobs
  */
 export function getDispatchBoardJobs(jobs) {
-  return jobs.filter((job) => !["completed", "canceled"].includes(job.lifecycleStatus));
+  return jobs.filter((job) => !isClosedJob(job));
 }
 
 /**
