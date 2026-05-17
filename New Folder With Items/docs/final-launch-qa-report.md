@@ -27,7 +27,8 @@ Vite reported the existing dashboard bundle-size warning after minification; the
 ## Publish
 
 - PASS published `dist-pages` to `origin/gh-pages`
-- Published commit: `2b980c2 Deploy ASAP Appliances launch pages`
+- Final published commit: `04fc143 Deploy website and dashboard`
+- PASS GitHub Actions Pages workflow completed successfully for source commit `f92fa36`
 - Hosted domain checked: `https://asapacboss.com/`
 
 ## Local Browser QA
