@@ -66,7 +66,7 @@ npm run api:deploy
 
 The function is deployed with `--no-verify-jwt` because SignalWire, Thumbtack, and the public service request form need to reach webhook/API routes without a Supabase user JWT. Dashboard-only routes verify Supabase Auth bearer tokens inside the router before running handlers.
 
-4. Build the GitHub Pages artifact against the hosted API. `.env.local` must include `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` before this build:
+4. Build the GitHub Pages artifact against the hosted API. `.env.local` must include `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` before this build. The GitHub Actions production setup is documented in `docs/github-pages-environment.md`.
 
 ```bash
 npm run build:pages:hosted
