@@ -13,6 +13,8 @@
     "check:pages-routes": "node scripts/check-pages-routes.mjs",
     "check:dashboard-auth": "node scripts/check-dashboard-auth.mjs",
     "check:supabase-live": "node scripts/check-supabase-live-contract.mjs",
+    "smoke:supabase-live-writes": "node scripts/smoke-supabase-live-writes.mjs",
+    "smoke:external-integrations": "node scripts/smoke-external-integrations.mjs",
     "check:server-env": "node scripts/check-server-env.mjs",
     "check:hosted-env": "node scripts/check-server-env.mjs hosted",
     "preview": "vite preview",

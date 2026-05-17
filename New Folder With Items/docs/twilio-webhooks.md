@@ -105,6 +105,14 @@ For full hosted readiness, including Thumbtack and browser calling:
 npm run check:hosted-env
 ```
 
+For hosted live-safe route verification without placing real calls or texts:
+
+```bash
+npm run smoke:external-integrations
+```
+
+That hosted smoke creates a temporary Supabase Auth dashboard user, runs browser-token, outbound-call, outbound-SMS, invoice-notification, provider-callback boundary, and Thumbtack boundary checks, then deletes the temporary user. Valid signed provider callbacks and valid Thumbtack payloads still require the local secret values documented in `docs/external-integration-verification.md`.
+
 ## Dashboard Route Auth
 
 The React dashboard uses Supabase Auth email/password sessions:

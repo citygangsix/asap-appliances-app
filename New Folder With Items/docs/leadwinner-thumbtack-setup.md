@@ -71,6 +71,13 @@ Hosted route-boundary checks on 2026-05-17:
 
 - Missing secret returned `401`.
 - Invalid bearer secret returned `403`.
+- Full hosted dry-run with a valid realistic provider payload is blocked in this workspace until the local `THUMBTACK_WEBHOOK_SECRET` value is supplied. The hosted secret name is configured, but Supabase does not expose secret values after they are set.
+
+Run the complete hosted external integration smoke after adding the local secret value:
+
+```bash
+THUMBTACK_WEBHOOK_SECRET=<secret> npm run smoke:external-integrations
+```
 
 ## Supported Lead Fields
 
