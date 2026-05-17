@@ -86,7 +86,7 @@ function MasterDispatchCandidateCard({ candidate, label, selected, onStage }) {
 async function requestDispatchEtaNotifications(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/workflows/dispatch"), {
     method: "POST",
-    headers: getLocalOperationsServerHeaders({
+    headers: await getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
     }),
     body: JSON.stringify(payload),
@@ -112,7 +112,7 @@ async function requestDispatchEtaNotifications(payload) {
 async function requestFinalWorkWorkflow(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/workflows/final-work"), {
     method: "POST",
-    headers: getLocalOperationsServerHeaders({
+    headers: await getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
     }),
     body: JSON.stringify(payload),

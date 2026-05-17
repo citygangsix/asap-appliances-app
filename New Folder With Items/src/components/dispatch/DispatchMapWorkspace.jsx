@@ -1298,6 +1298,7 @@ export function DispatchMapWorkspace({
           >
             <button
               type="button"
+              aria-label="Zoom dispatch map in"
               className="grid h-11 w-11 place-items-center text-lg font-semibold text-slate-700 hover:bg-slate-50"
               onClick={() => zoomMap(1)}
               title="Zoom in"
@@ -1306,6 +1307,7 @@ export function DispatchMapWorkspace({
             </button>
             <button
               type="button"
+              aria-label="Zoom dispatch map out"
               className="grid h-11 w-11 place-items-center border-l border-slate-200 text-lg font-semibold text-slate-700 hover:bg-slate-50"
               onClick={() => zoomMap(-1)}
               title="Zoom out"
@@ -1314,6 +1316,7 @@ export function DispatchMapWorkspace({
             </button>
             <button
               type="button"
+              aria-label="Fit dispatch map to visible pins"
               className="border-l border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               onClick={fitMapToPins}
             >

@@ -43,19 +43,44 @@ export function mapTechnicianPayoutDraftToInsert(draft) {
   };
 }
 
+function getUniqueInvoiceIds(invoiceIds = []) {
+  return Array.from(new Set(invoiceIds.map((invoiceId) => String(invoiceId || "").trim()).filter(Boolean)));
+}
+
+function splitAmountAcrossInvoices(totalAmount, invoiceCount) {
+  const totalCents = Math.round(Number(totalAmount || 0) * 100);
+
+  if (!Number.isFinite(totalCents) || totalCents <= 0 || invoiceCount <= 0) {
+    return [];
+  }
+
+  const baseCents = Math.floor(totalCents / invoiceCount);
+  const remainder = totalCents % invoiceCount;
+
+  return Array.from({ length: invoiceCount }, (_, index) => (baseCents + (index < remainder ? 1 : 0)) / 100);
+}
+
 /**
  * @param {PayoutInvoiceLinkDraft} draft
  * @param {number} [allocatedAmount]
  * @returns {TechnicianPayoutInvoiceLinkInsertPayload[]}
  */
 export function mapPayoutInvoiceLinksToInsert(draft, allocatedAmount) {
-  const perInvoiceAmount =
-    allocatedAmount !== undefined ? allocatedAmount : Math.max(1, Math.round((1 / draft.invoiceIds.length) * 100) / 100);
+  const invoiceIds = getUniqueInvoiceIds(draft.invoiceIds);
 
-  return draft.invoiceIds.map((invoiceId) => ({
+  if (invoiceIds.length === 0) {
+    return [];
+  }
+
+  const allocatedAmounts =
+    allocatedAmount !== undefined
+      ? invoiceIds.map(() => allocatedAmount)
+      : splitAmountAcrossInvoices(draft.amount ?? invoiceIds.length, invoiceIds.length);
+
+  return invoiceIds.map((invoiceId, index) => ({
     payout_id: draft.payoutId,
     invoice_id: invoiceId,
-    allocated_amount: perInvoiceAmount,
+    allocated_amount: allocatedAmounts[index],
   }));
 }
 

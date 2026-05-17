@@ -4,10 +4,10 @@
  * later be replaced by Supabase queries without reshaping the UI.
  */
 
-/** @typedef {"new"|"scheduled"|"en_route"|"onsite"|"paused"|"return_scheduled"|"completed"|"canceled"} LifecycleStatus */
-/** @typedef {"unassigned"|"assigned"|"confirmed"|"late"|"escalated"} DispatchStatus */
-/** @typedef {"none_due"|"parts_due"|"parts_paid"|"labor_due"|"labor_paid"|"partial"|"failed"} PaymentStatus */
-/** @typedef {"none_needed"|"quoted"|"awaiting_payment"|"ready_to_order"|"ordered"|"shipped"|"delivered"|"installed"} PartsStatus */
+/** @typedef {"new"|"scheduled"|"en_route"|"onsite"|"paused"|"return_scheduled"|"pending_installation"|"pending_repair"|"completed"|"canceled"|"declined"|"diagnostic_paid_declined_repair"|"closed"|"no_work_needed"|"paid_closed"} LifecycleStatus */
+/** @typedef {"unassigned"|"assigned"|"confirmed"|"late"|"escalated"|"completed"|"canceled"|"declined"|"closed"|"paid_closed"} DispatchStatus */
+/** @typedef {"none_due"|"parts_due"|"parts_paid"|"labor_due"|"labor_paid"|"partial"|"failed"|"paid_closed"|"diagnostic_paid_declined_repair"} PaymentStatus */
+/** @typedef {"none_needed"|"quoted"|"awaiting_payment"|"ready_to_order"|"ordered"|"shipped"|"delivered"|"installed"|"declined"} PartsStatus */
 /** @typedef {"clear"|"awaiting_callback"|"unread_message"|"unresolved"} CommunicationStatus */
 /** @typedef {"inbound"|"outbound"} CommunicationDirection */
 /** @typedef {"missing_phone"|"not_found"|"ambiguous"} UnmatchedInboundMatchStatus */

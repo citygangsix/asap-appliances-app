@@ -114,7 +114,7 @@ function buildActionsWithRefresh(onRefresh = undefined, onToggleAdd = undefined,
 async function requestClickToCall(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/twilio/outbound/calls"), {
     method: "POST",
-    headers: getLocalOperationsServerHeaders({
+    headers: await getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
     }),
     body: JSON.stringify(payload),
@@ -144,7 +144,7 @@ async function requestClickToCall(payload) {
 async function requestManualCallLog(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/manual/calls/log"), {
     method: "POST",
-    headers: getLocalOperationsServerHeaders({
+    headers: await getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
     }),
     body: JSON.stringify(payload),

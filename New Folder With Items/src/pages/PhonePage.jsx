@@ -334,7 +334,7 @@ function disconnectAudioNode(node) {
 async function requestClickToCall(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/twilio/outbound/calls"), {
     method: "POST",
-    headers: getLocalOperationsServerHeaders({ "Content-Type": "application/json" }),
+    headers: await getLocalOperationsServerHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const responseText = await response.text();
@@ -362,7 +362,7 @@ async function requestClickToCall(payload) {
 async function requestActiveCalls() {
   const response = await fetch(getLocalOperationsServerUrl("/api/twilio/outbound/calls/active"), {
     cache: "no-store",
-    headers: getLocalOperationsServerHeaders({ Accept: "application/json" }),
+    headers: await getLocalOperationsServerHeaders({ Accept: "application/json" }),
   });
   const responseText = await response.text();
   const responseJson = responseText ? JSON.parse(responseText) : null;
@@ -377,7 +377,7 @@ async function requestActiveCalls() {
 async function requestOutboundTextMessage(payload) {
   const response = await fetch(getLocalOperationsServerUrl("/api/twilio/outbound/messages"), {
     method: "POST",
-    headers: getLocalOperationsServerHeaders({ "Content-Type": "application/json" }),
+    headers: await getLocalOperationsServerHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const responseText = await response.text();

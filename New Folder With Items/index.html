@@ -17,8 +17,10 @@
         var redirect = sessionStorage.getItem("asap-crm-spa-redirect");
         if (!redirect) return;
         sessionStorage.removeItem("asap-crm-spa-redirect");
-        var url = new URL(redirect);
-        history.replaceState(null, "", url.pathname + url.search + url.hash);
+        var url = new URL(redirect, window.location.origin);
+        if (url.origin === window.location.origin && url.pathname.indexOf("/dashboard") === 0) {
+          history.replaceState(null, "", url.pathname + url.search + url.hash);
+        }
       })();
     </script>
     <div id="root">

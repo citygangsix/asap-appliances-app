@@ -72,7 +72,7 @@ function requireBrowserVoiceConfig(config) {
 
   if (!config.apiKeySid) missing.push("TWILIO_API_KEY_SID");
   if (!config.apiKeySecret) missing.push("TWILIO_API_KEY_SECRET");
-  if (!config.twimlAppSid) missing.push("TWILIO_TWIML_APP_SID");
+  if (!config.twimlAppSid) missing.push("TWILIO_TWIML_APP_SID or SIGNALWIRE_CXML_APP_SID");
 
   if (missing.length) {
     return {

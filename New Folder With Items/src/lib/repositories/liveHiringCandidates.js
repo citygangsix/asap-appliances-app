@@ -10,7 +10,7 @@ export async function requestLiveHiringCandidates() {
 
   const response = await fetch(url.toString(), {
     cache: "no-store",
-    headers: getLocalOperationsServerHeaders({
+    headers: await getLocalOperationsServerHeaders({
       Accept: "application/json",
     }),
   });

@@ -208,9 +208,7 @@ export function getTwilioServerConfig() {
 
 export function getServerSupabaseClient() {
   if (!serverSupabaseClient) {
-    const { supabaseUrl, supabaseServiceRoleKey } = getTwilioServerConfig();
-
-    serverSupabaseClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    serverSupabaseClient = createClient(readRequiredSupabaseUrl(), readRequiredSupabaseServiceRoleKey(), {
       auth: {
         persistSession: false,
         autoRefreshToken: false,

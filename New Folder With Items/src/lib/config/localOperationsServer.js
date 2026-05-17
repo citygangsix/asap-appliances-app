@@ -1,3 +1,5 @@
+import { getDashboardAccessToken } from "../auth/dashboardAuth";
+
 const HOSTED_OPERATIONS_API_URL = "https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm";
 
 function getConfiguredBaseUrl() {
@@ -26,12 +28,16 @@ export function getLocalOperationsServerUrl(pathname) {
   return `${baseUrl}${pathname}`;
 }
 
-export function getLocalOperationsServerHeaders(headers = {}) {
+export async function getLocalOperationsServerHeaders(headers = {}) {
   const baseUrl = getConfiguredBaseUrl() || getDefaultBaseUrl();
   const nextHeaders = { ...headers };
 
   if (/\.ngrok-free\./iu.test(baseUrl)) {
     nextHeaders["ngrok-skip-browser-warning"] = "true";
+  }
+
+  if (!nextHeaders.Authorization) {
+    nextHeaders.Authorization = `Bearer ${await getDashboardAccessToken()}`;
   }
 
   return nextHeaders;

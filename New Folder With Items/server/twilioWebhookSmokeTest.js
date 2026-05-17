@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
+import { formatEnvValidationReport, validateSignalWireSmokeEnv } from "./lib/envValidation.js";
 import { loadServerEnv } from "./lib/loadEnv.js";
 
 loadServerEnv();
@@ -95,10 +96,11 @@ async function fetchJson(url, options) {
   };
 }
 
-async function postJson(url, body) {
+async function postDashboardJson(url, body, dashboardAccessToken) {
   return fetchJson(url, {
     method: "POST",
     headers: {
+      Authorization: `Bearer ${dashboardAccessToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -267,9 +269,25 @@ async function getSignedText({
 }
 
 async function main() {
+  const envValidation = validateSignalWireSmokeEnv();
+
+  if (!envValidation.ok) {
+    console.error(formatEnvValidationReport(envValidation));
+    process.exitCode = 1;
+    return;
+  }
+
+  if (envValidation.warnings.length > 0 || envValidation.recommendedMissing.length > 0) {
+    console.warn(formatEnvValidationReport(envValidation));
+  }
+
   const appRoot = process.cwd();
   const accountSid = readRequiredAnyEnv(["SIGNALWIRE_PROJECT_ID", "TWILIO_ACCOUNT_SID"]);
   const authToken = readRequiredAnyEnv(["SIGNALWIRE_API_TOKEN", "TWILIO_AUTH_TOKEN"]);
+  const dashboardAccessToken = readRequiredAnyEnv([
+    "ASAP_DASHBOARD_AUTH_BEARER_TOKEN",
+    "SUPABASE_AUTH_ACCESS_TOKEN",
+  ]);
   const configuredPhoneNumber = readRequiredAnyEnv(["SIGNALWIRE_PHONE_NUMBER", "TWILIO_PHONE_NUMBER"]);
   const managedPhoneNumbers = Array.from(
     new Set([
@@ -288,6 +306,7 @@ async function main() {
     process.env.SIGNALWIRE_CLICK_TO_CALL_AGENT_NUMBER ||
     process.env.TWILIO_CLICK_TO_CALL_AGENT_NUMBER ||
     process.env.ASSISTANT_OFFICE_PHONE_NUMBER ||
+    process.env.LUMIA_INVOICE_SMS_PHONE_NUMBER ||
     process.env.SIGNALWIRE_VOICE_FORWARD_TO ||
     process.env.TWILIO_VOICE_FORWARD_TO ||
     null;
@@ -332,13 +351,17 @@ async function main() {
     );
     console.log("[twilio-smoke] PASS signed SMS ignored safely");
 
-    const clickToCallDryRun = await postJson(`${localBaseUrl}/api/twilio/outbound/calls`, {
-      customerId: "00000000-0000-0000-0000-000000000401",
-      customerName: "Smoke Test Customer",
-      customerPhone: "+15551110004",
-      jobId: "00000000-0000-0000-0000-000000000402",
-      dryRun: true,
-    });
+    const clickToCallDryRun = await postDashboardJson(
+      `${localBaseUrl}/api/twilio/outbound/calls`,
+      {
+        customerId: "00000000-0000-0000-0000-000000000401",
+        customerName: "Smoke Test Customer",
+        customerPhone: "+15551110004",
+        jobId: "00000000-0000-0000-0000-000000000402",
+        dryRun: true,
+      },
+      dashboardAccessToken,
+    );
 
     assert(
       clickToCallDryRun.status === 200 && clickToCallDryRun.json?.ok === true,

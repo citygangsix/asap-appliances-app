@@ -7,9 +7,17 @@ const siteDist = path.join(repoRoot, "dist-site");
 const dashboardDist = path.join(repoRoot, "dist-dashboard");
 const pagesDist = path.join(repoRoot, "dist-pages");
 const dashboardPagesDist = path.join(pagesDist, "dashboard");
+const publicStaticRoutes = [
+  "confirmations",
+  "privacy-policy",
+  "terms-and-conditions",
+];
 const dashboardDirectRoutes = [
+  "login",
   "home",
   "jobs",
+  "people",
+  "contacts",
   "customers",
   "dispatch",
   "dispatch-board",
@@ -32,7 +40,8 @@ const dashboardSpaFallback = `<!doctype html>
   <body>
     <script>
       (function () {
-        sessionStorage.setItem("asap-crm-spa-redirect", window.location.href);
+        var target = window.location.pathname + window.location.search + window.location.hash;
+        sessionStorage.setItem("asap-crm-spa-redirect", target);
         window.location.replace("/dashboard/");
       })();
     </script>
@@ -51,7 +60,8 @@ const rootFallback = `<!doctype html>
     <script>
       (function () {
         if (window.location.pathname.indexOf("/dashboard") === 0) {
-          sessionStorage.setItem("asap-crm-spa-redirect", window.location.href);
+          var target = window.location.pathname + window.location.search + window.location.hash;
+          sessionStorage.setItem("asap-crm-spa-redirect", target);
           window.location.replace("/dashboard/");
           return;
         }
@@ -74,6 +84,10 @@ await writeFile(path.join(pagesDist, "CNAME"), "ASAPACBoss.com\n");
 await writeFile(path.join(pagesDist, ".nojekyll"), "");
 await writeFile(path.join(pagesDist, "404.html"), rootFallback);
 await writeFile(path.join(dashboardPagesDist, "404.html"), dashboardSpaFallback);
+
+for (const route of publicStaticRoutes) {
+  await mkdir(path.join(pagesDist, route), { recursive: true });
+}
 
 for (const route of dashboardDirectRoutes) {
   const routeDist = path.join(dashboardPagesDist, route);

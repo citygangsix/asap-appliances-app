@@ -65,7 +65,7 @@ export function RevenuePage() {
     return (
       <PageScaffold
         title="Revenue"
-        subtitle="Booked revenue, collections progress, and payout readiness without any backend wiring yet."
+        subtitle="Booked revenue, collections progress, and technician payout readiness from the active repository source."
         actions={actions}
         tabs={[{ label: "Overview", active: true }, { label: "Collections" }]}
       >
@@ -78,7 +78,7 @@ export function RevenuePage() {
     return (
       <PageScaffold
         title="Revenue"
-        subtitle="Booked revenue, collections progress, and payout readiness without any backend wiring yet."
+        subtitle="Booked revenue, collections progress, and technician payout readiness from the active repository source."
         actions={actions}
         tabs={[{ label: "Overview", active: true }, { label: "Collections" }]}
       >
@@ -92,7 +92,7 @@ export function RevenuePage() {
   return (
     <PageScaffold
       title="Revenue"
-      subtitle="Booked revenue, collections progress, and payout readiness without any backend wiring yet."
+      subtitle="Booked revenue, collections progress, and technician payout readiness from the active repository source."
       actions={actions}
       tabs={[{ label: "Overview", active: true }, { label: "Collections" }]}
     >

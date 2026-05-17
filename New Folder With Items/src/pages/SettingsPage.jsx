@@ -89,7 +89,7 @@ export function SettingsPage() {
     return (
       <PageScaffold
         title="Settings"
-        subtitle="Placeholder sections for company setup, operational defaults, permissions, and future integrations."
+        subtitle="Company setup, operational defaults, permissions, and integration readiness."
         actions={actions}
         tabs={[{ label: "Company", active: true }, { label: "Integrations" }]}
         contentClassName="grid gap-4 p-4 sm:grid-cols-2 sm:p-6 xl:grid-cols-3 lg:p-8"
@@ -103,7 +103,7 @@ export function SettingsPage() {
     return (
       <PageScaffold
         title="Settings"
-        subtitle="Placeholder sections for company setup, operational defaults, permissions, and future integrations."
+        subtitle="Company setup, operational defaults, permissions, and integration readiness."
         actions={actions}
         tabs={[{ label: "Company", active: true }, { label: "Integrations" }]}
         contentClassName="grid gap-4 p-4 sm:grid-cols-2 sm:p-6 xl:grid-cols-3 lg:p-8"
@@ -118,7 +118,7 @@ export function SettingsPage() {
   return (
     <PageScaffold
       title="Settings"
-      subtitle="Placeholder sections for company setup, operational defaults, permissions, and future integrations."
+      subtitle="Company setup, operational defaults, permissions, and integration readiness."
       actions={actions}
       tabs={[{ label: "Company", active: true }, { label: "Integrations" }]}
       contentClassName="grid gap-4 p-4 sm:grid-cols-2 sm:p-6 xl:grid-cols-3 lg:p-8"

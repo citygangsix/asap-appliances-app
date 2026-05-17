@@ -3,7 +3,7 @@
  * These mirror the migration/schema docs and intentionally use snake_case keys.
  */
 
-/** @typedef {"new"|"scheduled"|"en_route"|"onsite"|"paused"|"return_scheduled"|"completed"|"canceled"} DbJobLifecycleStatus */
+/** @typedef {"new"|"scheduled"|"en_route"|"onsite"|"paused"|"return_scheduled"|"pending_installation"|"pending_repair"|"completed"|"canceled"|"declined"|"diagnostic_paid_declined_repair"|"closed"|"no_work_needed"|"paid_closed"} DbJobLifecycleStatus */
 /** @typedef {"unassigned"|"assigned"|"confirmed"|"late"|"escalated"} DbJobDispatchStatus */
 /** @typedef {"none_due"|"parts_due"|"parts_paid"|"labor_due"|"labor_paid"|"partial"|"failed"} DbJobPaymentStatus */
 /** @typedef {"none_needed"|"quoted"|"awaiting_payment"|"ready_to_order"|"ordered"|"shipped"|"delivered"|"installed"} DbJobPartsStatus */
@@ -35,6 +35,9 @@
  * @property {string|null} last_contact_at
  * @property {number} lifetime_value
  * @property {string|null} notes
+ * @property {string|null} sms_opted_out_at
+ * @property {string|null} voice_opted_out_at
+ * @property {string|null} auto_contact_cooldown_until
  * @property {string} created_at
  * @property {string} updated_at
  */

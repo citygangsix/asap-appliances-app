@@ -1,7 +1,7 @@
 # ASAP Operations CRM Supabase Schema Summary
 
-This is a human-readable summary of the live schema implemented by `supabase/migrations/20260416_000001_asap_operations_core.sql`.
-Use the migration file as the backend source of truth.
+This is a human-readable summary of the live schema implemented by the migrations in `supabase/migrations/`.
+Use the migration files as the backend source of truth.
 
 ## Core Guardrails
 
@@ -12,6 +12,9 @@ Use the migration file as the backend source of truth.
 - `jobs.invoice_id` does not exist.
 - `invoices.customer_id` does not exist.
 - `customers.active_job_id` does not exist.
+- Public service requests write to `customers` and `jobs`; there is no separate `service_requests` table in the current production path.
+- Hiring candidate capture writes to `hiring_candidates` and can promote onboarded candidates into `technicians`.
+- Outbound call/SMS compliance writes to `outbound_contact_attempts` and customer opt-out/cooldown columns.
 
 ## Enums
 
@@ -23,8 +26,15 @@ Use the migration file as the backend source of truth.
 - `onsite`
 - `paused`
 - `return_scheduled`
+- `pending_installation`
+- `pending_repair`
 - `completed`
 - `canceled`
+- `declined`
+- `diagnostic_paid_declined_repair`
+- `closed`
+- `no_work_needed`
+- `paid_closed`
 
 ### `job_dispatch_status`
 
@@ -156,6 +166,9 @@ Key columns:
 - `last_contact_at timestamptz null`
 - `lifetime_value numeric(12,2) not null default 0`
 - `notes text null`
+- `sms_opted_out_at timestamptz null`
+- `voice_opted_out_at timestamptz null`
+- `auto_contact_cooldown_until timestamptz null`
 - `created_at timestamptz not null`
 - `updated_at timestamptz not null`
 
@@ -171,8 +184,12 @@ Key columns:
 - `primary_phone text null`
 - `email text null`
 - `service_area text not null`
+- `service_zip_codes text[] not null default '{}'`
 - `skills text[] not null`
+- `hire_start_date date null`
 - `availability_notes text null`
+- `availability_days text[] not null default '{}'`
+- `availability_time_preferences text[] not null default '{}'`
 - `status_today technician_status_today not null`
 - `jobs_completed_this_week integer not null default 0`
 - `callback_rate_percent numeric(5,2) not null default 0`
@@ -217,6 +234,11 @@ Key columns:
 - `priority job_priority not null`
 - `lateness_minutes integer null`
 - `internal_notes text null`
+- `dispatch_confirmation_requested_at timestamptz null`
+- `dispatch_confirmation_received_at timestamptz null`
+- `dispatch_response_minutes integer null`
+- `technician_confirmation_response text null`
+- `payment_collected_before_tech_left boolean null`
 - `created_at timestamptz not null`
 - `updated_at timestamptz not null`
 
@@ -268,6 +290,11 @@ Key columns:
 - `communication_status communication_status not null`
 - `preview_text text not null`
 - `transcript_text text null`
+- `call_highlights text null`
+- `call_summary_sections jsonb null`
+- `transcription_status text null`
+- `transcription_error text null`
+- `transcribed_at timestamptz null`
 - `extracted_event_summary text null`
 - `from_number text null`
 - `to_number text null`
@@ -303,6 +330,11 @@ Key columns:
 - `to_number text null`
 - `preview_text text not null`
 - `transcript_text text null`
+- `call_highlights text null`
+- `call_summary_sections jsonb null`
+- `transcription_status text null`
+- `transcription_error text null`
+- `transcribed_at timestamptz null`
 - `provider_name text not null`
 - `provider_message_sid text null`
 - `provider_call_sid text null`
@@ -312,6 +344,49 @@ Key columns:
 - `ended_at timestamptz null`
 - `resolution_notes text null`
 - `resolved_at timestamptz null`
+- `created_at timestamptz not null`
+- `updated_at timestamptz not null`
+
+### `hiring_candidates`
+
+Primary key:
+
+- `candidate_id uuid`
+
+Foreign keys:
+
+- `linked_communication_id -> communications.communication_id` nullable
+- `promoted_tech_id -> technicians.tech_id` nullable
+
+Key columns:
+
+- `name text not null`
+- `primary_phone text null unique when present`
+- `email text null`
+- `source text null`
+- `stage text not null`
+- `trade text null`
+- `city text null`
+- `service_area text null`
+- `structured_start_date date null`
+- `availability_summary text null`
+- `availability_days text[] not null default '{}'`
+- `availability_time_preferences text[] not null default '{}'`
+- `current_job_status text null`
+- `tools_status text null`
+- `vehicle_status text null`
+- `tools_vehicle_summary text null`
+- `payout_expectation_summary text null`
+- `experience_summary text null`
+- `appliance_experience_summary text null`
+- `other_work_experience_summary text null`
+- `next_step text null`
+- `call_highlights text null`
+- `transcript_text text null`
+- `provider_call_sid text null unique when present`
+- `promoted_at timestamptz null`
+- `raw_analysis jsonb not null`
+- `last_contact_at timestamptz not null`
 - `created_at timestamptz not null`
 - `updated_at timestamptz not null`
 
@@ -356,6 +431,70 @@ Key columns:
 
 - `allocated_amount numeric(12,2) not null`
 - `created_at timestamptz not null`
+
+### `twilio_voice_recordings`
+
+Primary key:
+
+- `recording_id uuid`
+
+Foreign keys:
+
+- `linked_communication_id -> communications.communication_id` nullable
+
+Key columns:
+
+- `provider_name text not null`
+- `provider_account_sid text null`
+- `provider_call_sid text null`
+- `provider_parent_call_sid text null`
+- `provider_recording_sid text not null unique`
+- `recording_status text null`
+- `recording_source text null`
+- `recording_track text null`
+- `recording_channels integer null`
+- `recording_duration_seconds integer null`
+- `recording_url text null`
+- `transcript_text text null`
+- `call_headline text null`
+- `call_highlights text null`
+- `call_summary_sections jsonb null`
+- `transcription_status text null`
+- `transcription_error text null`
+- `transcribed_at timestamptz null`
+- `raw_payload jsonb not null`
+- `callback_received_at timestamptz not null`
+- `created_at timestamptz not null`
+- `updated_at timestamptz not null`
+
+### `outbound_contact_attempts`
+
+Primary key:
+
+- `attempt_id uuid`
+
+Foreign keys:
+
+- `customer_id -> customers.customer_id` nullable
+- `communication_id -> communications.communication_id` nullable
+
+Key columns:
+
+- `trigger_source text not null`
+- `is_automated boolean not null default false`
+- `attempt_channel communication_channel not null`
+- `customer_number text not null`
+- `provider_call_sid text null`
+- `provider_parent_call_sid text null`
+- `provider_message_sid text null unique when present`
+- `outcome text not null`
+- `outcome_detail text null`
+- `requested_at timestamptz not null`
+- `completed_at timestamptz null`
+- `cooldown_applied_until timestamptz null`
+- `raw_payload jsonb not null`
+- `created_at timestamptz not null`
+- `updated_at timestamptz not null`
 
 ### `job_timeline_events`
 

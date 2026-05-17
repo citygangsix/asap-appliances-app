@@ -36,6 +36,11 @@ import {
 import { handleBrowserCallStatusCallback } from "./lib/twilioBrowserCallStatus.js";
 import { listHiringCandidateRows } from "./lib/hiringCandidateDirectory.js";
 import { startTwilioRecordingRecovery } from "./lib/twilioRecordingRecovery.js";
+import {
+  getDashboardApiAuthFailure,
+  isDashboardApiRoute,
+} from "./lib/dashboardApiAuth.js";
+import { handlePublicServiceRequestSubmission } from "./lib/publicServiceRequests.js";
 
 const SMS_WEBHOOK_PATH = "/api/twilio/sms";
 const VOICE_WEBHOOK_PATH = "/api/twilio/voice";
@@ -54,6 +59,7 @@ const BROWSER_VOICE_TOKEN_PATH = "/api/twilio/voice-token";
 const HIRING_CANDIDATES_PATH = "/api/hiring-candidates";
 const THUMBTACK_LEAD_PATH = "/api/thumbtack/lead";
 const MANUAL_CALL_LOG_PATH = "/api/manual/calls/log";
+const PUBLIC_SERVICE_REQUESTS_PATH = "/api/service-requests";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -158,6 +164,24 @@ function respondTwiml(response, twiml = buildEmptyTwiml(), statusCode = 200) {
 function respondNoContent(response, statusCode = 204) {
   response.writeHead(statusCode, CORS_HEADERS);
   response.end();
+}
+
+async function rejectDashboardApiRequestIfNeeded(request, response, pathname) {
+  if (!isDashboardApiRoute(request.method, pathname)) {
+    return false;
+  }
+
+  const authFailure = await getDashboardApiAuthFailure(request.headers);
+
+  if (!authFailure) {
+    return false;
+  }
+
+  respondJson(response, authFailure.status, {
+    ok: false,
+    message: authFailure.message,
+  });
+  return true;
 }
 
 async function fileExists(filepath) {
@@ -402,6 +426,27 @@ async function handleManualCallLogRequest(request, response) {
   respondJson(response, result.status || (result.ok ? 200 : 500), result);
 }
 
+async function handlePublicServiceRequest(request, response) {
+  const body = await readRequestBody(request);
+  let payload;
+
+  try {
+    payload = parseJsonBody(body);
+  } catch (error) {
+    respondJson(response, 400, {
+      ok: false,
+      message: error instanceof Error ? error.message : "Invalid JSON request body.",
+    });
+    return;
+  }
+
+  const result = await handlePublicServiceRequestSubmission(payload, {
+    receivedAt: new Date().toISOString(),
+    userAgent: request.headers["user-agent"],
+  });
+  respondJson(response, result.status || (result.ok ? 200 : 400), result);
+}
+
 async function handleClickToCallBridgeWebhook(request, response, pathname, requestUrl) {
   const validatedRequest = await validateTwilioWebhookRequest(request, response, {
     requireMatchingTo: false,
@@ -444,6 +489,15 @@ async function routeRequest(request, response) {
 
   if (request.method === "GET" && requestUrl.pathname === "/health") {
     respondJson(response, 200, { ok: true, status: "ok" });
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === PUBLIC_SERVICE_REQUESTS_PATH) {
+    await handlePublicServiceRequest(request, response);
+    return;
+  }
+
+  if (await rejectDashboardApiRequestIfNeeded(request, response, requestUrl.pathname)) {
     return;
   }
 
@@ -612,6 +666,7 @@ server.listen(port, () => {
   console.log(`[twilio-webhooks] browser hangup route: ${BROWSER_HANGUP_PATH}`);
   console.log(`[twilio-webhooks] hiring candidates route: ${HIRING_CANDIDATES_PATH}`);
   console.log(`[twilio-webhooks] thumbtack lead route: ${THUMBTACK_LEAD_PATH}`);
+  console.log(`[twilio-webhooks] public service request route: ${PUBLIC_SERVICE_REQUESTS_PATH}`);
   console.log(`[twilio-webhooks] manual call log route: ${MANUAL_CALL_LOG_PATH}`);
   console.log("[twilio-webhooks] invoice sms route: /api/invoices/send-lumia");
   console.log("[twilio-webhooks] dispatch notify route: /api/dispatch/notify-eta");

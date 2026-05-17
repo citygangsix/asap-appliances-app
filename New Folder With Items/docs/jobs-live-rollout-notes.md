@@ -157,8 +157,8 @@ This document records the current state after the first eight production-grade l
 - `src/lib/repositories/supabaseOperationsRepository.js` still exposes the invoice mutation entry points:
   - `invoices.createForJob(draft)`
   - `invoices.updatePaymentStatus(invoiceId, patch)`
-- Those Supabase mutation paths remain placeholder-only in this rollout.
-- Focused invoice list/detail caches now exist in the repository and are cleared alongside the shared read-model cache after successful live mutations elsewhere, so future live invoice writes will not leave stale invoice list/detail reads behind.
+- `src/integrations/supabase/mutations/invoices.js` executes real inserts and payment-state updates against `invoices`.
+- Focused invoice list/detail caches are cleared after successful live mutations so refreshed invoice views rehydrate from Supabase.
 
 ## Live Revenue Read Path
 
@@ -273,6 +273,7 @@ This document records the current state after the first eight production-grade l
 
 - No current live repository reads still depend on the broad snapshot-style `loadSupabaseReadModels()` path after the focused Technicians and timeline cleanup.
 - `repository.jobTimeline.listByJob()` now uses focused timeline queries for both per-job and all-events reads, while mock mode still uses the existing mock read-model assembly path.
+- The unused live `src/integrations/supabase/readModels.js` snapshot loader has been removed. Mock mode still uses `buildOperationsReadModels(getMockDatabaseSnapshot())` so local fallback behavior remains unchanged.
 
 ## Remaining Jobs Model Mismatches
 
@@ -317,7 +318,7 @@ This document records the current state after the first eight production-grade l
 - The frontend `Customer` shape still exposes label-first `lastContactLabel` instead of canonical timestamps directly to the page.
 - The schema correctly removed `customers.active_job_id`, so the active job shown in the Customers UI is still a repository-derived selection over the customer’s open jobs.
 - The selected customer detail panel now loads through `repository.customers.getProfile(customerId)`, but the left directory still intentionally carries enough aggregate state to preserve the existing UI without redesigning it.
-- Customer creation remains placeholder-only in Supabase mode; this rollout focused on replacing the broad snapshot-style read path, not on adding live customer writes.
+- Customer creation and basic profile updates are now live Supabase writes when credentials are configured.
 
 ## Remaining Invoices Mismatches And Risks
 
@@ -325,14 +326,14 @@ This document records the current state after the first eight production-grade l
 - The UI still renders `invoiceId` and `jobId` directly, so live Supabase mode will show raw UUIDs in the current page until the product adds human-friendly invoice/job references.
 - Customer context for invoice reads is still repository-derived through `invoices -> jobs -> customers` because the schema correctly does not include `invoices.customer_id`.
 - The selected invoice now hydrates separately through `repository.invoices.getDetail(invoiceId)`, but the page intentionally keeps the existing table/right-column design instead of introducing a new detail panel.
-- Invoice creation and payment-status updates remain placeholder-only in Supabase mode; this rollout focused on replacing the broad snapshot-style read path, not on adding live invoice writes.
+- Invoice creation and payment-status updates are now live Supabase writes when credentials are configured.
 
 ## Remaining Revenue Mismatches And Risks
 
 - The frontend Revenue page still renders the existing summary-card and weekly-bar UI without exposing canonical reporting objects; this rollout preserved the current page contract instead of redesigning the finance model.
 - Revenue summary values are still derived from hydrated invoices in repository code, so the current label-first/date-first frontend assumptions remain intact.
 - The schema’s `revenue_summary_daily` view remains available, but this rollout intentionally reused the existing invoice-driven Revenue page behavior instead of changing the page to depend on a new reporting view.
-- Technician payout creation and payout-to-invoice linking remain placeholder-only in Supabase mode; this rollout focused on replacing the broad snapshot-style read path, not on adding live payout writes.
+- Technician payout creation and payout-to-invoice linking now write to `technician_payouts` and `technician_payout_invoice_links` when credentials are configured.
 
 ## Remaining Home Mismatches And Risks
 
@@ -354,4 +355,4 @@ One-line handoff prompt:
 
 Full next-session prompt:
 
-`Use the current ASAP Operations CRM codebase and continue from the exact state reached after the Jobs, Dispatch, Communications, Customers, Invoices, Revenue, Home, and Technicians live rollouts. The app supports async repository reads, has a real Supabase client path, uses safe mock fallback behavior, and pages load data asynchronously instead of assuming synchronous local reads. Keep all of that intact. Jobs, Dispatch, Communications, Customers, Invoices, Revenue, Home, and Technicians are now focused repository-driven live workflows with safe mock fallback, while invoice writes and technician payout writes remain placeholder-only in Supabase mode. Mock mode must remain the default and safe local fallback path. If you continue cleanup work, audit remaining non-page broad snapshot utilities such as repository-level all-timeline reads without redesigning pages or silently changing business logic.`
+`Use the current ASAP Operations CRM codebase and continue from the exact state reached after the Jobs, Dispatch, Communications, Customers, Invoices, Revenue, Home, and Technicians live rollouts. The app supports async repository reads, has a real Supabase client path, uses safe mock fallback behavior, and pages load data asynchronously instead of assuming synchronous local reads. Keep all of that intact. Jobs, Dispatch, Communications, Customers, Invoices, and technician payout writes now use live Supabase mutations when credentials are configured, while mock mode remains the default and safe local fallback path. If you continue cleanup work, audit remaining non-page broad snapshot utilities such as repository-level all-timeline reads without redesigning pages or silently changing business logic.`

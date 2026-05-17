@@ -31,6 +31,11 @@ import {
 } from "./twilioBrowserCalling.js";
 import { handleBrowserCallStatusCallback } from "./twilioBrowserCallStatus.js";
 import { listHiringCandidateRows } from "./hiringCandidateDirectory.js";
+import {
+  getDashboardApiAuthFailure,
+  isDashboardApiRoute,
+} from "./dashboardApiAuth.js";
+import { handlePublicServiceRequestSubmission } from "./publicServiceRequests.js";
 
 const SMS_WEBHOOK_PATH = "/api/twilio/sms";
 const VOICE_WEBHOOK_PATH = "/api/twilio/voice";
@@ -49,6 +54,7 @@ const BROWSER_VOICE_TOKEN_PATH = "/api/twilio/voice-token";
 const HIRING_CANDIDATES_PATH = "/api/hiring-candidates";
 const THUMBTACK_LEAD_PATH = "/api/thumbtack/lead";
 const MANUAL_CALL_LOG_PATH = "/api/manual/calls/log";
+const PUBLIC_SERVICE_REQUESTS_PATH = "/api/service-requests";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -98,6 +104,19 @@ function respondNoContent(statusCode = 204) {
   return new Response(null, {
     status: statusCode,
     headers: CORS_HEADERS,
+  });
+}
+
+async function requireDashboardApiAuth(context) {
+  const authFailure = await getDashboardApiAuthFailure(context.headers);
+
+  if (!authFailure) {
+    return null;
+  }
+
+  return respondJson(authFailure.status, {
+    ok: false,
+    message: authFailure.message,
   });
 }
 
@@ -371,6 +390,26 @@ async function handleManualCallLogRequest(request) {
   return respondJson(result.status || (result.ok ? 200 : 500), result);
 }
 
+async function handlePublicServiceRequest(request, context) {
+  let payload;
+
+  try {
+    payload = parseJsonBody(await request.text());
+  } catch (error) {
+    return respondJson(400, {
+      ok: false,
+      message: error instanceof Error ? error.message : "Invalid JSON request body.",
+    });
+  }
+
+  const result = await handlePublicServiceRequestSubmission(payload, {
+    receivedAt: new Date().toISOString(),
+    userAgent: context.headers["user-agent"],
+  });
+
+  return respondJson(result.status || (result.ok ? 200 : 400), result);
+}
+
 async function handleClickToCallBridgeWebhook(request, context) {
   const validatedRequest = await validateTwilioWebhookRequest(request, context, {
     requireMatchingTo: false,
@@ -418,6 +457,18 @@ export async function handleOperationsFetchRequest(request, options = {}) {
 
     if (request.method === "GET" && pathname === "/health") {
       return respondJson(200, { ok: true, status: "ok" });
+    }
+
+    if (request.method === "POST" && pathname === PUBLIC_SERVICE_REQUESTS_PATH) {
+      return await handlePublicServiceRequest(request, context);
+    }
+
+    if (isDashboardApiRoute(request.method, pathname)) {
+      const authResponse = await requireDashboardApiAuth(context);
+
+      if (authResponse) {
+        return authResponse;
+      }
     }
 
     if (request.method === "POST" && pathname === "/api/invoices/send-lumia") {

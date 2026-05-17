@@ -198,7 +198,10 @@
         margin-top: 3px;
       }
 
-      .mock-button {
+      .form-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         border: 0;
         border-radius: 14px;
         background: #2563eb;
@@ -206,6 +209,8 @@
         font: inherit;
         font-weight: 800;
         padding: 14px 18px;
+        text-align: center;
+        text-decoration: none;
       }
 
       .copy-list {
@@ -307,22 +312,16 @@
         <section class="grid" aria-label="SMS opt-in form example">
           <article class="panel">
             <p class="section-label">Customer request form</p>
-            <h2>Opt-in form mockup</h2>
+            <h2>Opt-in happens on the live service request form.</h2>
             <div class="form-grid">
-              <label>
-                Phone number
-                <input type="tel" placeholder="Customer phone number" aria-label="Customer phone number" />
-              </label>
-              <label>
-                Service address
-                <input type="text" placeholder="Street, city, state, ZIP" aria-label="Service address" />
-              </label>
-              <label>
-                Appliance or service issue
-                <textarea placeholder="Tell us which appliance needs service." aria-label="Appliance or service issue"></textarea>
-              </label>
-              <label class="consent">
-                <input type="checkbox" aria-label="SMS consent checkbox" />
+              <p>
+                The public homepage service request form asks for name, phone, service
+                address, appliance type, issue summary, preferred timing, and SMS consent.
+                The SMS consent checkbox is unchecked by default and must be selected before
+                the request can be submitted.
+              </p>
+              <div class="consent">
+                <input type="checkbox" aria-label="SMS consent checkbox example" disabled />
                 <span>
                   I agree to receive SMS messages from ASAP Appliance about scheduling,
                   appointment updates, estimates, invoices, technician arrival updates,
@@ -330,8 +329,8 @@
                   varies. Message and data rates may apply. Reply STOP to opt out.
                   Reply HELP for help. Consent is not a condition of purchase.
                 </span>
-              </label>
-              <button class="mock-button" type="button">Submit service request</button>
+              </div>
+              <a class="form-action" href="/#service-request-form">Open service request form</a>
             </div>
           </article>
 

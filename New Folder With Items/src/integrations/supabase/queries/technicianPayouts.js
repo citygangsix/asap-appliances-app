@@ -33,6 +33,14 @@ function unwrapQueryResult(label, result) {
   return result.data ?? [];
 }
 
+function unwrapMaybeSingleQueryResult(label, result) {
+  if (result.error) {
+    throw new Error(`${label}: ${result.error.message}`);
+  }
+
+  return result.data ?? null;
+}
+
 export function listTechnicianPayoutsQuery() {
   return createQueryPlaceholder({
     key: "technicianPayouts.list",
@@ -65,4 +73,14 @@ export async function runListTechnicianPayoutsQuery(client) {
     .order("created_at", { ascending: false });
 
   return unwrapQueryResult("technicianPayouts.hydratedList", result);
+}
+
+export async function runTechnicianPayoutDetailQuery(client, payoutId) {
+  const result = await client
+    .from("technician_payouts")
+    .select(HYDRATED_TECHNICIAN_PAYOUT_SELECT)
+    .eq("payout_id", payoutId)
+    .maybeSingle();
+
+  return unwrapMaybeSingleQueryResult("technicianPayouts.detail", result);
 }

@@ -7,9 +7,7 @@ import {
   getLocalOperationsServerHeaders,
   getLocalOperationsServerUrl,
 } from "../config/localOperationsServer";
-import {
-  clearSupabaseReadModelsCache,
-} from "../../integrations/supabase/readModels";
+import { isSupabaseMockFallbackAllowed } from "../config/dataSource";
 import {
   mapHydratedCommunicationRowToRecord,
   mapHydratedCommunicationRowsToRecords,
@@ -26,7 +24,10 @@ import {
   mapHydratedJobRowToRecord,
   mapHydratedJobRowsToRecords,
 } from "../../integrations/supabase/adapters/jobs";
-import { mapHydratedTechnicianPayoutRowsToRecords } from "../../integrations/supabase/adapters/technicianPayouts";
+import {
+  mapHydratedTechnicianPayoutRowToRecord,
+  mapHydratedTechnicianPayoutRowsToRecords,
+} from "../../integrations/supabase/adapters/technicianPayouts";
 import { getHomeDashboardQueryPlan } from "../../integrations/supabase/queries/home";
 import {
   getDispatchAttentionJobsQueryPlan,
@@ -90,6 +91,7 @@ import {
   getTechnicianPayoutsHydrationQueryPlan,
   listTechnicianPayoutsQuery,
   runListTechnicianPayoutsQuery,
+  runTechnicianPayoutDetailQuery,
 } from "../../integrations/supabase/queries/technicianPayouts";
 import {
   getTechnicianRosterQueryPlan,
@@ -128,7 +130,12 @@ import {
   runUpdateJobStatusMutation,
   updateJobStatusMutation,
 } from "../../integrations/supabase/mutations/jobs";
-import { createTechnicianPayoutMutation, linkPayoutInvoicesMutation } from "../../integrations/supabase/mutations/technicianPayouts";
+import {
+  createTechnicianPayoutMutation,
+  linkPayoutInvoicesMutation,
+  runCreateTechnicianPayoutMutation,
+  runLinkPayoutInvoicesMutation,
+} from "../../integrations/supabase/mutations/technicianPayouts";
 import { updateTechnicianMutation } from "../../integrations/supabase/mutations/technicians";
 import {
   createUnmatchedInboundMutation,
@@ -249,7 +256,6 @@ function resetPayoutCaches() {
 }
 
 function clearRuntimeCaches() {
-  clearSupabaseReadModelsCache();
   resetJobCaches();
   resetInvoiceCaches();
   resetPayoutCaches();
@@ -365,7 +371,64 @@ async function loadLiveTechnicianPayouts(client) {
   return mapHydratedTechnicianPayoutRowsToRecords(await runListTechnicianPayoutsQuery(client));
 }
 
+function getUniqueInvoiceIds(invoiceIds = []) {
+  return Array.from(new Set(invoiceIds.map((invoiceId) => String(invoiceId || "").trim()).filter(Boolean)));
+}
+
+function assertPayoutInvoiceLinkDraft(draft) {
+  const invoiceIds = getUniqueInvoiceIds(draft.invoiceIds);
+
+  if (invoiceIds.length === 0) {
+    throw new Error("Technician payout needs at least one invoice link.");
+  }
+
+  if (!Number.isFinite(Number(draft.amount)) || Number(draft.amount) <= 0) {
+    throw new Error("Technician payout invoice links need a positive total payout amount.");
+  }
+
+  return invoiceIds;
+}
+
+async function assertPayoutInvoicesExist(client, invoiceIds) {
+  const result = await client
+    .from("invoices")
+    .select("invoice_id")
+    .in("invoice_id", invoiceIds);
+
+  if (result.error) {
+    throw new Error(`technicianPayouts.validateInvoices: ${result.error.message}`);
+  }
+
+  const foundInvoiceIds = new Set((result.data || []).map((invoice) => invoice.invoice_id));
+  const missingInvoiceIds = invoiceIds.filter((invoiceId) => !foundInvoiceIds.has(invoiceId));
+
+  if (missingInvoiceIds.length > 0) {
+    throw new Error(`Technician payout invoice links contain unknown invoices: ${missingInvoiceIds.join(", ")}.`);
+  }
+}
+
+async function createPayoutInvoiceLinks(client, draft) {
+  const invoiceIds = assertPayoutInvoiceLinkDraft(draft);
+  const linkPayload = mapPayoutInvoiceLinksToInsert({
+    payoutId: draft.payoutId,
+    invoiceIds,
+    amount: draft.amount,
+  });
+
+  if (linkPayload.length !== invoiceIds.length) {
+    throw new Error("Technician payout invoice links need a positive total payout amount.");
+  }
+
+  if (linkPayload.some((link) => !Number.isFinite(link.allocated_amount) || link.allocated_amount <= 0)) {
+    throw new Error("Technician payout invoice links need a positive allocated amount.");
+  }
+
+  return runLinkPayoutInvoicesMutation(client, linkPayload);
+}
+
 function createSupabaseFallbackMutation(operation, plan, payload) {
+  const fallbackAllowed = isSupabaseMockFallbackAllowed();
+
   return {
     ok: false,
     operation,
@@ -374,7 +437,9 @@ function createSupabaseFallbackMutation(operation, plan, payload) {
     payload,
     message: isSupabaseConfigured()
       ? "Supabase mode is selected, but this mutation path did not execute a live write."
-      : "Supabase mode is selected without credentials. Returning a typed placeholder response while mock fallback keeps the UI running.",
+      : fallbackAllowed
+        ? "Supabase mode is selected without credentials. Returning a typed placeholder response while mock fallback keeps the UI running."
+        : "Supabase live mode requires VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY. Mock write fallback is disabled for this build.",
   };
 }
 
@@ -392,7 +457,7 @@ function createSupabaseMutationFailure(operation, plan, payload, error) {
 async function requestLumiaInvoiceSms(invoiceRecord) {
   const response = await fetch(getLocalOperationsServerUrl("/api/invoices/send-lumia"), {
     method: "POST",
-    headers: getLocalOperationsServerHeaders({
+    headers: await getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
     }),
     body: JSON.stringify({
@@ -427,6 +492,15 @@ async function requestLumiaInvoiceSms(invoiceRecord) {
 
 async function readWithFallback(readOperation, mockFallback) {
   if (!isSupabaseConfigured()) {
+    const error = new Error(
+      "Supabase live mode requires VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.",
+    );
+    lastSupabaseReadError = error;
+
+    if (!isSupabaseMockFallbackAllowed()) {
+      throw error;
+    }
+
     return mockFallback();
   }
 
@@ -436,6 +510,12 @@ async function readWithFallback(readOperation, mockFallback) {
     return result;
   } catch (error) {
     lastSupabaseReadError = error;
+
+    if (!isSupabaseMockFallbackAllowed()) {
+      console.error("Supabase read failed in strict live mode.", error);
+      throw new Error(`Supabase live read failed: ${error.message}`);
+    }
+
     console.error("Supabase read failed. Falling back to mock data.", error);
     return mockFallback();
   }
@@ -1155,18 +1235,63 @@ const technicianPayouts = {
       () => (lastLivePayoutList.length > 0 ? lastLivePayoutList : mockOperationsRepository.technicianPayouts.list()),
     );
   },
-  create(draft) {
-    return createSupabaseFallbackMutation(
+  async create(draft) {
+    const payload = mapTechnicianPayoutDraftToInsert(draft);
+
+    return runSupabaseMutation(
       "technicianPayouts.create",
       mutationPlans.createTechnicianPayout,
-      mapTechnicianPayoutDraftToInsert(draft),
+      {
+        payout: payload,
+        invoiceIds: getUniqueInvoiceIds(draft.invoiceIds),
+      },
+      async (client) => {
+        const invoiceIds = assertPayoutInvoiceLinkDraft({
+          invoiceIds: draft.invoiceIds,
+          amount: draft.amount,
+        });
+        await assertPayoutInvoicesExist(client, invoiceIds);
+        const payout = await runCreateTechnicianPayoutMutation(client, payload);
+        await createPayoutInvoiceLinks(client, {
+          payoutId: payout.payout_id,
+          invoiceIds: draft.invoiceIds,
+          amount: payout.net_amount ?? draft.amount,
+        });
+
+        return runTechnicianPayoutDetailQuery(client, payout.payout_id);
+      },
+      mapHydratedTechnicianPayoutRowToRecord,
     );
   },
-  linkInvoices(draft) {
-    return createSupabaseFallbackMutation(
+  async linkInvoices(draft) {
+    return runSupabaseMutation(
       "technicianPayouts.linkInvoices",
       mutationPlans.linkPayoutInvoices,
-      mapPayoutInvoiceLinksToInsert(draft),
+      {
+        payoutId: draft.payoutId,
+        invoiceIds: getUniqueInvoiceIds(draft.invoiceIds),
+      },
+      async (client) => {
+        const payout = await runTechnicianPayoutDetailQuery(client, draft.payoutId);
+
+        if (!payout) {
+          throw new Error("Selected technician payout was not found.");
+        }
+
+        const invoiceIds = assertPayoutInvoiceLinkDraft({
+          invoiceIds: draft.invoiceIds,
+          amount: payout.net_amount,
+        });
+        await assertPayoutInvoicesExist(client, invoiceIds);
+        await createPayoutInvoiceLinks(client, {
+          payoutId: draft.payoutId,
+          invoiceIds: draft.invoiceIds,
+          amount: payout.net_amount,
+        });
+
+        return runTechnicianPayoutDetailQuery(client, draft.payoutId);
+      },
+      mapHydratedTechnicianPayoutRowToRecord,
     );
   },
 };

@@ -181,10 +181,83 @@ function DispatchNotificationBell({
   );
 }
 
+function getRepositoryRuntimeStatus(repository) {
+  if (repository.source === "mock") {
+    return {
+      label: "Mock data",
+      detail: "Mock mode is active. Actions are safe demos and do not persist.",
+      tone: "amber",
+    };
+  }
+
+  const clientStatus = repository.getClientStatus?.();
+
+  if (clientStatus?.mode === "missing_credentials") {
+    return {
+      label: "Supabase fallback",
+      detail: clientStatus.reason,
+      tone: "amber",
+    };
+  }
+
+  if (clientStatus?.mode === "missing_credentials_strict") {
+    return {
+      label: "Supabase offline",
+      detail: clientStatus.reason,
+      tone: "rose",
+    };
+  }
+
+  if (clientStatus?.mode === "mock_fallback") {
+    return {
+      label: "Live fallback",
+      detail: clientStatus.reason,
+      tone: "rose",
+    };
+  }
+
+  if (clientStatus?.mode === "live_read_error") {
+    return {
+      label: "Live error",
+      detail: clientStatus.reason,
+      tone: "rose",
+    };
+  }
+
+  return {
+    label: "Supabase live",
+    detail: clientStatus?.reason || "Supabase mode is active.",
+    tone: "emerald",
+  };
+}
+
+function DataSourceBadge({ status }) {
+  const toneClasses = {
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    rose: "border-rose-200 bg-rose-50 text-rose-800",
+  };
+
+  return (
+    <span
+      className={`inline-flex min-h-9 max-w-[10rem] shrink-0 items-center justify-center rounded-full border px-3 text-xs font-semibold sm:max-w-none ${
+        toneClasses[status.tone] || toneClasses.amber
+      }`}
+      title={status.detail}
+    >
+      <span className="truncate">{status.label}</span>
+    </span>
+  );
+}
+
 export function AppShell() {
+  const repository = getOperationsRepository();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dispatchNotificationsOpen, setDispatchNotificationsOpen] = useState(false);
   const [hasUnreadDispatchAlert, setHasUnreadDispatchAlert] = useState(false);
+  const [repositoryRuntimeStatus, setRepositoryRuntimeStatus] = useState(() =>
+    getRepositoryRuntimeStatus(repository),
+  );
   const [dispatchNotificationState, setDispatchNotificationState] = useState({
     notifications: [],
     loading: true,
@@ -201,7 +274,6 @@ export function AppShell() {
 
   useEffect(() => {
     let isMounted = true;
-    const repository = getOperationsRepository();
 
     async function loadDispatchNotifications() {
       try {
@@ -219,6 +291,7 @@ export function AppShell() {
           loading: false,
           error: null,
         });
+        setRepositoryRuntimeStatus(getRepositoryRuntimeStatus(repository));
       } catch (error) {
         if (!isMounted) {
           return;
@@ -229,6 +302,7 @@ export function AppShell() {
           loading: false,
           error,
         }));
+        setRepositoryRuntimeStatus(getRepositoryRuntimeStatus(repository));
       }
     }
 
@@ -239,7 +313,7 @@ export function AppShell() {
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [repository]);
 
   useEffect(() => {
     const notificationKeys = new Set(
@@ -293,6 +367,8 @@ export function AppShell() {
     />
   );
 
+  const renderDataSourceBadge = () => <DataSourceBadge status={repositoryRuntimeStatus} />;
+
   return (
     <div className="min-h-screen bg-[#eef1f6] md:flex">
       <SidebarNav mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
@@ -300,6 +376,9 @@ export function AppShell() {
       <main className="min-h-screen min-w-0 flex-1 bg-[#eef1f6]">
         <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-[#d8ddea] bg-white px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:hidden">
           <button
+            aria-controls="dashboard-mobile-navigation"
+            aria-expanded={mobileOpen}
+            aria-label="Open navigation menu"
             onClick={() => setMobileOpen(true)}
             className="rounded-xl border border-[#cfd6e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700"
             type="button"
@@ -312,6 +391,7 @@ export function AppShell() {
             </p>
             <p className="mt-1 truncate text-sm text-slate-500">{routeMeta.alert}</p>
           </div>
+          {renderDataSourceBadge()}
           {renderNotificationBell()}
         </div>
 
@@ -322,7 +402,10 @@ export function AppShell() {
             </p>
             <p className="mt-1 truncate text-sm font-medium text-slate-600">{routeMeta.alert}</p>
           </div>
-          {renderNotificationBell()}
+          <div className="flex shrink-0 items-center gap-3">
+            {renderDataSourceBadge()}
+            {renderNotificationBell()}
+          </div>
         </div>
 
         <Outlet />

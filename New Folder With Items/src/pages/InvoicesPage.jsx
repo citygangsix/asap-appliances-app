@@ -30,7 +30,7 @@ async function postOperationsJson(pathname, payload, options = {}) {
   const { allowErrorResponse = false } = options;
   const response = await fetch(getLocalOperationsServerUrl(pathname), {
     method: "POST",
-    headers: getLocalOperationsServerHeaders({
+    headers: await getLocalOperationsServerHeaders({
       "Content-Type": "application/json",
     }),
     body: JSON.stringify(payload),

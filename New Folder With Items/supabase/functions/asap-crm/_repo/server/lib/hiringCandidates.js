@@ -642,7 +642,7 @@ export async function upsertHiringCandidateFromManualLog(client, payload = {}, i
         ? "Retry outreach."
         : null);
   const manualOutreach = buildManualOutreachSummary(existingCandidate, payload);
-  const candidatePayload = stripLegacyHiringCandidateDetailColumns({
+  const candidatePayload = {
     name: candidateName,
     primary_phone: candidatePhone || existingCandidate?.primary_phone || null,
     email: coalesceString(payload.email, hiringCandidate.email, existingCandidate?.email),
@@ -720,7 +720,7 @@ export async function upsertHiringCandidateFromManualLog(client, payload = {}, i
       },
     },
     last_contact_at: occurredAt,
-  });
+  };
 
   if (existingCandidate) {
     const result = await client

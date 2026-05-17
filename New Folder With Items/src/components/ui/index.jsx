@@ -15,9 +15,10 @@ export function PageHeader({ section = "CRM", title, subtitle, action }) {
     <div className="border-b border-[#d8ddea] bg-white px-4 py-5 sm:px-8">
       <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
-          <p className="break-words text-sm text-slate-400 sm:text-[15px]">
-            {section} / <span className="font-semibold text-slate-900">{title}</span>
-          </p>
+          <p className="text-sm text-slate-400 sm:text-[15px]">{section}</p>
+          <h1 className="mt-1 break-words text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
+            {title}
+          </h1>
           {subtitle ? <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-500">{subtitle}</p> : null}
         </div>
         {action ? <div className="flex w-full flex-wrap gap-3 sm:w-auto md:justify-end">{action}</div> : null}
@@ -39,21 +40,32 @@ export function PageTabs({ tabs }) {
       <div className="-mx-4 flex gap-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:gap-8 sm:px-0 [&::-webkit-scrollbar]:hidden">
         {tabs.map((tab) => {
           const hasAction = typeof tab.onClick === "function";
+          const className = `min-h-11 shrink-0 border-b-[3px] pb-3 pt-4 text-base font-semibold whitespace-nowrap transition sm:text-[17px] ${
+            tab.active
+              ? "border-indigo-500 text-indigo-500"
+              : hasAction
+                ? "border-transparent text-slate-500 hover:text-slate-700"
+                : "border-transparent text-slate-400"
+          }`;
+
+          if (!hasAction) {
+            return (
+              <span
+                key={tab.id || tab.label}
+                aria-current={tab.active ? "page" : undefined}
+                className={`${className} cursor-default`}
+              >
+                {tab.label}
+              </span>
+            );
+          }
 
           return (
             <button
               key={tab.id || tab.label}
               aria-current={tab.active ? "page" : undefined}
-              aria-disabled={!hasAction}
-              className={`min-h-11 shrink-0 border-b-[3px] pb-3 pt-4 text-base font-semibold whitespace-nowrap transition sm:text-[17px] ${
-                tab.active
-                  ? "border-indigo-500 text-indigo-500"
-                  : hasAction
-                    ? "border-transparent text-slate-500 hover:text-slate-700"
-                    : "cursor-default border-transparent text-slate-400"
-              }`}
-              disabled={!hasAction}
-              onClick={hasAction ? tab.onClick : undefined}
+              className={className}
+              onClick={tab.onClick}
               type="button"
             >
               {tab.label}
