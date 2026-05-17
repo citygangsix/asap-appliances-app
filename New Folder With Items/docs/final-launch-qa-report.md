@@ -28,7 +28,8 @@ Vite reported the existing dashboard bundle-size warning after minification; the
 
 - PASS published `dist-pages` to `origin/gh-pages`
 - Final published commit: `04fc143 Deploy website and dashboard`
-- PASS GitHub Actions Pages workflow completed successfully for source commit `f92fa36`
+- PASS GitHub Actions Pages workflow completed successfully after the source push
+- PASS follow-up QA-report-only push completed successfully and did not move `origin/gh-pages`
 - Hosted domain checked: `https://asapacboss.com/`
 
 ## Local Browser QA
