@@ -5,9 +5,7 @@ Date: May 16, 2026 local / May 17, 2026 UTC
 ## Summary
 
 GitHub Pages was rebuilt, verified, committed, and pushed to `gh-pages`.
-Public hosted routes load and the hosted Supabase Edge API matches the expected public/private boundary.
-
-The remaining launch blocker is dashboard auth configuration in the published Pages build: the live dashboard fails closed with `Dashboard Auth Unavailable` because the build environment did not include `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+Public hosted routes load, the hosted Supabase Edge API matches the expected public/private boundary, and the production dashboard now receives the Supabase frontend auth environment.
 
 ## Build And Static Routes
 
@@ -27,9 +25,10 @@ Vite reported the existing dashboard bundle-size warning after minification; the
 ## Publish
 
 - PASS published `dist-pages` to `origin/gh-pages`
-- Final published commit: `04fc143 Deploy website and dashboard`
+- Final published commit: `bf06c9f Deploy website and dashboard`
 - PASS GitHub Actions Pages workflow completed successfully after the source push
 - PASS follow-up QA-report-only push completed successfully and did not move `origin/gh-pages`
+- PASS production Supabase frontend env workflow completed successfully for source commit `5c1860f`
 - Hosted domain checked: `https://asapacboss.com/`
 
 ## Local Browser QA
@@ -41,6 +40,7 @@ Served `dist-pages` locally from `http://127.0.0.1:4180`.
 - PASS `/dashboard/login/`, `/dashboard/phone/`, `/dashboard/jobs/`, and `/dashboard/settings/` loaded as direct routes
 - PASS service request empty-submit validation showed all required field errors
 - PASS dashboard/private direct routes failed closed when Supabase frontend auth env was missing
+- PASS rebuilt dashboard with Supabase frontend env showed `Dashboard Login` without missing-env warnings
 
 ## Hosted Smoke QA
 
@@ -53,6 +53,8 @@ Hosted Pages:
 - PASS `https://asapacboss.com/dashboard/login/` returned 200 and hydrated
 - PASS `https://asapacboss.com/dashboard/phone/` returned 200 as a direct route
 - PASS `https://asapacboss.com/dashboard/jobs/` returned 200 as a direct route
+- PASS `https://asapacboss.com/dashboard/login/` showed `Dashboard Login` without `Dashboard Auth Unavailable`
+- PASS unauthenticated `https://asapacboss.com/dashboard/phone/` redirected to login without missing-env warnings
 
 Hosted Supabase API:
 
@@ -62,23 +64,29 @@ Hosted Supabase API:
 - PASS `GET /api/twilio/voice-token` without auth returned 401
 - PASS `POST /api/invoices/send-lumia` without auth returned 401
 
-## Blockers
+## Dashboard Pages Env
 
-1. Dashboard login cannot complete on the published Pages build until the build environment includes:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
+The production GitHub Actions environment now includes:
 
-2. For live CRM production mode, publish with:
-   - `VITE_APP_DATA_SOURCE=supabase`
-   - `VITE_LOCAL_OPERATIONS_SERVER_URL=https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_APP_DATA_SOURCE=supabase`
+- `VITE_LOCAL_OPERATIONS_SERVER_URL=https://nexkymqahpkvzzlvivfi.supabase.co/functions/v1/asap-crm`
 
-After setting those values locally or in GitHub Actions variables/secrets, rerun:
+Setup and recovery steps are documented in `docs/github-pages-environment.md`.
+
+## Remaining Notes
+
+- No active launch blocker remains for missing Supabase frontend env.
+- Vite still reports the existing dashboard bundle-size warning during production builds.
+- GitHub Actions warns that Node.js 20 actions are deprecated and will need an Actions runtime update later.
+
+If the Pages environment is changed, rerun:
 
 ```bash
 npm run build:pages:hosted
 npm run check:pages-routes
-rsync -a --delete --exclude .git dist-pages/ /tmp/asap-gh-pages/
-git -C /tmp/asap-gh-pages add -A
-git -C /tmp/asap-gh-pages commit -m "Deploy ASAP Appliances production dashboard auth"
-git -C /tmp/asap-gh-pages push origin gh-pages
+npm run build
+npm run check:dashboard-auth
+npm run check:supabase-live
 ```
