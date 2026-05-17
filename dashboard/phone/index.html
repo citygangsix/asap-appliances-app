@@ -10,8 +10,8 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/dashboard/assets/index-BI9s_YRy.js"></script>
-    <link rel="stylesheet" crossorigin href="/dashboard/assets/index-CzOcaFlJ.css">
+    <script type="module" crossorigin src="/dashboard/assets/index-CfJCVoZr.js"></script>
+    <link rel="stylesheet" crossorigin href="/dashboard/assets/index-WzFNjEUs.css">
   </head>
   <body class="bg-slate-100">
     <script>
@@ -19,8 +19,10 @@
         var redirect = sessionStorage.getItem("asap-crm-spa-redirect");
         if (!redirect) return;
         sessionStorage.removeItem("asap-crm-spa-redirect");
-        var url = new URL(redirect);
-        history.replaceState(null, "", url.pathname + url.search + url.hash);
+        var url = new URL(redirect, window.location.origin);
+        if (url.origin === window.location.origin && url.pathname.indexOf("/dashboard") === 0) {
+          history.replaceState(null, "", url.pathname + url.search + url.hash);
+        }
       })();
     </script>
     <div id="root">

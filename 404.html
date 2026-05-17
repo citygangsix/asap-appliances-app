@@ -9,7 +9,8 @@
     <script>
       (function () {
         if (window.location.pathname.indexOf("/dashboard") === 0) {
-          sessionStorage.setItem("asap-crm-spa-redirect", window.location.href);
+          var target = window.location.pathname + window.location.search + window.location.hash;
+          sessionStorage.setItem("asap-crm-spa-redirect", target);
           window.location.replace("/dashboard/");
           return;
         }
